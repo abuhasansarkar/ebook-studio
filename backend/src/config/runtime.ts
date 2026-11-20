@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 import path from "node:path";
 import { env } from "./env.js";
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 export const queueNamespace = env.QUEUE_NAMESPACE ?? env.NODE_ENV;
 export const queuePrefix = `ebook-${queueNamespace}`;
 

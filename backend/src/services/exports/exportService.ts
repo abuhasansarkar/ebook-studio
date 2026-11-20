@@ -1,3 +1,4 @@
+import { assetService } from '../assets/assetService.js';
 import { assertRuntimeAvailable } from "../runtime/readiness.js";
 import { prisma } from "../../database/prisma.js";
 import { enqueueExport } from "../../queues/index.js";
@@ -24,7 +25,7 @@ export const exportService = {
   async request(userId: string, bookId: string, format: "pdf") {
     await getOwnedBook(userId, bookId);
     await assertRuntimeAvailable();
-    const written = await prisma.chapter.count({ where: { bookId, wordCount: { gt: 0 } } });
+    const written = await prisma.chapter.count({ where: { bookId, OR: [{ wordCount: { gt: 0 } }, { status: "done" }] } });
     if (written === 0) throw conflict("Write at least one chapter before exporting.");
     const pending = await prisma.export.findFirst({ where: { bookId, status: { in: ["queued", "processing"] } } });
     if (pending) throw conflict("An export for this book is already in progress.", { exportId: pending.id });
@@ -58,10 +59,11 @@ export const exportService = {
     try {
       const [book, chapters, brief] = await Promise.all([
         prisma.book.findUniqueOrThrow({ where: { id: exp.bookId } }),
-        prisma.chapter.findMany({ where: { bookId: exp.bookId, wordCount: { gt: 0 } }, orderBy: { position: "asc" } }),
+        prisma.chapter.findMany({ where: { bookId: exp.bookId, OR: [{ wordCount: { gt: 0 } }, { status: "done" }] }, orderBy: { position: "asc" } }),
         getBrief(exp.bookId),
       ]);
       const html = buildBookHtml({
+        images: await assetService.exportImages(exp.userId, chapters.map(c => c.contentJson)),
         title: book.title,
         subtitle: book.subtitle,
         authorName: brief.authorName || undefined,

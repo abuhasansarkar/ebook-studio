@@ -1,0 +1,114 @@
+import { afterAll, describe, expect, it, vi } from 'vitest';
+import request from 'supertest';
+import { Readable } from 'node:stream';
+import sharp from 'sharp';
+import { bookBriefSchema, documentError } from '@ebook/shared';
+import { prisma } from '../src/database/prisma.js';
+import { closeQueues } from '../src/queues/index.js';
+import { assetService, cleanupAssets, sanitizeImage, MAX_IMAGE_BYTES } from '../src/services/assets/assetService.js';
+import { storage } from '../src/services/storage/storage.js';
+import { chapterService } from '../src/services/editor/chapterService.js';
+import { bookService } from '../src/services/books/bookService.js';
+import { libraryService } from '../src/services/books/libraryService.js';
+import { tiptapToHtml } from '../src/services/exports/tiptapToHtml.js';
+import { createUser, getApp, ORIGIN, brief } from './helpers.js';
+const png = () => sharp({ create: { width: 64, height: 48, channels: 3, background: '#cc6633' } }).png().toBuffer();
+const doc = (assetId: string) => ({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Illustrated chapter' }] }, { type: 'image', attrs: { assetId, alt: '<script>description</script>', caption: 'A useful caption' } }] });
+afterAll(async () => { await closeQueues(); await prisma.$disconnect(); });
+
+describe('private asset pipeline', () => {
+  it('decodes, strips metadata, re-encodes and serves only to the owner', async () => {
+    const a = await createUser('image-owner'); const b = await createUser('image-intruder');
+    const original = await sharp(await png()).withMetadata({ orientation: 6 }).png().toBuffer();
+    const response = await a.agent.post('/api/v1/assets').set('Origin', ORIGIN).set('Content-Type', 'image/png').send(original).expect(201);
+    const asset = response.body.asset;
+    expect(asset.storageKey).toBeUndefined(); expect(asset.width).toBe(48); expect(asset.height).toBe(64);
+    const served = await a.agent.get(`/api/v1/assets/${asset.id}/content`).expect(200);
+    expect(served.headers['cache-control']).toBe('private, no-store');
+    const meta = await sharp(served.body).metadata(); expect(meta.format).toBe('webp'); expect(meta.exif).toBeUndefined();
+    await request(getApp()).get(`/api/v1/assets/${asset.id}/content`).expect(401);
+    await b.agent.get(`/api/v1/assets/${asset.id}/content`).expect(404);
+    await b.agent.patch(`/api/v1/assets/${asset.id}`).send({ alt: 'stolen', caption: '' }).expect(404);
+    await b.agent.delete(`/api/v1/assets/${asset.id}`).expect(404);
+    expect((await b.agent.get('/api/v1/assets').expect(200)).body.assets).toHaveLength(0);
+    await a.agent.patch(`/api/v1/assets/${asset.id}`).send({ alt: 'Accessible image', caption: 'Caption' }).expect(200);
+    await a.agent.delete(`/api/v1/assets/${asset.id}`).expect(204);
+    await a.agent.get(`/api/v1/assets/${asset.id}/content`).expect(404);
+  });
+  it('rejects MIME spoofing, SVG, corrupt, truncated, oversized and high-pixel inputs', async () => {
+    await expect(sanitizeImage(await png(), 'image/jpeg')).rejects.toThrow('matches');
+    await expect(sanitizeImage(Buffer.from('<svg onload="alert(1)"/>'), 'image/png')).rejects.toThrow('matches');
+    await expect(sanitizeImage((await png()).subarray(0, 30), 'image/png')).rejects.toThrow('decoded');
+    const apng = Buffer.concat([(await png()).subarray(0, 8), Buffer.from([0,0,0,8]), Buffer.from('acTL'), Buffer.alloc(12)]);
+    await expect(sanitizeImage(apng, 'image/png')).rejects.toThrow('Animated');
+    const huge = await sharp({ create: { width: 5000, height: 5000, channels: 3, background: '#000000' } }).png().toBuffer();
+    await expect(sanitizeImage(huge, 'image/png')).rejects.toThrow('decoded');
+    const a = await createUser('image-limits');
+    await a.agent.post('/api/v1/assets').set('Content-Type', 'image/png').send(Buffer.alloc(MAX_IMAGE_BYTES + 1)).expect(413);
+    await a.agent.post('/api/v1/assets').set('Content-Type', 'image/svg+xml').send('<svg/>').expect(400);
+  });
+  it('pins saved references through removal, history restore, copying and book soft deletion', async () => {
+    const a = await createUser('image-history'); const b = await createUser('image-foreign');
+    const book = await bookService.create(a.user.id, bookBriefSchema.parse(brief().brief));
+    const chapter = await prisma.chapter.create({ data: { bookId: book.id, title: 'Images', position: 0 } });
+    const asset = await assetService.upload(a.user.id, await png(), 'image/png');
+    const foreign = await assetService.upload(b.user.id, await png(), 'image/png');
+    await expect(chapterService.update(a.user.id, chapter.id, { version: 0, contentJson: doc(foreign.id) })).rejects.toThrow('not found');
+    const imageOnly = { type: 'doc', content: [doc(asset.id).content[1]] };
+    const saved = await chapterService.update(a.user.id, chapter.id, { version: 0, contentJson: imageOnly });
+    expect(saved.wordCount).toBe(0); expect(saved.status).toBe('done');
+    await expect(assetService.remove(a.user.id, asset.id)).rejects.toThrow('history');
+    await expect(chapterService.update(a.user.id, chapter.id, { version: 0, contentJson: doc(asset.id) })).rejects.toThrow('changed');
+    const copy = await libraryService.duplicate(a.user.id, book.id, true);
+    expect(await prisma.assetReference.count({ where: { assetId: asset.id } })).toBe(2);
+    await chapterService.update(a.user.id, chapter.id, { version: 1, contentJson: { type: 'doc', content: [] } });
+    await expect(assetService.remove(a.user.id, asset.id)).rejects.toThrow('history');
+    const revision = await prisma.documentVersion.findFirstOrThrow({ where: { chapterId: chapter.id, version: 1 } });
+    await chapterService.restoreVersion(a.user.id, chapter.id, revision.id, 2);
+    await prisma.book.updateMany({ where: { id: { in: [book.id, copy.id] } }, data: { deletedAt: new Date() } });
+    await expect(assetService.remove(a.user.id, asset.id)).rejects.toThrow('history');
+    await assetService.remove(b.user.id, foreign.id);
+  });
+  it('renders only resolved private bytes and rejects external image source attributes', async () => {
+    const a = await createUser('image-export');
+    const asset = await assetService.upload(a.user.id, await png(), 'image/png');
+    const document = doc(asset.id);
+    expect(documentError(document)).toBeNull();
+    expect(documentError({ type: 'doc', content: Array.from({ length: 101 }, () => document.content[1]) })).toContain('100 images');
+    expect(documentError({ type: 'doc', content: [{ type: 'image', attrs: { assetId: asset.id, alt: '', caption: '', src: 'http://127.0.0.1/private' } }] })).not.toBeNull();
+    const images = await assetService.exportImages(a.user.id, [document]);
+    const html = tiptapToHtml(document, images);
+    expect(html).toContain('data:image/webp;base64,'); expect(html).toContain('&lt;script&gt;'); expect(html).toContain('<figcaption>A useful caption</figcaption>');
+    expect(() => tiptapToHtml(document)).toThrow('not available');
+    await assetService.remove(a.user.id, asset.id);
+    const content = vi.spyOn(assetService, 'content').mockResolvedValueOnce({ stream: Readable.from([Buffer.alloc(1024 * 1024)]) });
+    try {
+      await expect(assetService.exportImages(a.user.id, [{ type: 'doc', content: Array.from({ length: 51 }, () => document.content[1]) }])).rejects.toThrow('50 MiB');
+    } finally { content.mockRestore(); }
+  });
+  it('cleans interrupted uploads and retries failed physical deletion', async () => {
+    const a = await createUser('image-cleanup');
+    const put = vi.spyOn(storage, 'put').mockRejectedValueOnce(new Error('storage unavailable'));
+    await expect(assetService.upload(a.user.id, await png(), 'image/png')).rejects.toThrow('storage unavailable'); put.mockRestore();
+    const pending = await prisma.asset.findFirstOrThrow({ where: { userId: a.user.id, status: 'processing' } });
+    await cleanupAssets(); expect((await prisma.asset.findUniqueOrThrow({ where: { id: pending.id } })).status).toBe('processing');
+    await prisma.asset.update({ where: { id: pending.id }, data: { createdAt: new Date(Date.now() - 7200000) } });
+    await cleanupAssets(); expect((await prisma.asset.findUniqueOrThrow({ where: { id: pending.id } })).status).toBe('deleted');
+    const asset = await assetService.upload(a.user.id, await png(), 'image/png');
+    const remove = vi.spyOn(storage, 'remove').mockRejectedValueOnce(new Error('temporary outage'));
+    await expect(assetService.remove(a.user.id, asset.id)).rejects.toThrow('temporary outage'); remove.mockRestore();
+    await expect(assetService.content(a.user.id, asset.id)).rejects.toThrow('not found');
+    await cleanupAssets(); expect((await prisma.asset.findUniqueOrThrow({ where: { id: asset.id } })).status).toBe('deleted');
+  });
+  it('serializes save versus deletion without dangling references', async () => {
+    const a = await createUser('image-race');
+    const book = await bookService.create(a.user.id, bookBriefSchema.parse(brief().brief));
+    const chapter = await prisma.chapter.create({ data: { bookId: book.id, title: 'Race', position: 0 } });
+    const asset = await assetService.upload(a.user.id, await png(), 'image/png');
+    const results = await Promise.allSettled([chapterService.update(a.user.id, chapter.id, { version: 0, contentJson: doc(asset.id) }), assetService.remove(a.user.id, asset.id)]);
+    expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1);
+    const references = await prisma.assetReference.count({ where: { assetId: asset.id } });
+    const status = (await prisma.asset.findUniqueOrThrow({ where: { id: asset.id } })).status;
+    expect(references ? status === 'ready' : status === 'deleted').toBe(true);
+  });
+});

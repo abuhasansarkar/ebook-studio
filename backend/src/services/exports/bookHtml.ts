@@ -3,6 +3,7 @@ import type { PMNode } from "../editor/markdownToTiptap.js";
 import { escapeHtml, tiptapToHtml } from "./tiptapToHtml.js";
 
 export interface BookForExport {
+  images?: Record<string, string>;
   title: string;
   subtitle: string;
   authorName?: string;
@@ -42,7 +43,7 @@ export function buildBookHtml(book: BookForExport): string {
       <section class="chapter" id="chapter-${i + 1}">
         <p class="chapter-label">${i + 1}</p>
         <h1>${escapeHtml(c.title)}</h1>
-        ${tiptapToHtml(c.contentJson as PMNode)}
+        ${tiptapToHtml(c.contentJson as PMNode, book.images)}
       </section>`,
     )
     .join("");

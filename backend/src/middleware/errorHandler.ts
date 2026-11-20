@@ -12,6 +12,10 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
     res.status(err.status).json({ error: { code: err.code, message: err.message, details: err.details, requestId: String(req.id) } });
     return;
   }
+  if (err && typeof err === 'object' && 'type' in err && err.type === 'entity.too.large') {
+    res.status(413).json({ error: { code: 'PAYLOAD_TOO_LARGE', message: 'Upload exceeds the size limit.', requestId: String(req.id) } });
+    return;
+  }
   // Malformed JSON body
   if (err instanceof SyntaxError && "body" in err) {
     res.status(400).json({ error: { code: "BAD_REQUEST", message: "Malformed JSON body", requestId: String(req.id) } });

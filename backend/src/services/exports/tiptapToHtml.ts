@@ -34,9 +34,9 @@ function wrapMarks(html: string, marks: PMMark[] | undefined): string {
 }
 
 /** Renders TipTap JSON to safe HTML (all text escaped, only whitelisted nodes). */
-export function tiptapToHtml(node: PMNode | null | undefined): string {
+export function tiptapToHtml(node: PMNode | null | undefined, images: Record<string, string> = {}): string {
   if (!node) return "";
-  const children = () => (node.content ?? []).map(tiptapToHtml).join("");
+  const children = () => (node.content ?? []).map(child => tiptapToHtml(child, images)).join("");
   const align = typeof node.attrs?.textAlign === "string" && /^(left|right|center|justify)$/.test(node.attrs.textAlign) ? ` style="text-align:${node.attrs.textAlign}"` : "";
   switch (node.type) {
     case "doc":
@@ -74,10 +74,10 @@ export function tiptapToHtml(node: PMNode | null | undefined): string {
     case "tableCell":
       return `<td>${children()}</td>`;
     case "image": {
-      const src = typeof node.attrs?.src === "string" && /^(https?:|data:image\/)/.test(node.attrs.src) ? node.attrs.src : null;
-      if (!src) return "";
+      const src = images[String(node.attrs?.assetId ?? "")];
+      if (!src || !/^data:image\/webp;base64,[A-Za-z0-9+/=]+$/.test(src)) throw new Error("Image is not available for export");
       const alt = escapeHtml(String(node.attrs?.alt ?? ""));
-      return `<figure><img src="${escapeHtml(src)}" alt="${alt}" />${alt ? `<figcaption>${alt}</figcaption>` : ""}</figure>`;
+      return `<figure><img src="${escapeHtml(src)}" alt="${alt}" />${node.attrs?.caption ? `<figcaption>${escapeHtml(String(node.attrs.caption))}</figcaption>` : ""}</figure>`;
     }
     case "pageBreak":
       return `<div class="page-break"></div>`;

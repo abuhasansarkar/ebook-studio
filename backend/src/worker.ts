@@ -1,3 +1,4 @@
+import { cleanupAssets } from './services/assets/assetService.js';
 import { startEmailDispatcher } from "./services/email/otpDelivery.js";
 import { Worker } from "bullmq";
 import { workerQueuePrefix, assertCompatible } from "./config/runtime.js";
@@ -46,11 +47,19 @@ await Promise.all(workers.map((w) => w.waitUntilReady()));
 const stopHeartbeat = await startWorkerHeartbeat(["outline", "chapters", "exports"]);
 const stopDispatcher = startDispatcher();
 const stopEmailDispatcher = startEmailDispatcher();
+let cleaningAssets = false;
+const cleanupTimer = setInterval(() => {
+  if (cleaningAssets) return;
+  cleaningAssets = true;
+  void cleanupAssets().catch(err => logger.error({ err }, 'Asset cleanup failed')).finally(() => { cleaningAssets = false; });
+}, 60000);
+cleanupTimer.unref();
 
 logger.info({ mock: env.AI_MOCK }, "eBookStudio worker started");
 
 async function shutdown(signal: string) {
   logger.info({ signal }, "Shutting down worker");
+  clearInterval(cleanupTimer);
   stopDispatcher();
   stopEmailDispatcher();
   await stopHeartbeat().catch(() => undefined);

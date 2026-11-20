@@ -344,3 +344,8 @@ Generation snapshots/checkpoints, worker fencing, transactional reservations/set
 ## S05 implementation checkpoint
 
 Core project management, library filtering/pagination, archive/restore, independent duplication, richer brief fields/recovery, and version-bound outline history are implemented and locally verified. Restoring planning preserves written chapters; destructive mapping and nested sections remain unsupported. See [ACCEPTANCE.md](./ACCEPTANCE.md) for the 72-test and browser evidence, API token changes, and specific UX/recovery limits. S06 private assets is next.
+
+
+### S06 implementation checkpoint — 20 November 2026
+
+Private image metadata, sanitization, owner retrieval, transactional reference pins, retryable cleanup and PDF byte resolution are implemented. Protocol 3 requires coordinated API/worker cutover. See ACCEPTANCE.md for limits and production evidence still required.

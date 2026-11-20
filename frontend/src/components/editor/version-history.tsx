@@ -14,7 +14,8 @@ export type Revision = RevisionMeta & { contentJson: Record<string, unknown> | n
 // Render the stored document as plain text, never as untrusted HTML.
 function previewText(node: unknown): string {
   if (!node || typeof node !== "object") return "";
-  const n = node as { text?: string; type?: string; content?: unknown[] };
+  const n = node as { text?: string; type?: string; attrs?: { alt?: string; caption?: string }; content?: unknown[] };
+  if (n.type === 'image') return `[Image: ${n.attrs?.alt || 'No alternative text'}] ${n.attrs?.caption ?? ''}\n`;
   if (typeof n.text === "string") return n.text;
   const text = Array.isArray(n.content) ? n.content.map(previewText).join("") : "";
   return text + (["paragraph", "heading", "listItem", "tableRow", "hardBreak"].includes(n.type ?? "") ? "\n" : "");

@@ -1,5 +1,7 @@
+import { lockBook } from '../generation/jobRuntime.js';
+import { pinImages } from '../assets/assetService.js';
 import { randomUUID } from "node:crypto";
-import { CREDIT_COSTS, documentError, type AssistAction } from "@ebook/shared";
+import { CREDIT_COSTS, documentError, imageAssetIds, type AssistAction } from "@ebook/shared";
 import { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../database/prisma.js";
 import { badRequest, conflict, notFound } from "../../utils/errors.js";
@@ -44,6 +46,9 @@ export const chapterService = {
   async update(userId: string, chapterId: string, input: { title?: string; contentJson?: Record<string, unknown>; version: number }) {
     if (input.contentJson !== undefined) assertDoc(input.contentJson);
     return prisma.$transaction(async (tx) => {
+      const identity = await tx.chapter.findFirst({ where: { id: chapterId, book: { userId, deletedAt: null } }, select: { bookId: true } });
+      if (!identity) throw notFound('Chapter');
+      await lockBook(tx, identity.bookId, userId);
       const current = await tx.chapter.findFirst({ where: { id: chapterId, book: { userId, deletedAt: null } } });
       if (!current) throw notFound("Chapter");
       if (current.status === "generating") throw conflict("This chapter is being written by AI. Please wait until it finishes.");
@@ -52,6 +57,7 @@ export const chapterService = {
         currentVersion: current.version, updatedAt: current.updatedAt, title: current.title, contentJson: current.contentJson,
       });
       if (current.version !== input.version) throw stale();
+      if (input.contentJson !== undefined) await pinImages(tx, userId, current.bookId, input.contentJson);
       const wordCount = input.contentJson !== undefined ? countWords(tiptapToText(input.contentJson as unknown as PMNode)) : current.wordCount;
       const res = await tx.chapter.updateMany({
         where: { id: chapterId, version: input.version, status: { not: "generating" } },
@@ -59,7 +65,7 @@ export const chapterService = {
           ...(input.title !== undefined ? { title: input.title } : {}),
           ...(input.contentJson !== undefined ? { contentJson: input.contentJson as object, wordCount, summary: null } : {}),
           version: { increment: 1 },
-          ...(input.contentJson !== undefined ? { status: wordCount > 0 ? "done" : "pending", error: null } : {}),
+          ...(input.contentJson !== undefined ? { status: wordCount > 0 || imageAssetIds(input.contentJson).length > 0 ? "done" : "pending", error: null } : {}),
         },
       });
       if (res.count === 0) {

@@ -15,6 +15,7 @@ const NAV = [
   { href: "/app/create", label: "Create eBook", icon: PlusCircle },
   { href: "/app/books", label: "My eBooks", icon: BookOpen },
   { href: "/app/projects", label: "Projects", icon: BookOpen },
+  { href: "/app/image-studio", label: "Image library", icon: BookOpen },
   { href: "/app/credits", label: "Credits", icon: Coins },
   { href: "/app/settings", label: "Settings", icon: Settings },
 ];

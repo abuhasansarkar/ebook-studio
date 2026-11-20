@@ -48,6 +48,8 @@ export async function renderPdf(html: string): Promise<RenderedPdf> {
     } catch (err) {
       logger.warn({ err }, "Font loading timed out; rendering with local fonts");
     }
+    await page.waitForFunction(() => Array.from(document.images).every(image => image.complete), { timeout: 15000 });
+    if (!await page.evaluate(() => Array.from(document.images).every(image => image.naturalWidth > 0))) throw new Error('An image failed to load in the PDF renderer');
     const data = await page.pdf({
       preferCSSPageSize: true,
       printBackground: true,

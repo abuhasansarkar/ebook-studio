@@ -1,5 +1,7 @@
 "use client";
 
+import { AssetLibrary } from '@/components/assets/asset-library';
+import { PrivateImage } from './private-image';
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { TableKit } from "@tiptap/extension-table";
@@ -42,6 +44,7 @@ export function ChapterEditor({ ownerId, chapter, bookId, language }: { ownerId:
   const qc = useQueryClient();
   const lang = getLanguage(language);
   const [title, setTitle] = useState(chapter.title);
+  const [imagesOpen, setImagesOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
 
   const onSaved = useCallback(
@@ -66,6 +69,7 @@ export function ChapterEditor({ ownerId, chapter, bookId, language }: { ownerId:
       TableKit.configure({ table: { resizable: false } }),
       Placeholder.configure({ placeholder: "Start writing this chapter…" }),
       CharacterCount,
+      PrivateImage,
     ],
     content: chapter.contentJson ?? { type: "doc", content: [{ type: "paragraph" }] },
     editorProps: {
@@ -97,6 +101,7 @@ export function ChapterEditor({ ownerId, chapter, bookId, language }: { ownerId:
       <div className="sticky top-14 z-10 flex flex-wrap items-center justify-between gap-2 border-b border-border bg-surface/95 px-4 py-2 backdrop-blur lg:top-0 sm:px-6">
         {editor ? <EditorToolbar editor={editor} /> : <span />}
         <div className="flex items-center gap-4">
+          <Button variant="secondary" size="sm" disabled={!editor || !save.ready || save.drafts.length > 0 || historyOpen} onClick={() => setImagesOpen(true)}>Images</Button>
           <Button variant="secondary" size="sm" disabled={!save.ready || save.drafts.length > 0 || save.state === 'saved' || save.state === 'saving' || save.state === 'conflict'} onClick={() => void save.retry()}><Save className="h-4 w-4" /> Save</Button>
           <Button variant="secondary" size="sm" disabled={!editor} onClick={() => {
             const url = URL.createObjectURL(new Blob([JSON.stringify({ title, contentJson: editor?.getJSON() }, null, 2)], { type: 'application/json' }));
@@ -142,6 +147,13 @@ export function ChapterEditor({ ownerId, chapter, bookId, language }: { ownerId:
         {editor && !historyOpen && save.ready && save.drafts.length === 0 && <AiAssist editor={editor} bookId={bookId} dir={lang.dir} />}
       </div>
 
+      <Dialog open={imagesOpen} onClose={() => setImagesOpen(false)} title="Insert a private image" className="max-w-4xl">
+        <AssetLibrary key={ownerId} onInsert={asset => {
+          if (!editor?.isEditable) return;
+          editor.chain().focus().insertContent({ type: 'image', attrs: { assetId: asset.id, alt: asset.alt, caption: asset.caption } }).run();
+          setImagesOpen(false);
+        }} />
+      </Dialog>
       {historyOpen && <VersionHistory chapterId={chapter.id} currentVersion={chapter.version} onClose={() => setHistoryOpen(false)} onRestored={(saved, revision) => {
         const contentJson = revision.contentJson ?? { type: "doc", content: [] };
         editor?.commands.setContent(contentJson, { emitUpdate: false });

@@ -29,6 +29,7 @@ model User {
   jobs          GenerationJob[]
   exports       Export[]
   operations    Operation[]
+  assets        Asset[]
 
   @@map("user")
 }
@@ -117,6 +118,7 @@ model Book {
   chapters    Chapter[]
   jobs        GenerationJob[]
   exports     Export[]
+  assetReferences AssetReference[]
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   archivedAt  DateTime?
@@ -355,4 +357,37 @@ model EmailDelivery {
   updatedAt DateTime @updatedAt
   @@index([runtimeId, status, nextAttemptAt])
   @@map("email_deliveries")
+}
+
+/// Only sanitized raster bytes become ready. Originals are never persisted.
+model Asset {
+  id String @id @default(cuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  storageKey String @unique
+  status String @default("processing")
+  mediaType String @default("image/webp")
+  sha256 String
+  width Int
+  height Int
+  bytes Int
+  alt String @default("")
+  caption String @default("")
+  provenance String @default("user_upload")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  references AssetReference[]
+  @@index([userId, status, id])
+  @@map("assets")
+}
+
+/// Conservative lifetime pin: keeps chapter history and copied manuscripts readable.
+model AssetReference {
+  assetId String
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  bookId String
+  book Book @relation(fields: [bookId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+  @@id([assetId, bookId])
+  @@map("asset_references")
 }

@@ -1,3 +1,4 @@
+import { pinImageDocuments } from '../assets/assetService.js';
 import { bookBriefSchema, outlineSchema, type LibraryQuery } from '@ebook/shared';
 import { prisma } from '../../database/prisma.js';
 import { Prisma } from '../../generated/prisma/client.js';
@@ -64,13 +65,15 @@ export const libraryService = {
       const outline = source.outlines[0];
       const chapters = includeManuscript ? source.chapters : [];
       const title = `${source.title.slice(0, 190)} (copy)`;
-      return tx.book.create({ data: {
+      const copy = await tx.book.create({ data: {
         userId, title, subtitle: source.subtitle, language: source.language, bookType: source.bookType,
         status: chapters.length && chapters.every(c => c.status === 'done') ? 'written' : outline ? 'outline_ready' : 'draft',
         ...(source.brief ? { brief: { create: { data: { ...bookBriefSchema.parse(source.brief.data), title } } } } : {}),
         ...(outline ? { outlines: { create: { version: 1, data: { ...outlineSchema.parse(outline.data), title }, approvedAt: includeManuscript ? outline.approvedAt : null } } } : {}),
         chapters: { create: chapters.map(c => ({ position: c.position, title: c.title, goal: c.goal, keyPoints: c.keyPoints ?? [], targetWords: c.targetWords, status: c.status === 'done' ? 'done' : 'pending', contentJson: c.contentJson ?? Prisma.DbNull, summary: c.summary, wordCount: c.wordCount })) },
       } });
+      await pinImageDocuments(tx, userId, copy.id, chapters.map(chapter => chapter.contentJson));
+      return copy;
     }, { isolationLevel: 'RepeatableRead' });
   },
 };

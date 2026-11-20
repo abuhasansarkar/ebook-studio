@@ -2,6 +2,6 @@ export * from "./languages";
 export * from "./schemas";
 export * from "./operations";
 
-export { documentError } from "./document";
+export { documentError, imageAssetIds } from "./document";
 export * from "./publishing";
 export * from './library';

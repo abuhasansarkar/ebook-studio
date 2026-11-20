@@ -61,3 +61,15 @@ pnpm --filter backend generation:audit
 ```
 
 It reports wallet reserved-balance mismatches, missing reservation records, unsettled terminal jobs and legacy active jobs without snapshots. A nonzero exit blocks automatic cutover. Investigate these records; do not infer refunds from Redis queue absence. Valid protocol-2 jobs reconcile automatically, but historical ledger repair requires explicit operator review. Operation request records can still enter `needs_review` if a process dies between committing a domain job and saving its HTTP replay response; they must not be blindly rerun.
+
+## Private assets and protocol 3 (S06)
+
+Apply `20261120170000_private_assets` before starting this release. Drain protocol-2 work and update API, workers and frontend together: protocol 3 isolates image-aware exports from older consumers. Do not roll back the editor to a version that drops image nodes after manuscripts contain images. Existing readiness probes compare storage configuration and verify worker-written bytes from the API.
+
+Uploads accept raw PNG/JPEG/WebP bodies, up to 10 MiB, 24 million decoded pixels and 10,000 pixels per side. At most two decoders run per API process, with a 20-second image processing timeout. Animation is rejected. Sharp re-encodes to WebP, rotates orientation and strips metadata. No original file, external image URL, SVG or client storage key is retained. Storage must stay private; browser retrieval authenticates every request and uses `private, no-store`. Keep the image decoder and its native libraries patched. Distributed quotas and infrastructure load testing remain release work.
+
+Asset rows are created before storage writes. Only `ready` rows can be read or inserted. The worker runs cleanup every minute in batches of 100: interrupted `processing` rows older than one hour and `deleting` rows have their objects removed and become `deleted`. Failure leaves a retryable row. Ready uploads are user-owned library content and are not automatically expired. Database/storage restoration consistency and orphan objects introduced by manual storage or database changes still need the S13 backup/restore procedure.
+
+Saving a chapter locks its book, then its assets in ID order and creates permanent book/asset pins in the same transaction. Deletion locks the same asset row and refuses any pin. Removing an image from a chapter, soft-deleting its book or restoring an older draft does not release pins: revision/export retention takes priority. Manuscript duplication adds pins for the new book. Future retention management must reconcile historical snapshots before unpinning. Unsaved browser drafts do not pin images; the delete dialog warns about this.
+
+PDFs resolve owner-checked asset IDs to embedded WebP bytes; the renderer rejects unavailable images. Chapters allow at most 100 images, with a 50 MiB image-byte budget per export including repeated occurrences. Uploaded alt/caption values are library defaults; insertion copies them into that occurrence so later library edits cannot silently alter historical manuscript captions. Image-only chapters count as written.

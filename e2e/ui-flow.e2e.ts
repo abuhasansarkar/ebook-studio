@@ -274,6 +274,35 @@ try {
   log("AI assist suggestion accepted");
   await shot(page, "editor");
 
+  // Upload through the picker, describe, insert, reload and enforce deletion protection.
+  await page.click('.book-prose');
+  await page.keyboard.press('Escape');
+  await clickButton(page, 'Images');
+  const imageBytes = await page.evaluate(async () => {
+    const canvas = document.createElement('canvas'); canvas.width = 96; canvas.height = 64;
+    const ctx = canvas.getContext('2d')!; ctx.fillStyle = '#cc6633'; ctx.fillRect(0, 0, 96, 64);
+    return canvas.toDataURL('image/png').split(',')[1];
+  });
+  const imagePath = `${SHOTS}/asset-upload.png`;
+  const { writeFileSync } = await import('node:fs'); writeFileSync(imagePath, Buffer.from(imageBytes, 'base64'));
+  const fileInput = await page.$('dialog input[type="file"]'); await fileInput!.uploadFile(imagePath);
+  await waitText(page, 'Not yet saved in a manuscript');
+  await page.type('dialog article input', 'Warm orange illustration');
+  await page.type('dialog article textarea', 'A caption for the illustrated chapter');
+  await clickButton(page, 'Save details'); await waitText(page, 'Details saved.');
+  await clickButton(page, 'Insert image');
+  await page.waitForSelector('.book-prose img[alt="Warm orange illustration"]');
+  await page.waitForFunction(() => Array.from(document.querySelectorAll('button')).some(b => b.textContent?.trim() === 'History' && !b.disabled));
+  await page.reload({ waitUntil: 'networkidle0' });
+  await page.waitForFunction(() => {
+    const image = document.querySelector('.book-prose img[alt="Warm orange illustration"]') as HTMLImageElement | null;
+    return !!image?.complete && image.naturalWidth > 0;
+  });
+  await clickButton(page, 'Images'); await waitText(page, 'Retained for manuscript history');
+  if (!await page.$eval('dialog article button:last-child', el => (el as HTMLButtonElement).disabled)) throw new Error('Referenced image deletion was enabled');
+  await page.click('dialog button[aria-label="Close"]');
+  log('private upload, metadata, chapter insertion, persisted preview and deletion protection');
+
   // Export
   await page.goto(`${page.url().replace(/\/editor$/, "/export")}`, { waitUntil: "networkidle0" });
   await waitText(page, 'Prepare for a marketplace');
