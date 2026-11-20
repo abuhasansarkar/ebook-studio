@@ -130,13 +130,13 @@ Routes/components: extend image studio with cover concepts, editable cover compo
 
 Tasks:
 
-- [ ] Provide book context, prompt, style/palette/aspect controls and a credit estimate before generation.
-- [ ] Show generation history and allow selecting existing concepts, uploading artwork or regenerating while keeping prior results.
-- [ ] Keep title/subtitle/author text editable separately from artwork; add licensed font, size, color, alignment and position controls.
-- [ ] Provide drag controls plus numeric/keyboard alternatives, text safe bounds and contrast feedback.
-- [ ] Save composition changes with OCC; preserve undo/redo and show conflict/recovery choices.
-- [ ] Preview composed cover output and download its actual rendered high-resolution file.
-- [ ] Apply book-level visual direction to interior illustrations; insert selected images through the asset picker.
+- [x] Provide book context, prompt, style/palette/aspect controls and a credit estimate before generation.
+- [x] Show generation history and allow selecting existing concepts, uploading artwork or regenerating while keeping prior results.
+- [x] Keep title/subtitle/author text editable separately from artwork; add licensed font, size, color, alignment and position controls.
+- [x] Provide drag controls plus numeric/keyboard alternatives, text safe bounds and contrast feedback.
+- [x] Save composition changes with OCC; preserve undo/redo and show conflict/recovery choices.
+- [x] Preview composed cover output and download its actual rendered high-resolution file.
+- [x] Apply book-level visual direction to interior illustrations; insert selected images through the asset picker.
 
 Gate: users reopen their design, change text without buying new artwork, and obtain a cover matching the saved composition across language fixtures.
 
@@ -311,3 +311,8 @@ Core project management, library filtering/pagination, archive/restore, independ
 ### S06 implementation checkpoint — 20 November 2026
 
 Image library, upload progress/errors, alt/caption editing, protected deletion, and chapter image insertion with persistent private previews are implemented. Existing chapter occurrences retain their own captions. See ACCEPTANCE.md for evidence and remaining release work.
+
+
+### S07 implementation checkpoint — 20 November 2026
+
+Core cover/illustration generation and editable typography are implemented. See ACCEPTANCE.md for the verified scenarios and release limits. Image jobs reuse GenerationJob, operation/credit/outbox and lease infrastructure; cover designs use immutable versions. Four vendored Noto families support the tested fixtures. Full production provider verification, print covers, broader script coverage and release packaging remain pending.

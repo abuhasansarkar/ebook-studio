@@ -327,6 +327,54 @@ try {
   log('destination-specific publishing checks refresh after export');
   log(`PDF exported and downloaded (${pdf.size} bytes)`);
 
+  // Cover artwork is generated separately from editable, recoverable typography.
+  await page.goto(`${BASE}/app/books/${currentBookId}/cover`, { waitUntil: 'networkidle0' });
+  await page.waitForSelector('textarea[aria-label="title text"]:not(:disabled)');
+  await page.$eval('textarea[aria-label="title text"]', el => (el as HTMLTextAreaElement).select());
+  await page.type('textarea[aria-label="title text"]', 'একটি ব্যবহারিক বই');
+  await clickButton(page, 'Save cover'); await waitText(page, 'Cover saved as version 1');
+  await page.type('textarea[aria-label="Artwork prompt"]', 'An editorial landscape with warm colors and room for a title');
+  await clickButton(page, 'Generate image'); await waitText(page, 'cover · completed', 60000);
+  await clickButton(page, 'Use as cover artwork'); await clickButton(page, 'Save cover'); await waitText(page, 'Cover saved as version 2');
+  const creditBeforeText = await page.evaluate(async () => (await (await fetch('/api/v1/credits')).json()).wallet.balance);
+  await page.$eval('textarea[aria-label="title text"]', el => (el as HTMLTextAreaElement).select());
+  await page.type('textarea[aria-label="title text"]', 'নতুন বইয়ের প্রচ্ছদ');
+  await clickButton(page, 'Undo');
+  if (await page.$eval('textarea[aria-label="title text"]', el => (el as HTMLTextAreaElement).value) === 'নতুন বইয়ের প্রচ্ছদ') throw new Error('Cover undo did not change the draft');
+  await clickButton(page, 'Redo');
+  await page.reload({ waitUntil: 'networkidle0' }); await waitText(page, 'Unsaved cover draft found');
+  await clickButton(page, 'Recover cover draft');
+  if (await page.$eval('textarea[aria-label="title text"]', el => (el as HTMLTextAreaElement).value) !== 'নতুন বইয়ের প্রচ্ছদ') throw new Error('Cover recovery lost typography');
+  await clickButton(page, 'Save cover'); await waitText(page, 'Cover saved as version 3');
+  const creditAfterText = await page.evaluate(async () => (await (await fetch('/api/v1/credits')).json()).wallet.balance);
+  if (creditAfterText !== creditBeforeText) throw new Error('Typography changes spent image credits');
+  await page.reload({ waitUntil: 'networkidle0' }); await waitText(page, 'Saved version 3');
+  await clickButton(page, 'Download cover JPG'); await waitText(page, 'Downloaded the saved 1600 × 2560 cover.');
+  const renderedCover = await page.evaluate(async bookId => {
+    const r = await fetch(`/api/v1/books/${bookId}/cover/render?version=3`); if (!r.ok) throw new Error('Cover download failed');
+    const blob = await r.blob(); const bitmap = await createImageBitmap(blob);
+    const dataUrl = await new Promise<string>(resolve => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.readAsDataURL(blob); });
+    return { width: bitmap.width, height: bitmap.height, type: blob.type, dataUrl };
+  }, currentBookId);
+  if (renderedCover.width !== 1600 || renderedCover.height !== 2560 || renderedCover.type !== 'image/jpeg') throw new Error('Invalid composed cover dimensions');
+  writeFileSync(`${SHOTS}/cover-bengali.jpg`, Buffer.from(renderedCover.dataUrl.split(',')[1], 'base64'));
+  await page.evaluate(async bookId => {
+    const latest = (await (await fetch(`/api/v1/books/${bookId}/cover`)).json()).cover;
+    latest.data.title.text = 'Another tab title';
+    const response = await fetch(`/api/v1/books/${bookId}/cover`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ baseVersion: latest.version, data: latest.data }) });
+    if (!response.ok) throw new Error('External cover update failed');
+  }, currentBookId);
+  await page.$eval('textarea[aria-label="title text"]', el => (el as HTMLTextAreaElement).select());
+  await page.type('textarea[aria-label="title text"]', 'আমার বইয়ের প্রচ্ছদ');
+  await clickButton(page, 'Save cover'); await waitText(page, 'The cover changed in another tab');
+  await clickButton(page, 'Keep draft and review latest version'); await waitText(page, 'Latest saved text (version 4)'); await waitText(page, 'Another tab title');
+  await clickButton(page, 'Save cover'); await waitText(page, 'Cover saved as version 5');
+  await page.select('select[aria-label="Image purpose"]', 'illustration');
+  await page.select('select[aria-label="Image aspect"]', 'square');
+  await page.type('textarea[aria-label="Artwork prompt"]', 'A simple illustration of a reading desk with a book');
+  await clickButton(page, 'Generate image'); await waitText(page, 'illustration · completed', 60000);
+  log('cover generation, editable typography without extra charges, undo/redo, recovery, reopen, Bengali JPG and interior illustration');
+
   // Restore earlier planning after writing, preserving the manuscript.
   const chapterList = await page.evaluate(async bookId => JSON.stringify(await (await fetch(`/api/v1/books/${bookId}/chapters`)).json()), currentBookId);
   await page.goto(`${BASE}/app/books/${currentBookId}/outline`, { waitUntil: 'networkidle0' });

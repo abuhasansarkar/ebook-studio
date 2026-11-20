@@ -7,7 +7,7 @@ import { useSession } from '@/lib/auth-client';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/app/app-shell';
 
-export interface ImageAsset { id: string; width: number; height: number; bytes: number; alt: string; caption: string; _count: { references: number } }
+export interface ImageAsset { id: string; provenance?: string; width: number; height: number; bytes: number; alt: string; caption: string; _count: { references: number } }
 export const imageUrl = (id: string) => `/api/v1/assets/${encodeURIComponent(id)}/content`;
 
 function AssetCard({ asset, onInsert, onChanged }: { asset: ImageAsset; onInsert?: (asset: ImageAsset) => void; onChanged: () => void }) {
@@ -25,7 +25,7 @@ function AssetCard({ asset, onInsert, onChanged }: { asset: ImageAsset; onInsert
     {/* Authenticated private images must bypass the public image optimizer. */}
     {/* eslint-disable-next-line @next/next/no-img-element */}
     <img src={imageUrl(asset.id)} alt={alt} loading="lazy" className="h-40 w-full rounded-lg bg-muted object-contain" />
-    <p className="text-xs text-muted-foreground">{asset.width} × {asset.height} · {(asset.bytes / 1024).toFixed(0)} KiB · {asset._count.references ? 'Retained for manuscript history' : 'Not yet saved in a manuscript'}</p>
+    <p className="text-xs text-muted-foreground">{asset.provenance?.startsWith('ai:') ? 'AI-generated · ' : ''}{asset.width} × {asset.height} · {(asset.bytes / 1024).toFixed(0)} KiB · {asset._count.references ? 'Retained for manuscript history' : 'Not yet saved in a manuscript'}</p>
     <label className="block text-sm">Alternative text<input className="mt-1 w-full rounded border border-border p-2" value={alt} maxLength={500} onChange={e => setAlt(e.target.value)} placeholder="Describe it, or leave empty if decorative" /></label>
     <label className="block text-sm">Caption<textarea className="mt-1 w-full rounded border border-border p-2" value={caption} maxLength={1000} onChange={e => setCaption(e.target.value)} /></label>
     {error && <p role="alert" className="text-sm text-danger">{error}</p>}

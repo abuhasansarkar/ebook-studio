@@ -4,7 +4,7 @@ import { logger } from "../../utils/logger.js";
 
 let browserPromise: Promise<Browser> | null = null;
 
-function getBrowser(): Promise<Browser> {
+export function getBrowser(): Promise<Browser> {
   browserPromise ??= puppeteer
     .launch({
       headless: true,

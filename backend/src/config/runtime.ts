@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 import path from "node:path";
 import { env } from "./env.js";
 
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 export const queueNamespace = env.QUEUE_NAMESPACE ?? env.NODE_ENV;
 export const queuePrefix = `ebook-${queueNamespace}`;
 
@@ -15,6 +15,8 @@ export function compatibilityFingerprint(config = env): string {
     storage: config.S3_ENDPOINT ? [config.S3_ENDPOINT, config.S3_BUCKET, config.S3_REGION, config.S3_ACCESS_KEY, config.S3_SECRET_KEY, config.S3_FORCE_PATH_STYLE]
       : path.resolve(config.STORAGE_DIR || path.join(process.cwd(), "storage")),
     mock: config.AI_MOCK,
+    imageModel: config.OPENAI_IMAGE_MODEL,
+    imageCredits: config.IMAGE_GENERATION_CREDITS,
     textModel: config.OPENAI_TEXT_MODEL,
     qualityModel: config.OPENAI_QUALITY_MODEL,
   })).digest("hex");

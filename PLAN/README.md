@@ -6,7 +6,7 @@ This is the implementation plan for the recommendations accepted in this convers
 
 ## Current checkpoint
 
-S01 is verified. S02 edit protection is implemented with browser verification; remaining resilience scenarios are recorded in ACCEPTANCE.md. Initial S14 marketplace checks are implemented, while full packaging remains pending. S03 generation recovery and S04 durable OTP delivery are now implemented with verification recorded in ACCEPTANCE.md. S05 core project/library organization and safe planning history are implemented and verified locally. S06 core private images are implemented with local verification. S07–S13 and S15–S16 remain release work. The product is not yet production-ready.
+S01 is verified. S02 edit protection is implemented with browser verification; remaining resilience scenarios are recorded in ACCEPTANCE.md. Initial S14 marketplace checks are implemented, while full packaging remains pending. S03 generation recovery and S04 durable OTP delivery are now implemented with verification recorded in ACCEPTANCE.md. S05 core project/library organization and safe planning history are implemented and verified locally. S06 core private images are implemented with local verification. S07 core cover/illustration generation and editable typography are implemented with local verification. S08–S13 and S15–S16 remain release work. The product is not yet production-ready.
 
 The user has prioritized sale editions for Amazon KDP, Etsy and Gumroad. Follow the [marketplace release track](./MARKETPLACE_RELEASE.md) alongside the dependency order.
 

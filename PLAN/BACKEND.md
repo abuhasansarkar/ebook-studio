@@ -144,12 +144,12 @@ Data: `ImageGeneration`, immutable prompt/style input, generated `Asset` links; 
 
 Implementation:
 
-- [ ] Add an OpenAI image-provider adapter using configured model/capabilities, queue limits and server-enforced cost estimates.
-- [ ] Reuse operation/reservation/outbox patterns; preserve previous concepts when regeneration fails.
-- [ ] Generate artwork without required title typography; compose title/subtitle/author with editable deterministic overlays.
-- [ ] Save book visual direction, illustration palette, character descriptions and aspect ratios; do not promise perfect image consistency.
-- [ ] Render high-resolution composed covers with licensed fonts and validate dimensions/file availability.
-- [ ] Support chapter image references, alt text and captions through document validation and rendering.
+- [x] Add an OpenAI image-provider adapter using configured model/capabilities, queue limits and server-enforced cost estimates.
+- [x] Reuse operation/reservation/outbox patterns; preserve previous concepts when regeneration fails.
+- [x] Generate artwork without required title typography; compose title/subtitle/author with editable deterministic overlays.
+- [x] Save book visual direction, illustration palette, character descriptions and aspect ratios; do not promise perfect image consistency.
+- [x] Render high-resolution composed covers with licensed fonts and validate dimensions/file availability.
+- [x] Support chapter image references, alt text and captions through document validation and rendering.
 
 Contracts: image generate/history/status, cover GET/PUT with OCC, select-artwork and composed-cover export. Avoid adding unvalidated client-supplied provider parameters.
 
@@ -349,3 +349,8 @@ Core project management, library filtering/pagination, archive/restore, independ
 ### S06 implementation checkpoint — 20 November 2026
 
 Private image metadata, sanitization, owner retrieval, transactional reference pins, retryable cleanup and PDF byte resolution are implemented. Protocol 3 requires coordinated API/worker cutover. See ACCEPTANCE.md for limits and production evidence still required.
+
+
+### S07 implementation checkpoint — 20 November 2026
+
+Core cover/illustration generation and editable typography are implemented. See ACCEPTANCE.md for the verified scenarios and release limits. Image jobs reuse GenerationJob, operation/credit/outbox and lease infrastructure; cover designs use immutable versions. Four vendored Noto families support the tested fixtures. Full production provider verification, print covers, broader script coverage and release packaging remain pending.

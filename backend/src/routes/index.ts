@@ -1,3 +1,4 @@
+import { coverRouter } from './covers.js';
 import { assetRouter } from './assets.js';
 import { outlineService } from "../services/outline/outlineService.js";
 import { libraryQuerySchema, projectSchema, bookOrganizationSchema } from "@ebook/shared";
@@ -33,6 +34,7 @@ apiRouter.get("/config", accountController.publicConfig);
 // ---- Everything below requires a verified session ----
 apiRouter.use(requireAuth);
 apiRouter.use(assetRouter);
+apiRouter.use(coverRouter);
 
 apiRouter.get("/operations/:operationId", async (req, res) => {
   res.json({ operation: await operationService.get(userId(req), String(req.params.operationId)) });

@@ -119,6 +119,7 @@ model Book {
   jobs        GenerationJob[]
   exports     Export[]
   assetReferences AssetReference[]
+  coverDesigns CoverDesign[]
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   archivedAt  DateTime?
@@ -221,7 +222,7 @@ model GenerationJob {
   user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   bookId           String
   book             Book      @relation(fields: [bookId], references: [id], onDelete: Cascade)
-  /// outline | chapters
+  /// outline | chapters | image
   type             String
   /// queued | running | completed | failed | cancelled
   status           String    @default("queued")
@@ -231,6 +232,8 @@ model GenerationJob {
   leaseToken String?
   leaseExpiresAt DateTime?
   sections GenerationSection[]
+  assetId String?
+  asset Asset? @relation(fields: [assetId], references: [id], onDelete: Restrict)
   cancelRequested  Boolean   @default(false)
   creditsReserved  Int       @default(0)
   creditsCharged   Int       @default(0)
@@ -377,6 +380,7 @@ model Asset {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   references AssetReference[]
+  imageJobs GenerationJob[]
   @@index([userId, status, id])
   @@map("assets")
 }
@@ -390,4 +394,15 @@ model AssetReference {
   createdAt DateTime @default(now())
   @@id([assetId, bookId])
   @@map("asset_references")
+}
+
+model CoverDesign {
+  id String @id @default(cuid())
+  bookId String
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  version Int
+  data Json
+  createdAt DateTime @default(now())
+  @@unique([bookId, version])
+  @@map("cover_designs")
 }

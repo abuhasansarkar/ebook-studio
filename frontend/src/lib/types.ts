@@ -18,7 +18,7 @@ export interface BookSummary {
 export interface GenerationJob {
   id: string;
   bookId: string;
-  type: "outline" | "chapters";
+  type: "outline" | "chapters" | "image";
   status: JobStatus;
   progress: number;
   total: number;

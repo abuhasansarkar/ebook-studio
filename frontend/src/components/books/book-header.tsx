@@ -28,6 +28,7 @@ export function BookHeader({ params }: { params: Promise<{ bookId: string }> }) 
     { href: "outline", label: "Outline", icon: ListTree, done: approved, enabled: true },
     { href: "generate", label: "Write", icon: Wand2, done: book ? writtenCount > 0 && writtenCount === book.chapters.length : false, enabled: approved },
     { href: "editor", label: "Edit", icon: PenLine, done: false, enabled: writtenCount > 0 },
+    { href: "cover", label: "Cover", icon: Wand2, done: false, enabled: true },
     { href: "export", label: "Export", icon: FileDown, done: false, enabled: writtenCount > 0 },
   ];
   const lang = book ? getLanguage(book.language) : null;

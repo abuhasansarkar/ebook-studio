@@ -6,6 +6,7 @@ import { logger } from "../utils/logger.js";
 import { redisConnection, closeRuntimeRedis } from "../config/redis.js";
 
 export const QUEUE_NAMES = {
+  images: "images",
   outline: "outline",
   chapters: "chapters",
   exports: "exports",
@@ -29,10 +30,11 @@ const defaultJobOptions = {
   removeOnFail: { age: 7 * 24 * 3600 },
 };
 
-let queues: { outline: Queue<GenerationJobData>; chapters: Queue<GenerationJobData>; exports: Queue<ExportJobData> } | null = null;
+let queues: { images: Queue<GenerationJobData>; outline: Queue<GenerationJobData>; chapters: Queue<GenerationJobData>; exports: Queue<ExportJobData> } | null = null;
 
 export function getQueues() {
   queues ??= {
+    images: new Queue<GenerationJobData>(QUEUE_NAMES.images, { connection: redisConnection(), prefix: workerQueuePrefix, defaultJobOptions }),
     outline: new Queue<GenerationJobData>(QUEUE_NAMES.outline, { connection: redisConnection(), prefix: workerQueuePrefix, defaultJobOptions }),
     chapters: new Queue<GenerationJobData>(QUEUE_NAMES.chapters, { connection: redisConnection(), prefix: workerQueuePrefix, defaultJobOptions }),
     exports: new Queue<ExportJobData>(QUEUE_NAMES.exports, { connection: redisConnection(), prefix: workerQueuePrefix, defaultJobOptions }),
@@ -96,7 +98,7 @@ export async function reconcileGenerationDispatches() {
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([(async () => {
-        const queue = getQueues()[row.queue as 'outline' | 'chapters'];
+        const queue = getQueues()[row.queue as 'outline' | 'chapters' | 'images'];
         if (!queue) return;
         const delivery = await queue.getJob(row.jobId);
         if (delivery) {

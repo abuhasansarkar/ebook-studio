@@ -5,6 +5,8 @@ const bool = z
   .optional()
   .transform((v) => v === "1" || v === "true");
 
+export const imageModelSchema = z.enum(['gpt-image-2.6-sunburst', 'gpt-image-2.6-flare', 'gpt-image-1.5']);
+
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().default(4000),
@@ -27,6 +29,8 @@ const envSchema = z.object({
   SMTP_FROM: z.string().default("eBookStudio <no-reply@ebookstudio.local>"),
 
   OPENAI_API_KEY: z.string().optional().default(""),
+  OPENAI_IMAGE_MODEL: imageModelSchema.default('gpt-image-2.6-sunburst'),
+  IMAGE_GENERATION_CREDITS: z.coerce.number().int().min(1).max(1000).default(20),
   OPENAI_TEXT_MODEL: z.string().default("gpt-5-mini"),
   OPENAI_QUALITY_MODEL: z.string().default("gpt-5"),
   OPENAI_MAX_RETRIES: z.coerce.number().default(3),
