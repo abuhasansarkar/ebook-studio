@@ -1,0 +1,14 @@
+{
+  "name": "e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "e2e": "tsx ui-flow.e2e.ts"
+  },
+  "devDependencies": {
+    "puppeteer": "^25.18.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "@types/node": "^26.6.6"
+  }
+}

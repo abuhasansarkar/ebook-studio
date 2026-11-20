@@ -1,0 +1,272 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Better Auth tables
+// ---------------------------------------------------------------------------
+model User {
+  id            String    @id
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  sessions      Session[]
+  accounts      Account[]
+
+  projects      Project[]
+  books         Book[]
+  wallet        CreditWallet?
+  transactions  CreditTransaction[]
+  jobs          GenerationJob[]
+  exports       Export[]
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+// ---------------------------------------------------------------------------
+// Domain
+// ---------------------------------------------------------------------------
+model Project {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  books       Book[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  @@index([userId])
+  @@map("projects")
+}
+
+model Book {
+  id          String          @id @default(cuid())
+  userId      String
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId   String?
+  project     Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  title       String
+  subtitle    String          @default("")
+  language    String          @default("en")
+  bookType    String          @default("guide")
+  /// draft | outline_ready | generating | written | failed
+  status      String          @default("draft")
+  brief       BookBrief?
+  outlines    Outline[]
+  chapters    Chapter[]
+  jobs        GenerationJob[]
+  exports     Export[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  deletedAt   DateTime?
+
+  @@index([userId, deletedAt, updatedAt])
+  @@map("books")
+}
+
+model BookBrief {
+  id        String   @id @default(cuid())
+  bookId    String   @unique
+  book      Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  /// Full validated BookBrief (see @ebook/shared bookBriefSchema)
+  data      Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("book_briefs")
+}
+
+model Outline {
+  id         String    @id @default(cuid())
+  bookId     String
+  book       Book      @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  version    Int
+  /// { title, subtitle, chapters: [{ title, goal, keyPoints, targetWords }] }
+  data       Json
+  approvedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@unique([bookId, version])
+  @@map("outlines")
+}
+
+model Chapter {
+  id          String   @id @default(cuid())
+  bookId      String
+  book        Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  position    Int
+  title       String
+  goal        String   @default("")
+  keyPoints   Json     @default("[]")
+  targetWords Int      @default(1500)
+  /// pending | generating | done | failed
+  status      String   @default("pending")
+  /// TipTap/ProseMirror JSON document
+  contentJson Json?
+  /// Rolling summary used as context for later chapters
+  summary     String?
+  wordCount   Int      @default(0)
+  /// Optimistic concurrency control
+  version     Int      @default(0)
+  error       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  revisions   DocumentVersion[]
+
+  @@unique([bookId, position])
+  @@map("chapters")
+}
+
+/// Immutable chapter snapshots captured before an editor save or restore.
+model DocumentVersion {
+  id          String   @id @default(cuid())
+  chapterId   String
+  chapter     Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  version     Int
+  title       String
+  contentJson Json?
+  wordCount   Int
+  savedAt     DateTime
+  createdAt   DateTime @default(now())
+
+  @@unique([chapterId, version])
+  @@map("document_versions")
+}
+
+model GenerationJob {
+  id               String    @id @default(cuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookId           String
+  book             Book      @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  /// outline | chapters
+  type             String
+  /// queued | running | completed | failed | cancelled
+  status           String    @default("queued")
+  progress         Int       @default(0)
+  total            Int       @default(0)
+  cancelRequested  Boolean   @default(false)
+  creditsReserved  Int       @default(0)
+  creditsCharged   Int       @default(0)
+  inputTokens      Int       @default(0)
+  outputTokens     Int       @default(0)
+  model            String?
+  error            String?
+  startedAt        DateTime?
+  finishedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([bookId, createdAt])
+  @@index([userId])
+  @@map("generation_jobs")
+}
+
+model CreditWallet {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Spendable balance (excludes reserved)
+  balance   Int      @default(0)
+  reserved  Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@map("credit_wallets")
+}
+
+/// Immutable ledger. Never update or delete rows.
+model CreditTransaction {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// grant | reserve | charge | release | refund
+  type           String
+  amount         Int
+  balanceAfter   Int
+  reference      String?
+  description    String?
+  idempotencyKey String   @unique
+  createdAt      DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@map("credit_transactions")
+}
+
+model Export {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookId     String
+  book       Book      @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  /// pdf | epub | docx
+  format     String
+  /// queued | processing | ready | failed
+  status     String    @default("queued")
+  storageKey String?
+  fileSize   Int?
+  pageCount  Int?
+  error      String?
+  createdAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  @@index([bookId, createdAt])
+  @@map("exports")
+}

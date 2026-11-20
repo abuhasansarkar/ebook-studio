@@ -1,0 +1,16 @@
+packages:
+  - packages/*
+  - backend
+  - frontend
+  - e2e
+allowBuilds:
+  "@prisma/engines": true
+  prisma: true
+  puppeteer: true
+  esbuild: true
+  msgpackr-extract: true
+  sharp: true
+  "@tailwindcss/oxide": true
+  unrs-resolver: true
+  "@parcel/watcher": true
+  "@swc/core": true

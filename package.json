@@ -1,0 +1,16 @@
+{
+  "name": "ebook-studio",
+  "private": true,
+  "packageManager": "pnpm@11.13.1",
+  "scripts": {
+    "dev": "pnpm --parallel --filter backend --filter frontend dev",
+    "dev:worker": "pnpm --filter backend dev:worker",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "infra:up": "docker compose up -d postgres redis mailpit",
+    "infra:down": "docker compose down",
+    "e2e": "pnpm --filter e2e e2e"
+  }
+}

@@ -1,0 +1,12 @@
+node_modules
+.env
+.env.local
+dist
+.next
+coverage
+*.log
+.DS_Store
+backend/src/generated
+backend/storage
+playwright-report
+test-results

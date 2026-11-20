@@ -1,0 +1,98 @@
+"use client";
+
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { AuthHeader, safeNext } from "@/components/auth/auth-ui";
+import { OtpInput } from "@/components/auth/otp-input";
+import { Button } from "@/components/ui/button";
+import { Alert } from "@/components/ui/misc";
+import { authClient } from "@/lib/auth-client";
+
+export function VerifyEmailForm() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const email = params.get("email") ?? "";
+  const next = safeNext(params.get("next"));
+  const [otp, setOtp] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [cooldown, setCooldown] = useState(30);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
+
+  if (!email) {
+    return (
+      <>
+        <AuthHeader title="Verify your email" />
+        <Alert tone="warning">The verification link is missing an email address.</Alert>
+        <Link href="/signup" className="mt-6 block text-center text-sm font-semibold text-primary-hover hover:underline">Back to sign up</Link>
+      </>
+    );
+  }
+
+  const verify = async (code: string) => {
+    if (code.length !== 6) return setError("Enter the 6-digit code from your email.");
+    setError(null);
+    setVerifying(true);
+    const { error } = await authClient.emailOtp.verifyEmail({ email, otp: code });
+    setVerifying(false);
+    if (error) {
+      setError(error.message ?? "That code didn't work. Check it or request a new one.");
+      return;
+    }
+    toast.success("Email verified — welcome to eBookStudio!");
+    router.replace(next);
+    router.refresh();
+  };
+
+  return (
+    <>
+      <AuthHeader title="Check your email" subtitle={`We sent a 6-digit code to ${email}. It expires in 10 minutes.`} />
+      <form
+        className="space-y-5"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void verify(otp);
+        }}
+      >
+        {error && <Alert tone="danger">{error}</Alert>}
+        <OtpInput
+          value={otp}
+          disabled={verifying}
+          onChange={(v) => {
+            setOtp(v);
+            if (v.length === 6) void verify(v);
+          }}
+        />
+        <Button type="submit" className="w-full" size="lg" loading={verifying}>
+          Verify email
+        </Button>
+      </form>
+      <p className="mt-6 text-center text-sm text-muted-foreground">
+        Didn&apos;t get it?{" "}
+        <button
+          type="button"
+          disabled={cooldown > 0 || resending}
+          className="cursor-pointer font-semibold text-primary-hover hover:underline disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline"
+          onClick={async () => {
+            setResending(true);
+            const { error } = await authClient.emailOtp.sendVerificationOtp({ email, type: "email-verification" });
+            setResending(false);
+            if (error) return toast.error(error.message ?? "Could not resend the code");
+            toast.success("A new code is on its way");
+            setCooldown(30);
+          }}
+        >
+          {cooldown > 0 ? `Resend code in ${cooldown}s` : "Resend code"}
+        </button>
+      </p>
+    </>
+  );
+}

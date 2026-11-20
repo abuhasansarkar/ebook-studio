@@ -1,0 +1,52 @@
+import { z } from "zod";
+
+const bool = z
+  .string()
+  .optional()
+  .transform((v) => v === "1" || v === "true");
+
+const envSchema = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  PORT: z.coerce.number().default(4000),
+  APP_URL: z.string().url().default("http://localhost:3000"),
+  BETTER_AUTH_URL: z.string().url().default("http://localhost:3000"),
+  BETTER_AUTH_SECRET: z.string().min(16, "BETTER_AUTH_SECRET must be at least 16 chars"),
+
+  DATABASE_URL: z.string().min(1),
+  REDIS_URL: z.string().default("redis://localhost:6379"),
+
+  GOOGLE_CLIENT_ID: z.string().optional().default(""),
+  GOOGLE_CLIENT_SECRET: z.string().optional().default(""),
+
+  SMTP_HOST: z.string().default("localhost"),
+  SMTP_PORT: z.coerce.number().default(1025),
+  SMTP_USER: z.string().optional().default(""),
+  SMTP_PASS: z.string().optional().default(""),
+  SMTP_FROM: z.string().default("eBookStudio <no-reply@ebookstudio.local>"),
+
+  OPENAI_API_KEY: z.string().optional().default(""),
+  OPENAI_TEXT_MODEL: z.string().default("gpt-5-mini"),
+  OPENAI_QUALITY_MODEL: z.string().default("gpt-5"),
+  OPENAI_MAX_RETRIES: z.coerce.number().default(3),
+  OPENAI_TIMEOUT_MS: z.coerce.number().default(120_000),
+  OPENAI_REASONING_EFFORT: z.enum(["", "minimal", "low", "medium", "high"]).default(""),
+  AI_MOCK: bool,
+
+  S3_ENDPOINT: z.string().optional().default(""),
+  S3_REGION: z.string().default("us-east-1"),
+  S3_BUCKET: z.string().default("ebook-studio"),
+  S3_ACCESS_KEY: z.string().optional().default(""),
+  S3_SECRET_KEY: z.string().optional().default(""),
+  S3_FORCE_PATH_STYLE: bool,
+});
+
+const parsed = envSchema.safeParse(process.env);
+if (!parsed.success) {
+  console.error("Invalid environment configuration:");
+  for (const issue of parsed.error.issues) console.error(`  ${issue.path.join(".")}: ${issue.message}`);
+  process.exit(1);
+}
+
+export const env = parsed.data;
+export const isProd = env.NODE_ENV === "production";
+export const isTest = env.NODE_ENV === "test";
