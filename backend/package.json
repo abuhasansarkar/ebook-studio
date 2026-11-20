@@ -15,7 +15,8 @@
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "email:check": "tsx --env-file=../.env scripts/check-smtp.ts"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",

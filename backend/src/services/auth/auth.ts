@@ -1,11 +1,11 @@
 import { betterAuth } from "better-auth";
+import { APIError } from "better-auth/api";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { emailOTP } from "better-auth/plugins";
 import { env, isProd } from "../../config/env.js";
 import { prisma } from "../../database/prisma.js";
 import { sendOtpEmail } from "../email/mailer.js";
 import { creditService } from "../credits/creditService.js";
-import { logger } from "../../utils/logger.js";
 
 const googleEnabled = Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
 
@@ -40,9 +40,14 @@ export const auth = betterAuth({
       sendVerificationOnSignUp: true,
       overrideDefaultEmailVerification: true,
       async sendVerificationOTP({ email, otp, type }) {
-        // Not awaited: avoids leaking account existence through response timing.
-        void sendOtpEmail(email, otp, type);
-        if (!isProd) logger.info({ email, type, otp }, "DEV OTP (also visible in Mailpit)");
+        // Await the sender so SMTP work completes before this callback finishes.
+        // Better Auth catches callback failures and returns neutral auth responses;
+        // the mailer records sanitized delivery failures for operators.
+        try {
+          await sendOtpEmail(email, otp, type);
+        } catch {
+          throw new APIError("SERVICE_UNAVAILABLE", { message: "Unable to send the email code. Please try again shortly." });
+        }
       },
     }),
   ],
