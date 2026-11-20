@@ -351,7 +351,7 @@ ${tocEntries ? `<nav epub:type="landmarks" id="landmarks" hidden="hidden"><h1>Gu
     : '';
   const opf = `<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pub-id" xml:lang="${xmlAttr(language)}" dir="${dir}">
-<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+<metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/">
 <dc:identifier id="pub-id">${xmlText(identifier)}</dc:identifier>
 <dc:title>${xmlText(doc.book.title)}</dc:title>
 ${doc.book.subtitle ? `<dc:title id="sub-title">${xmlText(doc.book.subtitle)}</dc:title>` : ''}

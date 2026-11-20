@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { BookBriefInput, Outline } from "@ebook/shared";
 import { operationRequest } from "./operation-request";
 import { api } from "./api";
-import type { BookDetail, BookSummary, ChapterFull, ChapterMeta, CreditTransaction, Dashboard, ExportRecord, GenerationJob } from "./types";
+import type { BookDetail, BookSummary, ChapterFull, ChapterMeta, CreditTransaction, Dashboard, ExportRecord, ExportFormat, GenerationJob } from "./types";
 
 export const qk = {
   dashboard: ["dashboard"] as const,
@@ -130,7 +130,17 @@ export function useBookAction(bookId: string) {
 export function useCreateExport(bookId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => operationRequest<{ export: ExportRecord }>(`/books/${bookId}/exports`, { format: "pdf" }),
+    mutationFn: (input: { format: ExportFormat; options?: Record<string, unknown> }) =>
+      operationRequest<{ export: ExportRecord }>(`/books/${bookId}/exports`, { format: input.format, options: input.options }),
     onSettled: () => { void qc.invalidateQueries({ queryKey: qk.exports(bookId) }); void qc.invalidateQueries({ queryKey: ["operations", bookId] }); },
+  });
+}
+
+/** The formats this server can produce. */
+export function useExportFormats() {
+  return useQuery({
+    queryKey: ["export-formats"],
+    queryFn: () => api.get<{ formats: { format: ExportFormat; label: string; contentType: string }[] }>("/exports/formats").then((r) => r.formats),
+    staleTime: Infinity,
   });
 }

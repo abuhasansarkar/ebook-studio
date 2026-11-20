@@ -1,1 +1,0 @@
-$ tsx watch --env-file=../.env src/worker.ts

@@ -154,8 +154,10 @@ describe('validated exports', () => {
     expect(opf).toContain('<dc:creator id="creator">Rina Das</dc:creator>');
     expect(opf).toContain('<dc:language>en</dc:language>');
     expect(opf).toContain('properties="nav"');
-    // The spine lists both chapters.
-    expect((opf.match(/<itemref /g) ?? []).length).toBe(2);
+    // The spine lists both chapters, plus the front matter sections.
+    expect((opf.match(/<itemref /g) ?? []).length).toBe(4);
+    expect(opf).toContain('<itemref idref="chapter-1"/>');
+    expect(opf).toContain('<itemref idref="chapter-2"/>');
 
     const nav = zipEntry(entries, 'OEBPS/nav.xhtml')!.data.toString('utf8');
     expect(nav).toContain('epub:type="toc"');

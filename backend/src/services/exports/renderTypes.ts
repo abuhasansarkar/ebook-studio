@@ -21,8 +21,22 @@ export interface PinnedImage {
 }
 export type PinnedImages = Map<string, PinnedImage>;
 
+/**
+ * The parts of the normalized book document the renderers use.
+ *
+ * This is a structural subset of `BookDocument`, declared here so the renderer
+ * types stay free of the database imports that `bookDocument.ts` pulls in.
+ */
+export interface RenderDocument {
+  book: { id: string; title: string; subtitle: string; author: string; language: string; dir: 'ltr' | 'rtl' };
+  design: { version: number; data: BookDesign };
+  chapters: { id: string; position: number; version: number; title: string; content: unknown }[];
+  /** True when a preview deliberately rendered only the first chapters. */
+  partial: boolean;
+}
+
 export interface RenderInput {
-  doc: BookDocument;
+  doc: RenderDocument;
   design: BookDesign;
   /** Pinned image bytes keyed by asset id. */
   images: PinnedImages;
@@ -37,7 +51,7 @@ export interface RenderInput {
 export interface RenderedFile {
   buffer: Buffer;
   /** Format-specific measurements recorded with the export. */
-  facts: Record<string, string | number | boolean>;
+  facts: Record<string, string | number | boolean | string[]>;
 }
 
 /** Document language as BCP 47, with the script subtag so readers pick the right shaping. */

@@ -82,7 +82,7 @@ export interface ExportValidation {
   validator: string;
   issues: ExportValidationIssue[];
   /** Format-specific measurements (page count, entry count, part count…). */
-  facts: Record<string, string | number | boolean>;
+  facts: Record<string, string | number | boolean | string[]>;
 }
 
 /**

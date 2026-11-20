@@ -1,4 +1,6 @@
-import type { BookBrief, BookStatus, ChapterStatus, JobStatus, Outline } from "@ebook/shared";
+import type { BookBrief, BookStatus, ChapterStatus, ExportFormat, ExportValidation, JobStatus, Outline } from "@ebook/shared";
+
+export type { ExportFormat };
 
 export interface BookSummary {
   projectId?: string | null;
@@ -73,14 +75,20 @@ export interface ChapterFull extends ChapterMeta {
 export interface ExportRecord {
   id: string;
   bookId: string;
-  format: "pdf";
+  format: ExportFormat;
   status: "queued" | "processing" | "ready" | "failed";
   fileSize: number | null;
   pageCount: number | null;
   error: string | null;
   /** Design version frozen when the export was requested (0 = default design); null before S08. */
   designVersion: number | null;
+  /** MIME type of the stored file. */
+  contentType: string | null;
+  /** SHA-256 of the stored file; the download must match it. */
+  sha256: string | null;
   diagnostics: { notes: string[]; glyphs: { role: string; count: number; characters: { char: string; codepoint: string }[] }[]; foreignFonts: string[]; overflow: string[]; type3Fonts: string[] } | null;
+  /** Result of validating the file that was read back from storage. */
+  validation: ExportValidation | null;
   createdAt: string;
   finishedAt: string | null;
 }

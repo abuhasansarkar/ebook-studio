@@ -48,9 +48,10 @@ async function renderPdfFormat(input: RenderInput, options: PdfExportOptions): P
     facts: {
       layout,
       pageCount: rendered.pageCount,
-      foreignFonts: rendered.foreignFonts.length,
-      type3Fonts: rendered.type3Fonts.length,
-      overflow: rendered.overflow.length,
+      // The findings stay lists so the reader can see which font or element is at fault.
+      foreignFonts: rendered.foreignFonts,
+      overflow: rendered.overflow,
+      type3Fonts: rendered.type3Fonts,
     },
   };
 }

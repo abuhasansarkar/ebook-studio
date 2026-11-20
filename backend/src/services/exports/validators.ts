@@ -20,7 +20,7 @@ export interface ValidationInput {
   /** The bytes read back from storage. */
   buffer: Buffer;
   /** Measurements recorded by the renderer, merged into the validation facts. */
-  renderFacts: Record<string, string | number | boolean>;
+  renderFacts: Record<string, string | number | boolean | string[]>;
 }
 
 function issue(severity: 'error' | 'warning', code: string, message: string): ExportValidationIssue {
@@ -65,7 +65,7 @@ export function xmlWellFormed(xml: string): { ok: boolean; reason?: string } {
 /** Validates a PDF: it must be a PDF, it must parse and it must have pages. */
 async function validatePdf(input: ValidationInput): Promise<ExportValidation> {
   const issues: ExportValidationIssue[] = [];
-  const facts: Record<string, string | number | boolean> = { ...input.renderFacts };
+  const facts: Record<string, string | number | boolean | string[]> = { ...input.renderFacts };
   if (input.buffer.length < 1024) {
     return { passed: false, validator: 'pdf', issues: [issue('error', 'pdf.too-small', 'The generated PDF is unexpectedly small.')], facts };
   }
@@ -98,7 +98,7 @@ function validateZipContainer(entries: ZipEntry[], required: string[], label: st
 /** Validates an EPUB: the container, the package document, the navigation and the spine. */
 function validateEpub(input: ValidationInput): ExportValidation {
   const issues: ExportValidationIssue[] = [];
-  const facts: Record<string, string | number | boolean> = { ...input.renderFacts };
+  const facts: Record<string, string | number | boolean | string[]> = { ...input.renderFacts };
   let entries: ZipEntry[];
   try {
     entries = readZip(input.buffer);
@@ -151,7 +151,7 @@ function validateEpub(input: ValidationInput): ExportValidation {
 }
 
 /** Checks the OPF package document: metadata, manifest and spine. */
-function validateOpf(entries: ZipEntry[], opf: ZipEntry, issues: ExportValidationIssue[], facts: Record<string, string | number | boolean>) {
+function validateOpf(entries: ZipEntry[], opf: ZipEntry, issues: ExportValidationIssue[], facts: Record<string, string | number | boolean | string[]>) {
   const xml = opf.data.toString('utf8');
   const check = xmlWellFormed(xml);
   if (!check.ok) {
@@ -163,7 +163,12 @@ function validateOpf(entries: ZipEntry[], opf: ZipEntry, issues: ExportValidatio
   if (!/<dc:language[^>]*>[\s\S]*?<\/dc:language>/.test(xml)) issues.push(issue('error', 'epub.no-language', 'The package document has no dc:language.'));
   if (!/<dcterms:modified>/.test(xml)) issues.push(issue('warning', 'epub.no-modified', 'The package document has no dcterms:modified date.'));
 
-  const manifestItems = [...xml.matchAll(/<item\s[^>]*id="([^"]+)"[^>]*href="([^"]+)"[^>]*>/g)].map((m) => ({ id: m[1], href: m[2] }));
+  const manifestTags = [...xml.matchAll(/<item\s[^>]*>/g)].map((m) => m[0]);
+  const manifestItems = manifestTags.map((tag) => ({
+    id: /id="([^"]+)"/.exec(tag)?.[1] ?? '',
+    href: /href="([^"]+)"/.exec(tag)?.[1] ?? '',
+    tag,
+  }));
   facts.manifestItems = manifestItems.length;
   const base = opf.name.includes('/') ? opf.name.slice(0, opf.name.lastIndexOf('/') + 1) : '';
   for (const item of manifestItems) {
@@ -172,11 +177,8 @@ function validateOpf(entries: ZipEntry[], opf: ZipEntry, issues: ExportValidatio
       issues.push(issue('error', 'epub.manifest-missing', `The manifest lists ${item.href} but the file is not in the package.`));
     }
   }
-  // The navigation document is the manifest item whose properties include "nav".
-  const navItem = manifestItems.find((item) => {
-    const at = xml.indexOf(`id="${item.id}"`);
-    return at >= 0 && /properties="[^"]*\bnav\b/.test(xml.slice(at, at + 300));
-  });
+  // The navigation document is the manifest item whose own tag declares properties="nav".
+  const navItem = manifestItems.find((item) => /properties="[^"]*\bnav\b/.test(item.tag));
   if (!navItem) issues.push(issue('error', 'epub.no-nav', 'The package manifest does not declare a navigation document.'));
   else {
     const nav = zipEntry(entries, `${base}${navItem.href}`);
@@ -202,7 +204,7 @@ function validateOpf(entries: ZipEntry[], opf: ZipEntry, issues: ExportValidatio
 /** Validates a DOCX: the package parts, the main document and the relationships. */
 function validateDocx(input: ValidationInput): ExportValidation {
   const issues: ExportValidationIssue[] = [];
-  const facts: Record<string, string | number | boolean> = { ...input.renderFacts };
+  const facts: Record<string, string | number | boolean | string[]> = { ...input.renderFacts };
   let entries: ZipEntry[];
   try {
     entries = readZip(input.buffer);
@@ -256,9 +258,11 @@ function validateDocx(input: ValidationInput): ExportValidation {
     const relCheck = xmlWellFormed(relXml);
     if (!relCheck.ok) issues.push(issue('error', 'docx.rels-invalid', `The document relationships are not well-formed: ${relCheck.reason}.`));
     const names = new Set(entries.map((e) => e.name));
-    for (const match of relXml.matchAll(/Target="([^"]+)"(?:\s+TargetMode="([^"]+)")?/g)) {
-      const target = match[1];
-      if (match[2] === 'External') continue;
+    // Each relationship is checked on its own element so a missing target cannot borrow another.
+    for (const tag of [...relXml.matchAll(/<Relationship\s[^>]*>/g)].map((m) => m[0])) {
+      const target = /Target="([^"]+)"/.exec(tag)?.[1];
+      if (!target) continue;
+      if (/TargetMode="External"/.test(tag)) continue;
       const resolved = target.startsWith('/') ? target.slice(1) : `word/${target}`;
       if (!names.has(resolved)) issues.push(issue('error', 'docx.missing-target', `The relationship target ${target} is not in the package.`));
     }
@@ -269,7 +273,14 @@ function validateDocx(input: ValidationInput): ExportValidation {
   const imageRelIds = new Set([...docXml.matchAll(/<a:blip r:embed="([^"]+)"/g)].map((m) => m[1]));
   if (imageRelIds.size && rels) {
     const relXml = rels.data.toString('utf8');
-    const targets = new Map([...relXml.matchAll(/Id="([^"]+)"[^>]*Target="([^"]+)"/g)].map((m) => [m[1], m[2]]));
+    // Each relationship is matched on its own element so one entry cannot borrow another's target.
+    const targets = new Map(
+      [...relXml.matchAll(/<Relationship\s[^>]*>/g)]
+        .map((m) => m[0])
+        .map((tag) => [/Id="([^"]+)"/.exec(tag)?.[1] ?? '', /Target="([^"]+)"/.exec(tag)?.[1] ?? ''] as const)
+        .filter(([id, target]) => id && target)
+        .map(([id, target]) => [id, target]),
+    );
     for (const id of imageRelIds) {
       const target = targets.get(id);
       if (!target) issues.push(issue('error', 'docx.image-unrelated', `The document embeds an image with relationship ${id}, which is not declared.`));

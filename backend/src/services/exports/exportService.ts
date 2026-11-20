@@ -241,13 +241,17 @@ export const exportService = {
       const stored = Buffer.concat(chunks);
       const sha256 = createHash('sha256').update(stored).digest('hex');
 
+      // The PDF findings stay lists so the reader can see which font or element is at fault.
+      const foreignFonts = Array.isArray(rendered.facts.foreignFonts) ? rendered.facts.foreignFonts as unknown as string[] : [];
+      const overflow = Array.isArray(rendered.facts.overflow) ? rendered.facts.overflow as unknown as string[] : [];
+      const type3Fonts = Array.isArray(rendered.facts.type3Fonts) ? rendered.facts.type3Fonts as unknown as string[] : [];
       const diagnostics = {
         notes: support.notes,
         glyphs: checks.glyphs,
         emptyChapters: checks.emptyChapters,
-        foreignFonts: format === 'pdf' ? Number(rendered.facts.foreignFonts ?? 0) : 0,
-        overflow: format === 'pdf' ? Number(rendered.facts.overflow ?? 0) : 0,
-        type3Fonts: format === 'pdf' ? Number(rendered.facts.type3Fonts ?? 0) : 0,
+        foreignFonts: format === 'pdf' ? foreignFonts : [],
+        overflow: format === 'pdf' ? overflow : [],
+        type3Fonts: format === 'pdf' ? type3Fonts : [],
         facts: rendered.facts,
       };
       const validation = await validateExport({ format, buffer: stored, renderFacts: rendered.facts });
