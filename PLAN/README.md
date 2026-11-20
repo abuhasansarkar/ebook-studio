@@ -6,7 +6,7 @@ This is the implementation plan for the recommendations accepted in this convers
 
 ## Current checkpoint
 
-S01 is verified. S02 edit protection is implemented with browser verification; remaining resilience scenarios are recorded in ACCEPTANCE.md. Initial S14 marketplace checks are implemented, while full packaging remains pending. S03 generation recovery and S04 durable OTP delivery are now implemented with verification recorded in ACCEPTANCE.md. S05 core project/library organization and safe planning history are implemented and verified locally. S06 core private images are implemented with local verification. S07 core cover/illustration generation and editable typography are implemented with local verification. S08 core interior design, bundled multilingual fonts and reader/print previews are implemented with local verification. S09 core quality review is implemented, including cross-chapter contradiction detection and agreed definitions, with local verification. S10–S13 and S15–S16 remain release work. The product is not yet production-ready.
+S01 is verified. S02 edit protection is implemented with browser verification; remaining resilience scenarios are recorded in ACCEPTANCE.md. Initial S14 marketplace checks are implemented, while full packaging remains pending. S03 generation recovery and S04 durable OTP delivery are now implemented with verification recorded in ACCEPTANCE.md. S05 core project/library organization and safe planning history are implemented and verified locally. S06 core private images are implemented with local verification. S07 core cover/illustration generation and editable typography are implemented with local verification. S08 core interior design, bundled multilingual fonts and reader/print previews are implemented with local verification. S09 core quality review is implemented, including cross-chapter contradiction detection and agreed definitions, with local verification. S10 core validated PDF, EPUB and DOCX exports are implemented and verified locally, with immutable request-time snapshots and per-format validation. S11–S13 and S15–S16 remain release work. The product is not yet production-ready.
 
 The user has prioritized sale editions for Amazon KDP, Etsy and Gumroad. Follow the [marketplace release track](./MARKETPLACE_RELEASE.md) alongside the dependency order.
 
@@ -52,7 +52,7 @@ The current browser suite uses Puppeteer. Playwright adoption is planned and mus
 | S07 | OpenAI covers and illustrations with editable typography | S03, S06 | High |
 | S08 | Design templates and multilingual reader previews | S02, S06, S07 | High |
 | S09 | Quality reports and book consistency checks — implemented with local verification | S03, S05, S06, S08 | High |
-| S10 | Validated PDF, EPUB and DOCX exports | S06, S08, S09 | High |
+| S10 | Validated PDF, EPUB and DOCX exports | S06, S08, S09 | Done (core) |
 | S11 | Document imports and source-based research | S02, S03, S05, S06, S09 | High |
 | S12 | Subscriptions, top-ups and entitlements | S01, S03 | Required before paid launch |
 | S13 | Administration, monitoring and backup restoration | S01, S04, S12 | Required before paid launch |

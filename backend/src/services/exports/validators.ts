@@ -161,7 +161,8 @@ function validateOpf(entries: ZipEntry[], opf: ZipEntry, issues: ExportValidatio
   if (!/<dc:identifier[^>]*>[\s\S]*?<\/dc:identifier>/.test(xml)) issues.push(issue('error', 'epub.no-identifier', 'The package document has no dc:identifier.'));
   if (!/<dc:title[^>]*>[\s\S]*?<\/dc:title>/.test(xml)) issues.push(issue('error', 'epub.no-title', 'The package document has no dc:title.'));
   if (!/<dc:language[^>]*>[\s\S]*?<\/dc:language>/.test(xml)) issues.push(issue('error', 'epub.no-language', 'The package document has no dc:language.'));
-  if (!/<dcterms:modified>/.test(xml)) issues.push(issue('warning', 'epub.no-modified', 'The package document has no dcterms:modified date.'));
+  // The modification date is a `meta` element whose property is dcterms:modified.
+  if (!/<meta[^>]*property="dcterms:modified"/.test(xml)) issues.push(issue('warning', 'epub.no-modified', 'The package document has no dcterms:modified date.'));
 
   const manifestTags = [...xml.matchAll(/<item\s[^>]*>/g)].map((m) => m[0]);
   const manifestItems = manifestTags.map((tag) => ({

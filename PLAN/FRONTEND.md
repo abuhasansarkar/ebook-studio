@@ -185,16 +185,18 @@ Routes/components: extend `/app/books/:bookId/export` with format/options select
 
 Tasks:
 
-- [ ] Add PDF, EPUB and DOCX selection, showing only implemented combinations of format and design options.
-- [ ] Separate digital PDF/print preparation from reflowable EPUB settings; display relevant metadata and cover selection.
-- [ ] Show empty chapters, stale quality reports, missing assets and format-specific blocking findings before requesting export.
-- [ ] Identify the manuscript/design version used by each export and warn when newer edits exist.
-- [ ] Show queued/rendering/validating/uploading/ready/failed status with actionable diagnostics from supported backend states.
-- [ ] Enable download only after the server confirms readiness; handle missing/revoked/expired artifacts.
-- [ ] Show format, creation date, size, applicable page count and validation warnings; provide explicit retry/regenerate actions.
-- [ ] Offer links/instructions for inspecting the actual generated file in relevant readers/editors.
+- [x] Add PDF, EPUB and DOCX selection, showing only implemented combinations of format and design options.
+- [x] Separate digital PDF/print preparation from reflowable EPUB settings; display relevant metadata and cover selection.
+- [x] Show empty chapters, stale quality reports, missing assets and format-specific blocking findings before requesting export.
+- [x] Identify the manuscript/design version used by each export and warn when newer edits exist.
+- [x] Show queued/rendering/validating/uploading/ready/failed status with actionable diagnostics from supported backend states.
+- [x] Enable download only after the server confirms readiness; handle missing/revoked/expired artifacts.
+- [x] Show format, creation date, size, applicable page count and validation warnings; provide explicit retry/regenerate actions.
+- [x] Offer links/instructions for inspecting the actual generated file in relevant readers/editors.
 
 Gate: real downloads open and match selected inputs; no UI success is based only on request acceptance or a guessed filename.
+
+Status: core implementation complete and verified locally. The export screen selects a format, shows only that format's options, and lists export history with format, time, size, applicable page count, validation warnings and render findings. Download appears only for ready, server-validated exports. The browser journey downloads real PDF, EPUB and DOCX files and confirms the validated state on screen. Explicit retry/regenerate for a failed export and links to reader-side inspection instructions are not implemented. See ACCEPTANCE.md for the evidence record and the release boundaries.
 
 ## S11 — Import and research workspace
 

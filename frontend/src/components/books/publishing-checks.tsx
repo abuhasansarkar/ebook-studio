@@ -18,7 +18,7 @@ export function PublishingChecks({ bookId }: { bookId: string }) {
     <h3 className="font-semibold">Prepare for a marketplace</h3>
     <p className="mt-1 text-sm text-muted-foreground">Check the destination before preparing your sale edition. Publishing and final review happen in your seller account.</p>
     <div className="my-4 flex flex-wrap items-center gap-3">
-      <label className="text-sm">Destination <select className="ml-2 rounded border border-border bg-surface p-2" value={destination} onChange={e => setDestination(e.target.value as Marketplace)}>
+      <label className="text-sm">Destination <select aria-label="Publishing destination" className="ml-2 rounded border border-border bg-surface p-2" value={destination} onChange={e => setDestination(e.target.value as Marketplace)}>
         {MARKETPLACES.map(m => <option value={m} key={m}>{MARKETPLACE_LABELS[m]}</option>)}
       </select></label>
       <Button size="sm" variant="secondary" disabled={query.isFetching} onClick={() => void query.refetch()}>Refresh checks</Button>

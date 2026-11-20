@@ -1,7 +1,7 @@
 /**
  * End-to-end UI journey (run against a live stack with AI_MOCK=1):
  * sign up → verify OTP (via Mailpit) → create book → approve outline → write
- * chapters → edit + autosave → AI assist → export PDF → credits.
+ * chapters → edit + autosave → AI assist → export PDF/EPUB/DOCX → credits.
  *
  *   BASE_URL=http://localhost:3000 MAILPIT_URL=http://localhost:8025 pnpm e2e
  */
@@ -312,7 +312,7 @@ try {
   await page.goto(`${page.url().replace(/\/editor$/, "/export")}`, { waitUntil: "networkidle0" });
   await waitText(page, 'Prepare for a marketplace');
   await waitText(page, 'Preparation needed');
-  await page.select('select', 'etsy');
+  await page.select('select[aria-label="Publishing destination"]', 'etsy');
   await waitText(page, 'Choose a delivery file no larger than 20 MB');
   await clickButton(page, "Export PDF");
   await waitText(page, "Ready", 90_000);
@@ -331,6 +331,41 @@ try {
   await page.waitForFunction(() => Array.from(document.querySelectorAll('li')).some(li => li.textContent?.includes('Choose a delivery file no larger than 20 MB') && li.textContent?.includes('Passed:')));
   log('destination-specific publishing checks refresh after export');
   log(`PDF exported and downloaded (${pdf.size} bytes)`);
+
+  // S10: the same screen builds a validated EPUB and DOCX, and each download is a real file.
+  await page.click('input[name="export-format"][value="epub"]');
+  await waitText(page, 'Reflowable eBook');
+  await clickButton(page, "Export EPUB");
+  await page.waitForFunction(() => Array.from(document.querySelectorAll('a[href*="/download"]')).some(a => a.closest('[data-export]')?.textContent?.includes('EPUB')), { timeout: 90_000 });
+  const epub = await page.evaluate(async () => {
+    const link = Array.from(document.querySelectorAll('a[href*="/download"]')).find(a => a.closest('[data-export]')?.textContent?.includes('EPUB')) as HTMLAnchorElement | undefined;
+    if (!link) throw new Error('EPUB download link missing');
+    const r = await fetch(link.href, { credentials: "include" });
+    const b = new Uint8Array(await r.arrayBuffer());
+    return { status: r.status, type: r.headers.get("content-type"), head: Array.from(b.slice(0, 2)).map(c => String.fromCharCode(c)).join(''), size: b.length, bytes: Array.from(b.slice(0, 64)) };
+  });
+  if (epub.status !== 200 || epub.head !== "PK") throw new Error(`Bad EPUB download: ${JSON.stringify({ ...epub, bytes: undefined })}`);
+  if (epub.type !== "application/epub+zip") throw new Error(`EPUB content type is ${epub.type}`);
+  // The file must also be reported as validated by the server.
+  await page.waitForFunction(() => Array.from(document.querySelectorAll('[data-export]')).some(el => el.textContent?.includes('EPUB') && el.textContent?.includes('Validated')), { timeout: 30_000 });
+  await shot(page, "export-epub");
+
+  await page.click('input[name="export-format"][value="docx"]');
+  await waitText(page, 'Editable Word manuscript');
+  await clickButton(page, "Export DOCX");
+  await page.waitForFunction(() => Array.from(document.querySelectorAll('a[href*="/download"]')).some(a => a.closest('[data-export]')?.textContent?.includes('DOCX')), { timeout: 90_000 });
+  const docx = await page.evaluate(async () => {
+    const link = Array.from(document.querySelectorAll('a[href*="/download"]')).find(a => a.closest('[data-export]')?.textContent?.includes('DOCX')) as HTMLAnchorElement | undefined;
+    if (!link) throw new Error('DOCX download link missing');
+    const r = await fetch(link.href, { credentials: "include" });
+    const b = new Uint8Array(await r.arrayBuffer());
+    return { status: r.status, type: r.headers.get("content-type"), head: Array.from(b.slice(0, 2)).map(c => String.fromCharCode(c)).join(''), size: b.length };
+  });
+  if (docx.status !== 200 || docx.head !== "PK") throw new Error(`Bad DOCX download: ${JSON.stringify(docx)}`);
+  if (!docx.type?.includes("wordprocessingml.document")) throw new Error(`DOCX content type is ${docx.type}`);
+  await page.waitForFunction(() => Array.from(document.querySelectorAll('[data-export]')).some(el => el.textContent?.includes('DOCX') && el.textContent?.includes('Validated')), { timeout: 30_000 });
+  await shot(page, "export-docx");
+  log(`EPUB exported, validated and downloaded (${epub.size} bytes); DOCX exported, validated and downloaded (${docx.size} bytes)`);
 
   // Cover artwork is generated separately from editable, recoverable typography.
   await page.goto(`${BASE}/app/books/${currentBookId}/cover`, { waitUntil: 'networkidle0' });

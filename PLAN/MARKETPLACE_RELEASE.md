@@ -10,7 +10,7 @@ Updated 20 November 2026. Priority destinations: Amazon KDP eBook, Etsy digital 
 - KDP language/format checks, disclosure and exclusivity review; Etsy file-size check and attachment-limit review; Gumroad PDF/EPUB check; common editorial, rights, listing and file-freshness review.
 - Removed the unverified “print-ready” label from the existing PDF workflow.
 
-This is initial S14 preparation, not completed distribution packaging. Reports do not validate file bytes, prove ownership rights, publish listings, track seller-account status, or certify approval. Completed export metadata is currently used to identify candidate delivery files; immutable snapshots and storage revalidation remain S10 work.
+This is initial S14 preparation, not completed distribution packaging. Reports do not validate file bytes, prove ownership rights, publish listings, track seller-account status, or certify approval. Completed export metadata is currently used to identify candidate delivery files. S10 now validates the exported bytes and freezes an immutable input snapshot per export, so a candidate delivery file can be identified by its recorded SHA-256; the validation proves file structure, not marketplace acceptance.
 
 ## Required implementation sequence for the sale edition
 

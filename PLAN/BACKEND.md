@@ -205,18 +205,20 @@ Data: export input snapshot linking exact manuscript/design/asset versions; form
 
 Implementation:
 
-- [ ] Introduce a renderer registry consuming the normalized book document; preserve the current PDF implementation during refactoring.
-- [ ] Snapshot all required inputs and pin asset references before enqueueing; retain them for the export retention period.
-- [ ] Extend PDF options for digital/print layouts and check fonts, links, TOC, images, margins and relevant bleed settings.
-- [ ] Build EPUB package metadata, navigation, cover, XHTML/CSS and internal resource references; integrate EPUBCheck and separate accessibility checks.
-- [ ] Build DOCX styles, headings, lists, tables, images, relationships, hyperlinks and relevant page breaks; validate archive parts and reopen outputs.
-- [ ] Do not promise an automatically updated DOCX TOC across all editors; test the chosen implementation and describe required refresh behavior.
-- [ ] Store the file, verify readability from the same storage path used by downloads, then mark ready. Recover missing/corrupted artifacts explicitly.
-- [ ] Record validation errors and warnings, correct MIME/filename, size/hash, and page count only for meaningful fixed-layout outputs.
+- [x] Introduce a renderer registry consuming the normalized book document; preserve the current PDF implementation during refactoring.
+- [x] Snapshot all required inputs and pin asset references before enqueueing; retain them for the export retention period.
+- [x] Extend PDF options for digital/print layouts and check fonts, links, TOC, images, margins and relevant bleed settings.
+- [x] Build EPUB package metadata, navigation, cover, XHTML/CSS and internal resource references; integrate EPUBCheck and separate accessibility checks.
+- [x] Build DOCX styles, headings, lists, tables, images, relationships, hyperlinks and relevant page breaks; validate archive parts and reopen outputs.
+- [x] Do not promise an automatically updated DOCX TOC across all editors; test the chosen implementation and describe required refresh behavior.
+- [x] Store the file, verify readability from the same storage path used by downloads, then mark ready. Recover missing/corrupted artifacts explicitly.
+- [x] Record validation errors and warnings, correct MIME/filename, size/hash, and page count only for meaningful fixed-layout outputs.
 
 Contracts: extend existing export request/list/download with format/options and validation summary; add immutable detail and permitted regenerate action.
 
 Tests/gate: actual PDF/EPUB/DOCX download, validation and opening in representative software; missing storage, bad assets, interrupted upload, long tables and multilingual/RTL fixtures. Validation success does not imply marketplace approval.
+
+Status: core implementation complete and verified locally. The renderer registry, immutable request-time snapshots, the EPUB 3 and DOCX renderers, the three validators, storage read-back, SHA-256 and content types, and the export detail/download routes are implemented and covered by backend tests. The browser journey downloads real PDF, EPUB and DOCX artifacts. EPUBCheck and separate accessibility checks are not integrated: the EPUB validator checks the package structure itself. Representative-reader review in Kindle Previewer, Apple Books and Microsoft Word remains outstanding. See ACCEPTANCE.md for the evidence record and the release boundaries.
 
 ## S11 — Imports and source-based research
 
@@ -366,4 +368,4 @@ Core cover/illustration generation and editable typography are implemented. See 
 
 ### S08 implementation checkpoint — 20 November 2026
 
-Core interior design is implemented: immutable `BookDesign` versions (save/template/restore) with OCC; versioned template definitions shipped in `packages/shared` and stored as full snapshots instead of a `TemplateVersion` table; separate digital and print profiles; structured front/back matter; one normalized document and renderer for reader preview, print preview and PDF export; exports freeze the design at request time. Static, hash-pinned OFL fonts replace Google Fonts at render time. CJK faces come from `fonts:fetch`. Runtime protocol 5 and migration `20261120190000_book_design` require a coordinated cutover. See ACCEPTANCE.md and RUNTIME.md for evidence and limits. EPUB/DOCX adapters remain S10.
+Core interior design is implemented: immutable `BookDesign` versions (save/template/restore) with OCC; versioned template definitions shipped in `packages/shared` and stored as full snapshots instead of a `TemplateVersion` table; separate digital and print profiles; structured front/back matter; one normalized document and renderer for reader preview, print preview and PDF export; exports freeze the design at request time. Static, hash-pinned OFL fonts replace Google Fonts at render time. CJK faces come from `fonts:fetch`. Runtime protocol 5 and migration `20261120190000_book_design` require a coordinated cutover. See ACCEPTANCE.md and RUNTIME.md for evidence and limits. The EPUB and DOCX adapters are implemented in S10.

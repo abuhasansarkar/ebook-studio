@@ -14,3 +14,10 @@ backend/assets/fonts/fetched
 
 # Dev-server stderr from the local stack
 *.log.err
+*-dev.err
+
+# Isolated E2E run artifacts (runtime only, never committed)
+.env.e2e
+backend/storage-e2e
+e2e-shots
+backend/e2e-exports-check.sql

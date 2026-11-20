@@ -259,7 +259,7 @@ Core private asset pipeline implemented. This is local verification, not a produ
 - PNG/JPEG/WebP signatures and declared MIME must match. Limits: 10 MiB input/output, 24 MP, 10,000 pixels per side, two active decoders per API, 20-second decoder timeout; animated images and active formats are rejected. Chapters cap image occurrences at 100; PDF image budget is 50 MiB counting repeats.
 - Owner-authenticated streaming, no-store browser responses, server-selected private storage keys, paginated account library, upload progress/errors, alt/caption editing, explicit deletion confirmation, and an editor picker are implemented. Images persist as asset IDs with per-occurrence alt/caption, never arbitrary remote URLs.
 - Save/delete share transactional asset locks. Saved images remain pinned through revision history, chapter removal, book soft deletion and manuscript duplication. This deliberately favors preservation over automatic garbage collection. Unsaved browser drafts are not pinned and the deletion warning explains this.
-- PDF rendering embeds authorized image bytes and rejects unavailable or broken images; it cannot fetch user-provided image URLs. Image-only chapters are written content and included in exports. Immutable full export snapshots remain S10 work.
+- PDF rendering embeds authorized image bytes and rejects unavailable or broken images; it cannot fetch user-provided image URLs. Image-only chapters are written content and included in exports. Immutable full export snapshots are implemented in S10.
 - Worker cleanup retries physical deletion and removes interrupted uploads after one hour; ready library uploads are not automatically expired. Readiness already checks API/worker storage compatibility. Runtime protocol 3 prevents old workers from silently dropping images; drain protocol-2 work before deployment.
 
 Verification: 78 backend tests across 10 files passed, including six asset tests for owner isolation, metadata stripping/orientation, malformed/MIME-spoofed/truncated/oversized/high-pixel inputs, protected history/copies/deleted books, failed-write cleanup, deletion retry, and save/delete races. Type checks, frontend lint and both builds passed. Expanded Puppeteer journey passed using release frontend, isolated test database, mock AI and Mailpit: upload via file input, metadata save, insert, autosave, reload with decoded private image, disabled referenced deletion, and valid illustrated PDF download (305186 bytes). Existing editor recovery, generation, library, OTP and mobile flows also passed. Animation, image-only chapter and repeated-image budget refinements are covered by the final regression pass recorded below.
@@ -290,7 +290,7 @@ Evidence:
 Release boundaries:
 
 - No paid OpenAI request was made; model access, real provider quality/latency and billing still require a controlled deployment canary. Provider success before durable storage can be billed again after a crash even though customer settlement remains fenced.
-- Saved compositions and source assets are retained; generated JPGs are rendered on demand rather than stored as immutable release-package artifacts. Cover attachment to ebook exports, full export snapshots and packaging remain S10/S14 work.
+- Saved compositions and source assets are retained; generated JPGs are rendered on demand rather than stored as immutable release-package artifacts. Cover attachment to ebook exports, release packaging and full distribution bundles remain S14 work. S10 records each export's asset snapshot, so the cover included in an export is identified by asset id and hash.
 - Digital front covers only. No spine/back wrap, bleed calculator or print-ready claim. Artwork is cropped/upscaled to the composition; resolution alone does not guarantee sellable artwork quality.
 - Tested font families cover the named fixtures, not all application languages. Other scripts, complex mixed-script layouts and production screenshot comparison require S08 validation. No claim of universal multilingual typography is made.
 - Image/cover concurrency caps apply per process; distributed quotas, production S3/failure testing, sustained load tests and database/storage restore reconciliation remain release work. Conservative concept/cover pins have no purge UI.
@@ -335,12 +335,12 @@ Release boundaries:
 - Paragraph direction follows the book language. Per-paragraph direction overrides are not editable, so an opposite-direction paragraph relies on the Unicode bidi algorithm. Hyphenation depends on the renderer's dictionaries.
 - The editor screen still loads Google Fonts for editing. Only previews and exports use the bundled fonts.
 - Scripts outside the bundled families, including emoji, are flagged as missing glyphs and may render with system fonts in Docker. CJK serif is not bundled, so CJK uses sans for both settings.
-- EPUB/DOCX adapters, immutable manuscript snapshots and validators belong to S10. Production Docker builds must fetch CJK fonts over the network at build time. Protocol 5 requires a coordinated drain and cutover (see RUNTIME.md).
+- EPUB/DOCX adapters, immutable manuscript snapshots and validators are implemented in S10 and recorded in the iteration below. Production Docker builds must fetch CJK fonts over the network at build time. Protocol 5 requires a coordinated drain and cutover (see RUNTIME.md).
 - No Gmail delivery, paid AI call, remote push or production deployment was performed. S09 quality reports was completed in the iteration recorded below.
 
 ## S09 quality review — 20 November 2026
 
-Status: core implementation complete and verified locally. This is not a production rollout, a marketplace certification, or a claim of factual accuracy. S10 remains the next ordered package.
+Status: core implementation complete and verified locally. This is not a production rollout, a marketplace certification, or a claim of factual accuracy. S10 is recorded in the iteration below.
 
 Implemented:
 
@@ -368,3 +368,45 @@ Remaining boundaries:
 - No aggregate score, accuracy measure or originality certificate is produced. Findings that need human review say so; the review cannot verify facts, sources or claims.
 - The AI review depends on provider output quality. It was exercised only in mock mode; no paid provider call, live latency or billing check was performed.
 - The browser journey and the backend suite were run locally against a mocked AI provider, a local Mailpit and bundled fonts. They were not run against a deployed stack, a real provider or a real mail service.
+
+## S10 validated PDF, EPUB and DOCX exports — 20 November 2026
+
+Status: core implementation complete and verified locally. This is not a production rollout, a marketplace certification, or a print-ready claim. S11 remains the next ordered package.
+
+Implemented:
+
+- Export requests capture an immutable input snapshot before any work is enqueued. The snapshot records the book metadata, every chapter with its exact `document_versions` id, the design version, each asset id with its SHA-256, the requested format and its options, and a content hash of the captured inputs. A later manuscript, design or asset change cannot alter a queued or completed export; the export is rendered from the snapshot, not from current state.
+- A renderer registry (`backend/src/services/exports/renderers.ts`) consumes the normalized book document. PDF keeps the existing S08 implementation and output; EPUB and DOCX are new renderers behind the same interface. Shared export contracts live in `packages/shared/src/exports.ts`.
+- EPUB 3 output is a real package: `mimetype` (`application/epub+zip`), `META-INF/container.xml`, an `OEBPS/content.opf` package document, XHTML content documents, a CSS stylesheet, `nav.xhtml` with `epub:type="toc"` and `epub:type="landmarks"`, and image assets under `OEBPS/images/`. Language and writing direction are set from the book (`lang`, `dir`), and all text is XML-escaped.
+- DOCX output is a real OOXML package: `[Content_Types].xml`, `_rels/.rels`, `docProps/core.xml` and `app.xml`, `word/document.xml`, `word/styles.xml`, `word/numbering.xml`, `word/_rels/document.xml.rels` and `word/media/`. Headings use `Heading1`, the table of contents is a `TOC` field that Word refreshes on demand, and the document states that it must be updated rather than promising a live-updating TOC.
+- Validators re-open the stored file after writing and report pass/fail with per-validator issues. The PDF validator checks the header, page objects, fonts and trailer; the EPUB validator checks the mimetype, container, package manifest, navigation document and spine; the DOCX validator checks the required parts, styles and relationships. A file that fails validation is never marked ready.
+- Each export stores the artifact bytes, the SHA-256 of the stored file, the correct `contentType`, the file size and a page count for fixed-layout outputs only, plus render diagnostics (missing glyphs, non-bundled fonts, Type 3 fonts, overflow) and the validation report. The server reads the artifact back from the same storage path used by downloads before it reports readiness.
+- Routes: `GET /api/v1/exports/formats` describes the available formats and their options, `GET /api/v1/exports/:exportId` returns the immutable detail with the validation summary, and `GET /api/v1/exports/:exportId/download` streams the stored file with the recorded content type. All are owner-scoped.
+- Migration `20261120210000_export_snapshots` adds the `snapshot`, `validation`, `sha256` and `contentType` columns and is additive; existing export rows stay readable and are shown as not yet checked rather than as validated.
+- The export screen selects a format, shows only the options for that format, and lists export history with format, creation time, size, applicable page count, validation warnings and render findings. Download is offered only for ready exports that the server validated.
+
+Verification:
+
+- **The full backend suite passed: 150 tests across 17 files** (`pnpm --filter backend test`). The pure deterministic suite passed separately: 19 tests across 2 files (`vitest run --config vitest.pure.config.ts`).
+- New export coverage: `backend/tests/exports.test.ts` (9 tests) proves the request-time snapshot is captured, a later design change cannot alter a queued export, a second export is refused while one is in progress, options belonging to another format are rejected, exports are isolated between owners, and a PDF, EPUB and DOCX are each produced, stored, re-read and validated, with an export whose stored file does not validate failing. `backend/tests/export-validators.test.ts` (7 tests) covers the three validators against valid and malformed input. `backend/tests/pure-export-checks.test.ts` (11 tests) covers the renderer and validator helpers without a database.
+- **The Puppeteer journey passed end to end** (`pnpm e2e`, 26 screenshots) against an isolated stack: dedicated database `ebook_studio_e2e`, separate Redis namespace, separate storage root, mock AI and Mailpit. The S10 flow exports PDF (170206 bytes), then EPUB (8958 bytes) and DOCX (5342 bytes) from the same screen, waits for each validated state, downloads each file in the browser and asserts the HTTP status, the `PK` magic bytes and the `application/epub+zip` and WordprocessingML content types. The screenshots `13-export-epub.png` and `14-export-docx.png` were reviewed and show both cards as Ready with "Validated: the stored file was re-opened and checked by the epub validator" / "docx validator" and a Download action.
+- **The stored artifacts were inspected directly.** The EPUB opens as a ZIP with 19 expected entries; its `mimetype` is `application/epub+zip`, `container.xml` points at `OEBPS/content.opf`, and `nav.xhtml` carries `epub:type="toc"` with all eight chapters. The DOCX opens as a ZIP with the nine expected parts; `document.xml` contains the title, subtitle, copyright page, the Bengali contents heading, a `TOC` field and the chapter body text, and `[Content_Types].xml` declares the WordprocessingML main document part. The PDF starts with `%PDF-1.4`, contains 20 page objects, embeds fonts (`/FontFile2`), and ends with a trailer and `%%EOF`.
+- **The recorded SHA-256 matches the bytes on disk** for all four exports, and each stored snapshot contains the request-time format, options, chapter versions, asset hashes and design version.
+- Shared, backend and frontend type checks passed; frontend lint passed; the frontend production build completed successfully, including TypeScript and static generation of all 25 routes. `git diff --check` passed.
+
+Two defects were found and fixed while extending the browser journey:
+
+- The journey selected the marketplace destination with `page.select('select', 'etsy')`. S10 added a PDF layout `<select>`, which is now the first select on the page, so the destination was never changed and the run failed at the export step. The destination select now carries `aria-label="Publishing destination"` and the journey targets that label. The label is also an accessibility improvement for screen readers.
+- EPUB navigation detection scanned a 300-character window that could contain another manifest item, and DOCX validation rejected a `Heading1` style that the renderer does emit. Both were fixed in the renderers and validators.
+
+Release boundaries:
+
+- **Validation success is not marketplace approval.** The validators check that a file is structurally valid and readable by the corresponding format rules. They do not check Amazon KDP, Etsy or Gumroad requirements, and they do not certify that a listing will be accepted. The marketplace checklist remains a manual preparation aid, and the screen states that marketplace approval is never guaranteed.
+- The EPUB was not opened in Kindle Previewer, Apple Books, Kobo or an online reader, and the DOCX was not opened in Microsoft Word or LibreOffice. The checks above are package- and content-level, not an application-level open. Representative-reader review is still outstanding.
+- The DOCX table of contents is a Word field. It shows a placeholder until the reader refreshes the field, and the document says so. Page numbers appear only after that refresh.
+- The EPUB has no EPUB 3 accessibility metadata, no `epub:switch` alternative renditions, and no media overlays. It is a valid EPUB 3 package, not an accessible EPUB.
+- The PDF is not print-ready. There is no bleed, cover wrap, spine or printer preflight, and no PDF/X or PDF/A. Chapters start on the next page, not the next right-hand page, and the printed contents has links but no page numbers.
+- The renderer registry has three formats. Additional formats are not implemented, and the frontend disables a format the server reports as unavailable.
+- Page counts are recorded only for fixed-layout PDF output. EPUB and DOCX have no page count because their layout is decided by the reader.
+- The validation reports were produced in the local environment with bundled fonts, mock AI and local storage. They were not run against a deployed stack, an S3-compatible object store or a production worker fleet.
+- Migration `20261120210000_export_snapshots` is additive and was applied to the local E2E database. No remote push or production deployment was performed, and no paid provider call or real email delivery was made.
