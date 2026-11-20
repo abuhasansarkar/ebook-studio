@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { QUALITY_RULES_VERSION, bookContextSchema, fontStack, imageAssetIds, locateAnchor, textAnchorSchema, textBlocks, type BookContext, type ReviewStatus } from '@ebook/shared';
+import { QUALITY_RULES_VERSION, assessCitation, bookContextSchema, digestOfLocators, fontStack, imageAssetIds, locateAnchor, textAnchorSchema, textBlocks, type BookContext, type ReviewStatus } from '@ebook/shared';
 import { env } from '../../config/env.js';
 import { prisma } from '../../database/prisma.js';
 import { dispatchPending, persistDispatch } from '../../queues/index.js';
@@ -43,6 +43,66 @@ export const contextService = {
 };
 
 // ---------- Inputs and staleness ----------
+/**
+ * The citations of a book, with the state of the text each one rests on.
+ *
+ * A citation is cross-referenced rather than judged: the report says that the
+ * source a chapter cites has changed or is gone, and leaves the judgement about
+ * whether the chapter still agrees with it to the author.
+ */
+async function citationInputs(bookId: string) {
+  const links = await prisma.chapterSourceLink.findMany({
+    where: { bookId },
+    include: {
+      source: { select: { id: true, title: true, version: true, status: true, deletedAt: true } },
+      chapter: { select: { id: true, position: true } },
+    },
+  });
+  if (!links.length) return [];
+
+  // The passages of the current extraction of each cited source, so a citation
+  // can be compared against the text it now points at.
+  const versions = await prisma.sourceVersion.findMany({
+    where: { sourceId: { in: [...new Set(links.map((l) => l.sourceId))] }, status: 'ready' },
+    orderBy: { version: 'desc' },
+    select: { sourceId: true, version: true, passages: true },
+  });
+  const newest = new Map<string, { version: number; passages: { locator: string; text: string }[] }>();
+  for (const row of versions) {
+    if (newest.has(row.sourceId)) continue;
+    newest.set(row.sourceId, { version: row.version, passages: (row.passages as unknown as { locator: string; text: string }[]) ?? [] });
+  }
+
+  return links.map((link) => {
+    const locators = (link.locators as unknown as string[]) ?? [];
+    const current = newest.get(link.sourceId);
+    const passages = current?.passages ?? [];
+    const assessment = assessCitation({
+      linkedVersion: link.sourceVersion,
+      currentVersion: current?.version ?? link.source.version,
+      sourceDeleted: !!link.source.deletedAt,
+      sourceStatus: link.source.status,
+      locators,
+      availableLocators: passages.map((p) => p.locator),
+      linkedDigest: link.passageDigest,
+      currentDigest: digestOfLocators(passages, locators),
+    });
+    return {
+      chapterId: link.chapterId,
+      chapterPosition: link.chapter.position,
+      sourceId: link.sourceId,
+      sourceTitle: link.source.title,
+      locators,
+      missingLocators: assessment.missingLocators,
+      note: link.note,
+      state: assessment.state,
+      reason: assessment.reason,
+      version: link.source.version,
+      digest: link.passageDigest,
+    };
+  });
+}
+
 async function currentInputs(userId: string, bookId: string) {
   const book = await getOwnedBook(userId, bookId);
   const [brief, chapters, context, design] = await Promise.all([
@@ -54,11 +114,15 @@ async function currentInputs(userId: string, bookId: string) {
   const assetIds = [...new Set(chapters.flatMap(c => imageAssetIds(c.contentJson)))];
   const ready = assetIds.length ? await prisma.asset.findMany({ where: { id: { in: assetIds }, userId, status: 'ready' }, select: { id: true } }) : [];
   const readyAssets = ready.map(a => a.id).sort();
+  const citations = await citationInputs(bookId);
   const inputs = {
     rulesVersion: QUALITY_RULES_VERSION, title: book.title, subtitle: book.subtitle, author: brief.authorName ?? '', language: book.language,
     chapters: chapters.map(c => ({ id: c.id, version: c.version })), designVersion: design.version, contextVersion: context.version, readyAssets,
+    // The citations are part of the fingerprint, so a report is redone when a
+    // source is deleted or re-imported and a citation stops holding.
+    citations: citations.map(c => ({ chapterId: c.chapterId, sourceId: c.sourceId, state: c.state, version: c.version, digest: c.digest })),
   };
-  return { book, brief, chapters, context, design, readyAssets, inputs, fingerprint: sha(inputs) };
+  return { book, brief, chapters, context, design, readyAssets, citations, inputs, fingerprint: sha(inputs) };
 }
 type Inputs = Awaited<ReturnType<typeof currentInputs>>;
 function isStale(report: { kind: string; fingerprint: string; inputs: unknown }, current: Inputs) {
@@ -113,6 +177,7 @@ export const qualityService = {
       title: current.book.title, subtitle: current.book.subtitle, author: current.inputs.author, language: current.book.language,
       chapters: current.chapters.map(c => ({ id: c.id, version: c.version, position: c.position, title: c.title, content: c.contentJson, wordCount: c.wordCount, targetWords: c.targetWords })),
       readyAssets: new Set(current.readyAssets), context: current.context.data, referencesEnabled: current.design.data.matter.references.enabled, uncoveredCharacters: uncovered,
+      citations: current.citations,
     });
     const report = await prisma.$transaction(async tx => {
       await lockBook(tx, bookId, userId);

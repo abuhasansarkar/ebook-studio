@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
   MAX_SOURCE_CHARACTERS,
+  digestOfLocators,
   type ExtractedPassage,
   type ExtractionWarning,
   type SourceFormat,
@@ -43,9 +44,25 @@ export type SourceRow = {
 /** One extracted passage as it is stored. */
 export type StoredPassage = ExtractedPassage;
 
+/**
+ * The passages of the newest extraction of a source.
+ *
+ * An empty list when the source has no ready extraction, so a citation against
+ * such a source is assessed as unverifiable rather than as missing.
+ */
+export async function passagesOfLatestVersion(sourceId: string): Promise<StoredPassage[]> {
+  const version = await prisma.sourceVersion.findFirst({
+    where: { sourceId, status: 'ready' },
+    orderBy: { version: 'desc' },
+    select: { passages: true },
+  });
+  if (!version) return [];
+  return (version.passages as unknown as StoredPassage[]) ?? [];
+}
+
 async function getOwnedSource(userId: string, sourceId: string) {
   const source = await prisma.researchSource.findFirst({
-    where: { id: sourceId, userId, book: { deletedAt: null } },
+    where: { id: sourceId, userId, deletedAt: null, book: { deletedAt: null } },
   });
   if (!source) throw notFound('Source');
   return source;
@@ -124,11 +141,11 @@ export const sourceService = {
     return { source: updated, version: { ...version, passages: result.passages } };
   },
 
-  /** Every source of a book, newest first. */
+  /** Every source of a book, newest first. A deleted source is not listed. */
   async list(userId: string, bookId: string) {
     await getOwnedBook(userId, bookId);
     const rows = await prisma.researchSource.findMany({
-      where: { bookId, userId },
+      where: { bookId, userId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
       select: { ...sourceSelect, _count: { select: { links: true } } },
     });
@@ -278,14 +295,17 @@ export const sourceService = {
       // The source is linked to the chapters it now supports.
       const linkedChapterIds = [...created.map((c) => c.id), ...appended.map((c) => c.id)];
       for (const chapterId of linkedChapterIds) {
+        const locators = input.chapters.flatMap((c) => c.locators);
         await tx.chapterSourceLink.upsert({
           where: { sourceId_chapterId: { sourceId: source.id, chapterId } },
           create: {
             sourceId: source.id, bookId: source.bookId, chapterId,
-            locators: input.chapters.flatMap((c) => c.locators) as object,
+            locators: locators as object,
             note: `Imported from ${source.title}.`,
+            sourceVersion: version.version,
+            passageDigest: digestOfLocators(passages, locators),
           },
-          update: { locators: input.chapters.flatMap((c) => c.locators) as object },
+          update: { locators: locators as object, sourceVersion: version.version, passageDigest: digestOfLocators(passages, locators) },
         });
       }
 
@@ -298,10 +318,23 @@ export const sourceService = {
     const source = await getOwnedSource(userId, sourceId);
     const chapter = await prisma.chapter.findFirst({ where: { id: input.chapterId, bookId: source.bookId }, select: { id: true } });
     if (!chapter) throw notFound('Chapter');
+    // The link records the version and the digest of the passages it cites, so
+    // a later re-import or a revised text can be reported rather than silently
+    // changing what the citation means.
+    const passages = await passagesOfLatestVersion(source.id);
     return prisma.chapterSourceLink.upsert({
       where: { sourceId_chapterId: { sourceId: source.id, chapterId: input.chapterId } },
-      create: { sourceId: source.id, bookId: source.bookId, chapterId: input.chapterId, locators: input.locators as object, note: input.note },
-      update: { locators: input.locators as object, note: input.note },
+      create: {
+        sourceId: source.id, bookId: source.bookId, chapterId: input.chapterId,
+        locators: input.locators as object, note: input.note,
+        sourceVersion: source.version,
+        passageDigest: digestOfLocators(passages, input.locators),
+      },
+      update: {
+        locators: input.locators as object, note: input.note,
+        sourceVersion: source.version,
+        passageDigest: digestOfLocators(passages, input.locators),
+      },
     });
   },
 
@@ -311,16 +344,26 @@ export const sourceService = {
     if (!chapter) throw notFound('Chapter');
     return prisma.chapterSourceLink.findMany({
       where: { chapterId },
-      include: { source: { select: { id: true, title: true, format: true, version: true, status: true } } },
+      include: { source: { select: { id: true, title: true, format: true, version: true, status: true, deletedAt: true } } },
     });
   },
 
-  /** Removes a source. The chapters it supported are kept; only the link goes. */
+  /**
+   * Removes a source.
+   *
+   * The stored file and the extraction go, but the source row and its links are
+   * kept as a tombstone. A chapter that cited this source still cites it, and
+   * the quality report can say that the text it rested on is gone. Deleting the
+   * links instead would erase the very fact the report needs to report.
+   */
   async remove(userId: string, sourceId: string) {
     const source = await getOwnedSource(userId, sourceId);
     await prisma.$transaction(async (tx) => {
-      await tx.chapterSourceLink.deleteMany({ where: { sourceId: source.id } });
-      await tx.researchSource.delete({ where: { id: source.id } });
+      await tx.sourceVersion.deleteMany({ where: { sourceId: source.id } });
+      await tx.researchSource.update({
+        where: { id: source.id },
+        data: { deletedAt: new Date(), status: 'failed', error: 'The source was deleted.', storageKey: null },
+      });
     });
     if (source.storageKey) await storage.remove(source.storageKey).catch(() => undefined);
   },

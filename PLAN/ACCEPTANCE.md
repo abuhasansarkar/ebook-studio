@@ -455,5 +455,56 @@ Release boundaries:
 - URL ingestion is deliberately not implemented, so there is no SSRF surface and no URL-import protection to claim. Adding it requires approved protocols, DNS and redirect revalidation, blocked internal addresses and bounded content and timeouts, as the plan states.
 - Extraction runs inside the API process rather than in a separate isolated worker. The size, character and passage limits bound the work, but a hostile file is not processed in a sandboxed container.
 - The file type is checked against its signature, not against a full structural validation. A crafted file that begins with the right magic bytes is still parsed by the format reader, which is why the corrupt-package paths are tested directly.
-- The citation of a source whose file was deleted or replaced is flagged as changed in the research workspace. The quality report was not extended to cross-reference those citations; that connection remains open.
+- The citation of a source whose file was deleted or replaced is flagged as changed in the research workspace, and the quality report cross-references those citations. This is recorded in the S11 follow-up below.
 - The evidence was produced in the local environment with the fake AI provider and local storage. It was not run against a deployed stack, an S3-compatible object store or a production worker fleet. Migration `20261121090000_research_sources` was applied to the local E2E database; no remote push or production deployment was performed, and no paid provider call or real email delivery was made.
+
+### S11 follow-up — citation impact in the quality report
+
+The open item recorded above was that the research workspace flagged a changed citation but the quality report did not cross-reference it. That connection is now made.
+
+**What was wrong, and what changed**
+
+- Deleting a source deleted its `ChapterSourceLink` rows. The chapter then simply had no citation, so nothing recorded that it once rested on text that is gone, and a quality report had nothing to cross-reference. A deleted source is now a **tombstone**: the row is kept with `deletedAt` set, the stored file and the extraction are removed, and the links stay. Every source query filters on `deletedAt`, so a deleted source disappears from the list and from every retrieval path while its citations remain visible.
+- A link recorded only the locators it cited, not the text they pointed at. A re-imported source therefore silently changed what an existing citation meant. A link now records the **source version** that was current when it was made and a **digest** of the cited passages, so revised text is detected instead of assumed.
+- The state of a citation is decided in one place, `assessCitation` in `packages/shared/src/citations.ts`, and used by both the research workspace and the quality rules. The two cannot disagree about whether a citation still holds.
+
+**States**
+
+| State | Meaning |
+| --- | --- |
+| `current` | The cited passages still exist and still read the same. |
+| `changed` | The source was re-imported, or the cited passages now hold different text. |
+| `missing-passage` | A cited locator no longer exists in the source. |
+| `deleted` | The source was deleted. |
+| `unverifiable` | The source has no current text to check the citation against. |
+
+**Quality rules**
+
+The rules live in the `evidence` category, under a new check named *Citations whose source changed or was deleted*:
+
+| Rule | Severity | Reported when |
+| --- | --- | --- |
+| `citation.source-deleted` | error | The cited source was deleted. |
+| `citation.passage-missing` | error | A cited passage no longer exists. |
+| `citation.source-changed` | warning | The source was re-imported or the cited text changed. |
+| `citation.unverifiable` | info | The source has no current text to check the citation against. |
+
+The report cross-references the citation; it does not judge whether the chapter still agrees with the source. That judgement stays with the author.
+
+**Verification**
+
+- 19 pure tests in `backend/tests/pure-citation-checks.test.ts` cover the digest, every citation state and the precedence between them (deleted over missing, missing over changed), and each quality rule.
+- 12 integration tests in `backend/tests/citation-impact.test.ts` cover the tombstone, the hidden source, a re-imported source, a vanished passage, the four rules, owner isolation, and that the report is **redone** when a source is deleted, because the citations are part of the report fingerprint.
+- The full backend suite passes: 223 tests across 21 files (up from 192 across 19, with no regressions).
+- Shared, backend and frontend type checks pass; frontend lint passes; the frontend production build completes with all 26 routes.
+- The browser journey `e2e/citation-impact-flow.e2e.ts` (`pnpm --filter e2e run e2e:citations`) passes end to end: sign up → verify → create a book → import a source → link it to a chapter → the citation is reported as **current** → the quality report says nothing about it → delete the source → the source leaves the list but the citation survives, flagged **Source deleted** → the quality report cross-references it with an `error` on the chapter.
+- The original S11 journey `e2e/sources-flow.e2e.ts` was re-run and still passes, so the soft-delete change did not regress the import path.
+- Migration `20261122090000_source_citation_impact` adds the `deletedAt` column and the two link columns, and was applied to the local and E2E databases.
+
+**Boundaries of this follow-up**
+
+- The report says that a citation is affected. It does not compare the chapter's own text against the source, so a chapter that has drifted from a source that is still intact is not detected.
+- A citation whose passage was edited within the same version is detected by the digest, but only because the digest is recomputed from the current extraction. Links created before this migration have no recorded digest and are reported as `unverifiable` rather than as citations that still hold.
+- The digest is a change detector, not a security control. It is a 32-bit FNV-1a hash so the shared package stays free of a Node dependency and usable in the browser; two different passages could in principle collide.
+- The tombstone keeps the source title, the link and the locators. The passages themselves are deleted with the extraction, so a deleted citation cannot be re-opened; the report can say the text is gone but cannot show what it said.
+- The evidence was produced locally against the fake AI provider and a local database. It was not run against a deployed stack or a production worker fleet, and no remote push or deployment was performed.

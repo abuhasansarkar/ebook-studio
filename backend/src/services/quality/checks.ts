@@ -1,11 +1,29 @@
 import { createHash } from 'node:crypto';
-import { languageScript, makeAnchor, textBlocks, type BookContext, type DetectionMethod, type QualityCategory, type QualitySeverity, type TextAnchor, type TextBlock } from '@ebook/shared';
+import { languageScript, makeAnchor, textBlocks, type BookContext, type CitationState, type DetectionMethod, type QualityCategory, type QualitySeverity, type TextAnchor, type TextBlock } from '@ebook/shared';
 
 /**
  * Deterministic checks (rules version 1). Pure: same input, same findings. Analysis never edits the
  * manuscript; every text finding carries a quote anchor that the editor can locate and highlight.
  */
 export interface ChapterInput { id: string; version: number; position: number; title: string; content: unknown; wordCount: number; targetWords: number }
+/**
+ * One citation of a chapter, and the state of the text it rests on.
+ *
+ * The state is decided by the shared assessment, so the quality report and the
+ * research workspace cannot disagree about whether a citation still holds.
+ */
+export interface CitationInput {
+  chapterId: string;
+  /** The position of the cited chapter in the book, for the message. */
+  chapterPosition: number;
+  sourceTitle: string;
+  locators: string[];
+  missingLocators: string[];
+  note: string;
+  state: CitationState;
+  /** Why the citation is not current, when it is not. */
+  reason: string;
+}
 export interface CheckInput {
   title: string; subtitle: string; author: string; language: string;
   chapters: ChapterInput[];
@@ -16,6 +34,8 @@ export interface CheckInput {
   referencesEnabled: boolean;
   /** Characters that no approved font for this book can draw (from the S08 font registry). */
   uncoveredCharacters: ReadonlySet<string>;
+  /** The citations of the book's chapters, with the state of the text they rest on. */
+  citations?: CitationInput[];
 }
 export interface FindingDraft {
   key: string; ruleId: string; category: QualityCategory; severity: QualitySeverity; method: DetectionMethod;
@@ -38,6 +58,7 @@ export const RULE_CHECKS: CheckDescriptor[] = [
   { id: 'language', label: 'Chapters mostly written in another script', method: 'heuristic', scope: 'Script-based; cannot tell languages sharing a script apart' },
   { id: 'typesetting', label: 'Characters no approved font can draw', method: 'rule', scope: 'Bundled S08 fonts' },
   { id: 'evidence', label: 'Statistical and research claims that need a source', method: 'heuristic', scope: 'Percentages in all languages; claim phrases in English only' },
+  { id: 'citation', label: 'Citations whose source changed or was deleted', method: 'rule', scope: 'Sources imported into this book; the text is compared, not judged' },
 ];
 export const NOT_CHECKED = [
   'Factual accuracy is not verified. Flagged claims need human review.',
@@ -202,6 +223,41 @@ export function runRuleChecks(input: CheckInput): { findings: FindingDraft[]; tr
   }
   for (const gap of findSummaryGaps(input)) {
     add({ ruleId: 'consistency.summary-gap', category: 'consistency', severity: 'info', chapterId: gap.chapterId, anchor: gap.anchor, message: gap.message, evidence: gap.evidence });
+  }
+  // Citations that no longer rest on the text they were made from.
+  for (const citation of input.citations ?? []) {
+    const label = `Chapter ${citation.chapterPosition + 1}`;
+    if (citation.state === 'deleted') {
+      add({
+        ruleId: 'citation.source-deleted', category: 'evidence', severity: 'error', chapterId: citation.chapterId, anchor: null,
+        message: `${label} cites “${citation.sourceTitle}”, but that source was deleted. The text this citation rests on is gone.`,
+        evidence: citation.note || `Cited passages: ${citation.locators.join(', ') || 'none recorded'}.`,
+      });
+      continue;
+    }
+    if (citation.state === 'missing-passage') {
+      add({
+        ruleId: 'citation.passage-missing', category: 'evidence', severity: 'error', chapterId: citation.chapterId, anchor: null,
+        message: `${label} cites ${citation.missingLocators.join(', ')} of “${citation.sourceTitle}”, but ${citation.missingLocators.length === 1 ? 'that passage no longer exists' : 'those passages no longer exist'} in the source.`,
+        evidence: `Cited passages: ${citation.locators.join(', ')}.`,
+      });
+      continue;
+    }
+    if (citation.state === 'changed') {
+      add({
+        ruleId: 'citation.source-changed', category: 'evidence', severity: 'warning', chapterId: citation.chapterId, anchor: null,
+        message: `${label} cites “${citation.sourceTitle}”, but ${citation.reason.toLowerCase()} Check that the chapter still says what the source says.`,
+        evidence: `Cited passages: ${citation.locators.join(', ') || 'none recorded'}.`,
+      });
+      continue;
+    }
+    if (citation.state === 'unverifiable') {
+      add({
+        ruleId: 'citation.unverifiable', category: 'evidence', severity: 'info', chapterId: citation.chapterId, anchor: null,
+        message: `${label} cites “${citation.sourceTitle}”, but that source has no current text to check the citation against.`,
+        evidence: citation.note || `Cited passages: ${citation.locators.join(', ') || 'none recorded'}.`,
+      });
+    }
   }
   return { findings: out.slice(0, MAX_FINDINGS), truncated: out.length > MAX_FINDINGS };
 }

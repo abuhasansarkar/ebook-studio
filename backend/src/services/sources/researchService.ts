@@ -1,9 +1,10 @@
+import { assessCitation, digestOfLocators } from '@ebook/shared';
 import { prisma } from '../../database/prisma.js';
 import { badRequest, notFound } from '../../utils/errors.js';
 import { getOwnedBook } from '../books/bookService.js';
 import { finalizeAnswer, finalizeSummary, retrievePassages } from './retrieval.js';
 import { sourceAnswerer } from '../ai/sourceAnswerer.js';
-import type { StoredPassage } from './sourceService.js';
+import { passagesOfLatestVersion, type StoredPassage } from './sourceService.js';
 
 /**
  * S11 research workspace.
@@ -16,7 +17,7 @@ import type { StoredPassage } from './sourceService.js';
 /** The passages of the given sources, newest extraction first. */
 async function loadPassages(userId: string, bookId: string, sourceIds: string[]) {
   const sources = await prisma.researchSource.findMany({
-    where: { bookId, userId, ...(sourceIds.length ? { id: { in: sourceIds } } : {}) },
+    where: { bookId, userId, deletedAt: null, ...(sourceIds.length ? { id: { in: sourceIds } } : {}) },
     select: { id: true, title: true, status: true, version: true },
   });
   if (!sources.length) return [];
@@ -68,7 +69,7 @@ export const researchService = {
 
   /** The passages cited by an answer, so a click opens the real text. */
   async passage(userId: string, sourceId: string, locator: string) {
-    const source = await prisma.researchSource.findFirst({ where: { id: sourceId, userId, book: { deletedAt: null } }, select: { id: true, title: true, version: true, bookId: true } });
+    const source = await prisma.researchSource.findFirst({ where: { id: sourceId, userId, deletedAt: null, book: { deletedAt: null } }, select: { id: true, title: true, version: true, bookId: true } });
     if (!source) throw notFound('Source');
     const version = await prisma.sourceVersion.findFirst({ where: { sourceId: source.id }, orderBy: { version: 'desc' }, select: { passages: true, version: true } });
     if (!version) throw notFound('Source version');
@@ -89,18 +90,42 @@ export const researchService = {
     if (!chapter) throw notFound('Chapter');
     const links = await prisma.chapterSourceLink.findMany({
       where: { chapterId },
-      include: { source: { select: { id: true, title: true, version: true, status: true, updatedAt: true } } },
+      include: { source: { select: { id: true, title: true, version: true, status: true, updatedAt: true, deletedAt: true } } },
     });
+    // The passages of the current extraction of each cited source, so a
+    // citation can be compared against the text it now points at.
+    const passageMap = new Map<string, StoredPassage[]>();
+    for (const link of links) {
+      if (passageMap.has(link.sourceId)) continue;
+      passageMap.set(link.sourceId, await passagesOfLatestVersion(link.sourceId));
+    }
     const citations = links.map((link) => {
       const locators = (link.locators as unknown as string[]) ?? [];
+      const passages = passageMap.get(link.sourceId) ?? [];
+      const assessment = assessCitation({
+        linkedVersion: link.sourceVersion,
+        currentVersion: link.source.version,
+        sourceDeleted: !!link.source.deletedAt,
+        sourceStatus: link.source.status,
+        locators,
+        availableLocators: passages.map((p) => p.locator),
+        linkedDigest: link.passageDigest,
+        currentDigest: digestOfLocators(passages, locators),
+      });
       return {
         id: link.id,
         sourceId: link.sourceId,
         sourceTitle: link.source.title,
         note: link.note,
         locators,
-        /** True when the source was re-uploaded after the link was made. */
-        stale: link.source.status !== 'ready',
+        /** True when the citation no longer rests on the text it was made from. */
+        stale: assessment.changed,
+        /** The exact state of the citation. */
+        state: assessment.state,
+        /** Why the citation is not current, when it is not. */
+        reason: assessment.reason,
+        /** The cited passages that no longer exist. */
+        missingLocators: assessment.missingLocators,
         updatedAt: link.source.updatedAt,
       };
     });

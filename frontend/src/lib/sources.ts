@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   ChapterSourceLink,
+  CitationState,
   EvidencePassage,
   ExtractedPassage,
   ExtractionState,
@@ -83,7 +84,14 @@ export interface ChapterCitations {
     sourceTitle: string;
     note: string;
     locators: string[];
+    /** True when the citation no longer rests on the text it was made from. */
     stale: boolean;
+    /** The exact state of the citation. */
+    state: CitationState;
+    /** Why the citation is not current, when it is not. */
+    reason: string;
+    /** The cited passages that no longer exist. */
+    missingLocators: string[];
     updatedAt: string;
   }[];
 }
@@ -222,13 +230,22 @@ export function useLinkSource(sourceId: string, bookId: string) {
   });
 }
 
-/** Deletes a source. The chapters it supported are kept; only the link goes. */
+/**
+ * Deletes a source.
+ *
+ * The chapters it supported are kept, and the citations that pointed at it are
+ * now reported as resting on text that is gone. The quality report and the
+ * chapter citations are invalidated so both show that.
+ */
 export function useDeleteSource(bookId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (sourceId: string) => api.delete(`/sources/${sourceId}`),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: sourceKeys.list(bookId) });
+      void qc.invalidateQueries({ queryKey: ["chapter-citations"] });
+      void qc.invalidateQueries({ queryKey: ["quality-report", bookId] });
+      void qc.invalidateQueries({ queryKey: ["quality-reports", bookId] });
     },
   });
 }

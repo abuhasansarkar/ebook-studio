@@ -15,7 +15,7 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { SOURCE_FORMAT_LABELS, type SourceFormat } from "@ebook/shared";
+import { CITATION_STATE_LABELS, SOURCE_FORMAT_LABELS, type SourceFormat } from "@ebook/shared";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Select, Textarea } from "@/components/ui/form";
 import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader } from "@/components/ui/misc";
@@ -334,7 +334,9 @@ function SourceDetail({
           size="sm"
           aria-label={`Delete source ${source.title}`}
           onClick={() => {
-            if (!confirm(`Remove "${source.title}"? The chapters it supported are kept.`)) return;
+            // The chapters are kept, but the citations that rested on this
+            // source are now reported as pointing at text that is gone.
+            if (!confirm(`Remove "${source.title}"? The chapters it supported are kept, but the citations that point at it will be reported as changed.`)) return;
             remove.mutate(source.id, {
               onSuccess: () => toast.success("Source removed."),
               onError: (e) => toast.error(errorMessage(e)),
@@ -798,15 +800,16 @@ function ChapterCitationsPanel({
             <p className="text-sm text-muted-foreground">This chapter has no sources yet.</p>
           ) : (
             citations.data.citations.map((c) => (
-              <div key={c.id} className="rounded-xl border border-border p-3 text-sm">
+              <div key={c.id} className="rounded-xl border border-border p-3 text-sm" data-citation-state={c.state}>
                 <div className="flex flex-wrap items-center gap-2">
                   <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
                   <Link href={`/app/books/${bookId}/research`} className="font-medium underline">
                     {c.sourceTitle}
                   </Link>
-                  {c.stale && <Badge tone="warning">Source changed</Badge>}
+                  {c.state !== "current" && <Badge tone="warning">{CITATION_STATE_LABELS[c.state]}</Badge>}
                 </div>
                 {c.note && <p className="mt-1 text-xs text-muted-foreground">{c.note}</p>}
+                {c.reason && <p className="mt-1 text-xs text-muted-foreground">{c.reason}</p>}
                 {c.locators.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {c.locators.map((l) => (

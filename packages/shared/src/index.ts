@@ -10,3 +10,4 @@ export * from './design';
 export * from './quality';
 export * from './exports';
 export * from './sources';
+export * from './citations';

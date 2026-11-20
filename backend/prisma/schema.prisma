@@ -548,6 +548,9 @@ model ResearchSource {
   sha256     String?
   bytes      Int                 @default(0)
   error      String?
+  /// Set when the author deleted the source. The row is kept so a chapter that
+  /// cited it can report that the text it rested on is gone.
+  deletedAt  DateTime?
   versions   SourceVersion[]
   links      ChapterSourceLink[]
   createdAt  DateTime            @default(now())
@@ -555,6 +558,7 @@ model ResearchSource {
 
   @@index([bookId, createdAt])
   @@index([userId, createdAt])
+  @@index([bookId, deletedAt])
   @@map("research_sources")
 }
 
@@ -597,6 +601,10 @@ model ChapterSourceLink {
   /// Locators of the passages that support this chapter.
   locators  Json           @default("[]")
   note      String         @default("")
+  /// The source version that was current when the link was made.
+  sourceVersion Int        @default(0)
+  /// Digest of the cited passages, so a changed text can be detected.
+  passageDigest String     @default("")
   createdAt DateTime       @default(now())
 
   @@unique([sourceId, chapterId])
