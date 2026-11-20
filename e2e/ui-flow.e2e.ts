@@ -438,6 +438,63 @@ try {
   await shot(page, 'design-export');
   log('interior design: template preview/apply/undo, matter save + reload, reader widths/text size, bundled Bengali fonts, real print sample, conflict review and design-aware export');
 
+  // Quality review (S09): free checks, anchored findings, editor highlight, terminology fix as a normal edit, review notes, stale reports, costed AI review.
+  const clickSummary = (text: string) => page.evaluate(t => { const el = Array.from(document.querySelectorAll('summary')).find(s => s.textContent?.includes(t)) as HTMLElement | undefined; if (!el) throw new Error(`No summary ${t}`); el.click(); }, text);
+  const cardLink = (text: string) => page.evaluate(t => Array.from(document.querySelectorAll('article')).find(a => a.textContent?.includes(t))?.querySelector('a')?.getAttribute('href') ?? null, text);
+  const seededChapter = await page.evaluate(async bookId => {
+    const list = (await (await fetch(`/api/v1/books/${bookId}/chapters`)).json()).chapters;
+    const chapter = (await (await fetch(`/api/v1/chapters/${list[0].id}`)).json()).chapter;
+    chapter.contentJson.content.push({ type: 'paragraph', content: [{ type: 'text', text: 'TODO: এখানে একটি উদাহরণ যোগ করুন।' }] }, { type: 'paragraph', content: [{ type: 'text', text: 'ফ্রিজ পরিষ্কার রাখুন। ফ্রিজারে খাবার রাখুন।' }] });
+    const r = await fetch(`/api/v1/chapters/${chapter.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: chapter.version, contentJson: chapter.contentJson }) });
+    if (!r.ok) throw new Error(`Seeding the review fixture failed: ${r.status}`);
+    return chapter.id as string;
+  }, currentBookId);
+  await page.goto(`${BASE}/app/books/${currentBookId}/quality`, { waitUntil: 'networkidle0' });
+  await waitText(page, 'No reviews yet');
+  await clickButton(page, 'Run checks (free)'); await waitText(page, 'Checks finished.');
+  await page.select('#f-category', 'content');
+  await waitText(page, 'Placeholder marker left in the text.');
+  await shot(page, 'quality-report');
+  const placeholderHref = await cardLink('Placeholder marker');
+  if (!placeholderHref?.includes(`chapter=${seededChapter}`) || !placeholderHref.includes('finding=')) throw new Error(`Finding link does not target the chapter: ${placeholderHref}`);
+  await page.goto(`${BASE}${placeholderHref}`, { waitUntil: 'networkidle0' });
+  await waitText(page, 'The passage is highlighted');
+  if (await page.$eval('[data-finding-highlight]', el => el.textContent) !== 'TODO') throw new Error('Editor did not highlight the anchored text');
+  await shot(page, 'quality-editor-highlight');
+  await clickButton(page, 'Mark resolved'); await waitText(page, 'Marked as resolved.');
+  // Add a terminology rule; the existing report becomes out of date.
+  await page.goto(`${BASE}/app/books/${currentBookId}/quality`, { waitUntil: 'networkidle0' });
+  await clickSummary('Voice and terminology');
+  await clickButton(page, 'Add term');
+  await page.type('#t-pref-0', 'ফ্রিজার'); await page.type('#t-avoid-0', 'ফ্রিজ');
+  await clickButton(page, 'Save voice and terminology'); await waitText(page, 'Voice and terminology (version 1)');
+  await waitText(page, 'Out of date');
+  await clickButton(page, 'Run checks again'); await waitText(page, 'Checks finished.');
+  await page.select('#f-category', 'consistency'); await waitText(page, 'Use “ফ্রিজার” instead of “ফ্রিজ”');
+  const termCards = await page.evaluate(() => Array.from(document.querySelectorAll('article')).filter(a => a.textContent?.includes('instead of “ফ্রিজ”')).length);
+  if (termCards !== 1) throw new Error(`Expected one whole-word terminology finding, found ${termCards}`);
+  await page.goto(`${BASE}${await cardLink('instead of “ফ্রিজ”')}`, { waitUntil: 'networkidle0' });
+  await clickButton(page, 'Replace with “ফ্রিজার”'); await waitText(page, 'Replacement applied');
+  await page.waitForFunction(async id => { const c = (await (await fetch(`/api/v1/chapters/${id}`)).json()).chapter; return JSON.stringify(c.contentJson).includes('ফ্রিজার পরিষ্কার রাখুন'); }, { timeout: 30000, polling: 1000 }, seededChapter);
+  // Dismissal needs a note and keeps attribution.
+  await page.goto(`${BASE}/app/books/${currentBookId}/quality`, { waitUntil: 'networkidle0' });
+  await page.select('#f-status', ''); await page.select('#f-category', 'content');
+  await page.evaluate(() => { const card = Array.from(document.querySelectorAll('article')).find(a => a.textContent?.includes('Placeholder marker') && a.textContent.includes('Dismiss…')); (Array.from(card!.querySelectorAll('button')).find(b => b.textContent?.includes('Dismiss…')) as HTMLButtonElement).click(); });
+  await page.waitForSelector('textarea[id^="note-"]');
+  await page.type('textarea[id^="note-"]', 'The example is added in the next chapter.');
+  await clickButton(page, 'Dismiss finding'); await waitText(page, 'Dismissed by E2E Tester');
+  // Costed AI review of one chapter (mock provider).
+  await clickSummary('AI review (optional');
+  await page.evaluate(() => { const boxes = Array.from(document.querySelectorAll<HTMLInputElement>('fieldset input[type="checkbox"]')); boxes.slice(1).forEach(b => { if (b.checked) b.click(); }); });
+  const creditsBeforeReview = await page.evaluate(async () => (await (await fetch('/api/v1/credits')).json()).wallet.balance);
+  await clickButton(page, 'Start AI review'); await waitText(page, 'AI suggestions', 60000);
+  await waitText(page, 'was discarded because its quote was not found');
+  const creditsAfterReview = await page.evaluate(async () => (await (await fetch('/api/v1/credits')).json()).wallet.balance);
+  const perChapter = await page.evaluate(async () => (await (await fetch('/api/v1/quality/config')).json()).creditsPerChapter);
+  if (creditsBeforeReview - creditsAfterReview !== perChapter) throw new Error(`AI review charged ${creditsBeforeReview - creditsAfterReview}, expected ${perChapter}`);
+  await shot(page, 'quality-ai');
+  log('quality review: anchored checks, editor highlight, resolve, terminology replacement as a normal saved edit, attributed dismissal, stale report and costed AI review');
+
   // Restore earlier planning after writing, preserving the manuscript.
   const chapterList = await page.evaluate(async bookId => JSON.stringify(await (await fetch(`/api/v1/books/${bookId}/chapters`)).json()), currentBookId);
   await page.goto(`${BASE}/app/books/${currentBookId}/outline`, { waitUntil: 'networkidle0' });

@@ -121,6 +121,8 @@ model Book {
   assetReferences AssetReference[]
   coverDesigns CoverDesign[]
   designs     BookDesign[]
+  contexts    BookContext[]
+  qualityReports QualityReport[]
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   archivedAt  DateTime?
@@ -223,7 +225,7 @@ model GenerationJob {
   user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   bookId           String
   book             Book      @relation(fields: [bookId], references: [id], onDelete: Cascade)
-  /// outline | chapters | image
+  /// outline | chapters | image | quality
   type             String
   /// queued | running | completed | failed | cancelled
   status           String    @default("queued")
@@ -235,6 +237,7 @@ model GenerationJob {
   sections GenerationSection[]
   assetId String?
   asset Asset? @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  qualityReport QualityReport?
   cancelRequested  Boolean   @default(false)
   creditsReserved  Int       @default(0)
   creditsCharged   Int       @default(0)
@@ -428,4 +431,70 @@ model BookDesign {
   createdAt DateTime @default(now())
   @@unique([bookId, version])
   @@map("book_designs")
+}
+
+/// Versioned voice and terminology used by quality checks and AI review.
+model BookContext {
+  id String @id @default(cuid())
+  bookId String
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  version Int
+  data Json
+  createdAt DateTime @default(now())
+  @@unique([bookId, version])
+  @@map("book_contexts")
+}
+
+/// A quality report over an exact input fingerprint. Analysis never edits the manuscript.
+model QualityReport {
+  id String @id @default(cuid())
+  bookId String
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  userId String
+  /// rules | ai
+  kind String
+  /// queued | running | completed | failed | cancelled (AI reports follow their job)
+  status String
+  rulesVersion Int
+  fingerprint String
+  /// Chapter ids/versions, design/context versions and other inputs the report was computed from
+  inputs Json
+  /// Counts by severity/category, coverage (checks run and not run), discarded AI references
+  summary Json?
+  jobId String? @unique
+  job GenerationJob? @relation(fields: [jobId], references: [id], onDelete: Restrict)
+  findings QualityFinding[]
+  createdAt DateTime @default(now())
+  completedAt DateTime?
+  @@index([bookId, createdAt])
+  @@map("quality_reports")
+}
+
+model QualityFinding {
+  id String @id @default(cuid())
+  reportId String
+  report QualityReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  /// Stable identity across reports (rule + chapter + quote) for carrying review decisions forward
+  key String
+  ruleId String
+  category String
+  severity String
+  /// rule | heuristic | ai
+  method String
+  chapterId String?
+  anchor Json?
+  message String
+  evidence String @default("")
+  suggestion Json?
+  needsHumanReview Boolean @default(false)
+  /// open | resolved | dismissed
+  status String @default("open")
+  reviewNote String @default("")
+  reviewedById String?
+  reviewedByName String?
+  reviewedAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([reportId])
+  @@index([key])
+  @@map("quality_findings")
 }

@@ -2,6 +2,8 @@
 
 import { AssetLibrary } from '@/components/assets/asset-library';
 import { PrivateImage } from './private-image';
+import { FindingHighlight } from './finding-highlight';
+import { FindingFocus } from './finding-focus';
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { TableKit } from "@tiptap/extension-table";
@@ -40,7 +42,7 @@ function SaveIndicator({ state, lastSavedAt, error, onRetry }: { state: SaveStat
   return <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><Check className="h-3.5 w-3.5 text-success" /> Saved {timeAgo(lastSavedAt)}</span>;
 }
 
-export function ChapterEditor({ ownerId, chapter, bookId, language }: { ownerId: string; chapter: ChapterFull; bookId: string; language: string }) {
+export function ChapterEditor({ ownerId, chapter, bookId, language, findingId }: { ownerId: string; chapter: ChapterFull; bookId: string; language: string; findingId?: string | null }) {
   const qc = useQueryClient();
   const lang = getLanguage(language);
   const [title, setTitle] = useState(chapter.title);
@@ -70,6 +72,7 @@ export function ChapterEditor({ ownerId, chapter, bookId, language }: { ownerId:
       Placeholder.configure({ placeholder: "Start writing this chapter…" }),
       CharacterCount,
       PrivateImage,
+      FindingHighlight,
     ],
     content: chapter.contentJson ?? { type: "doc", content: [{ type: "paragraph" }] },
     editorProps: {
@@ -114,6 +117,7 @@ export function ChapterEditor({ ownerId, chapter, bookId, language }: { ownerId:
         </div>
       </div>
 
+      {findingId && <FindingFocus editor={editor} findingId={findingId} bookId={bookId} editable={save.ready && save.drafts.length === 0 && !historyOpen} />}
       {save.storageError && <Alert tone="danger" className="m-4">{save.storageError}</Alert>}
       {save.drafts.length > 0 && <Alert tone="info" className="m-4">
         <p className="font-semibold">Unsaved browser drafts found</p>

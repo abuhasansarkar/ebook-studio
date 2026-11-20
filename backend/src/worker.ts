@@ -1,4 +1,5 @@
 import { imageGenerationService } from './services/covers/imageGenerationService.js';
+import { aiReviewService } from './services/quality/qualityService.js';
 import { cleanupAssets } from './services/assets/assetService.js';
 import { startEmailDispatcher } from "./services/email/otpDelivery.js";
 import { Worker } from "bullmq";
@@ -19,6 +20,7 @@ import { logger } from "./utils/logger.js";
  * after a crash, and the services resume without duplicating chapters or charges.
  */
 const workers = [
+  new Worker<GenerationJobData>(QUEUE_NAMES.quality, job => { assertCompatible(job.data); return aiReviewService.process(job.data.generationJobId); }, { connection: redisConnection(), prefix: workerQueuePrefix, concurrency: 2, lockDuration: 180000 }),
   new Worker<GenerationJobData>(QUEUE_NAMES.images, job => { assertCompatible(job.data); return imageGenerationService.process(job.data.generationJobId); }, { connection: redisConnection(), prefix: workerQueuePrefix, concurrency: 1, lockDuration: 180000 }),
   new Worker<GenerationJobData>(QUEUE_NAMES.outline, (job) => { assertCompatible(job.data); return outlineService.process(job.data.generationJobId); }, {
     connection: redisConnection(),
@@ -46,7 +48,7 @@ for (const w of workers) {
 }
 
 await Promise.all(workers.map((w) => w.waitUntilReady()));
-const stopHeartbeat = await startWorkerHeartbeat(["outline", "chapters", "exports", "images"]);
+const stopHeartbeat = await startWorkerHeartbeat(["outline", "chapters", "exports", "images", "quality"]);
 const stopDispatcher = startDispatcher();
 const stopEmailDispatcher = startEmailDispatcher();
 let cleaningAssets = false;

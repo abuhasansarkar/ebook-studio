@@ -7,3 +7,4 @@ export * from "./publishing";
 export * from './library';
 export * from './covers';
 export * from './design';
+export * from './quality';

@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 import path from "node:path";
 import { env } from "./env.js";
 
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 export const queueNamespace = env.QUEUE_NAMESPACE ?? env.NODE_ENV;
 export const queuePrefix = `ebook-${queueNamespace}`;
 
@@ -17,6 +17,7 @@ export function compatibilityFingerprint(config = env): string {
     mock: config.AI_MOCK,
     imageModel: config.OPENAI_IMAGE_MODEL,
     imageCredits: config.IMAGE_GENERATION_CREDITS,
+    qualityCredits: config.QUALITY_REVIEW_CREDITS,
     textModel: config.OPENAI_TEXT_MODEL,
     qualityModel: config.OPENAI_QUALITY_MODEL,
   })).digest("hex");

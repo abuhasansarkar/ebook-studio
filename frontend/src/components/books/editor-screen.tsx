@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { AlertTriangle, CheckCircle2, Circle, FileDown, Wand2 } from "lucide-react";
 import { getLanguage } from "@ebook/shared";
 import { ChapterEditor } from "@/components/editor/chapter-editor";
@@ -33,7 +34,10 @@ export function EditorScreen({ params }: { params: Promise<{ bookId: string }> }
   const book = useBook(bookId);
   const generating = book.data?.activeJob?.type === "chapters";
   const chapters = useChapters(bookId, generating);
-  const [pickedId, setSelectedId] = useState<string | null>(null);
+  const search = useSearchParams();
+  // Links from the quality review open a chapter and highlight one finding.
+  const [pickedId, setSelectedId] = useState<string | null>(search.get("chapter"));
+  const findingId = search.get("finding");
   const language = book.data?.language ?? "en";
   useBookFont(language);
 
@@ -111,7 +115,7 @@ export function EditorScreen({ params }: { params: Promise<{ bookId: string }> }
         ) : chapter.data.status === "generating" ? (
           <div className="p-8"><EmptyState icon={<Spinner className="h-6 w-6" />} title="This chapter is being written" description="It will open for editing as soon as the AI finishes." /></div>
         ) : (
-          <ChapterEditor key={`${session?.user.id}:${chapter.data.id}`} ownerId={session?.user.id ?? ""} chapter={chapter.data} bookId={bookId} language={language} />
+          <ChapterEditor key={`${session?.user.id}:${chapter.data.id}`} ownerId={session?.user.id ?? ""} chapter={chapter.data} bookId={bookId} language={language} findingId={chapter.data.id === search.get("chapter") ? findingId : null} />
         )}
       </section>
     </div>

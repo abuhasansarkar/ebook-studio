@@ -146,3 +146,16 @@ export async function missingGlyphs(texts: { role: 'body' | 'heading'; text: str
   }
   return findings;
 }
+
+/** Every distinct character in `texts` that no font in `stack` can draw. */
+export async function uncoveredCharacters(texts: string[], stack: FontId[]): Promise<Set<string>> {
+  const coverage = await Promise.all(stack.map(f => fontRegistry.coverage(f)));
+  const missing = new Set<string>();
+  const seen = new Set<string>();
+  for (const text of texts) for (const ch of text.normalize('NFC')) {
+    if (seen.has(ch)) continue;
+    seen.add(ch);
+    if (!IGNORED.test(ch) && !coverage.some(has => has(ch.codePointAt(0)!))) missing.add(ch);
+  }
+  return missing;
+}

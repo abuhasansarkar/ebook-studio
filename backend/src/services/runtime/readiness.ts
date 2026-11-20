@@ -83,7 +83,7 @@ async function check() {
       for (const capability of data.capabilities) available.add(capability);
     }
     checks.storage = validProbe;
-    checks.workers = ["outline", "chapters", "exports", "images"].every((c) => available.has(c));
+    checks.workers = ["outline", "chapters", "exports", "images", "quality"].every((c) => available.has(c));
   } catch { /* Readiness is degraded without leaking infrastructure details. */ }
   return checks;
 }

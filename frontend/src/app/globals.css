@@ -66,3 +66,7 @@ body {
   float: inline-start;
   height: 0;
 }
+
+/* Quality finding highlight in the editor (not saved with the manuscript). */
+.finding-highlight { background: #fde68a; border-radius: 2px; box-shadow: 0 0 0 2px #f59e0b; }
+@media (prefers-color-scheme: dark) { .finding-highlight { background: #78350f; color: #fff; } }
