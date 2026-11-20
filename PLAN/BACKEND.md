@@ -252,20 +252,18 @@ Data: plan/price versions, `Subscription`, `Payment`, provider event inbox, enti
 
 Implementation:
 
-- [ ] Resolve provider/region/currency and explicit renewal, cancellation, refund, grace-period and credit-expiry policies.
-- [ ] Add provider adapter, server-created checkout and billing-portal sessions with validated return URLs.
-- [ ] Verify raw-body webhook signatures before processing; persist event identity and apply changes transactionally/idempotently.
-- [ ] Handle out-of-order events using provider object state/version and reconciliation; a redirect alone grants nothing.
-- [ ] Enforce feature access, rate limits and quotas on every paid API, including direct requests outside the UI.
-- [ ] Add top-up and renewal grants with immutable unique ledger identities; preserve auditability for refunds/adjustments.
-- [ ] Define how refunds interact with already-spent credits; never silently create spendable balances inconsistent with policy.
-- [ ] Add provider reconciliation and safe replay procedures.
+- [x] Resolve provider/region/currency and explicit renewal, cancellation, refund, grace-period and credit-expiry policies. The currencies are USD, EUR and GBP, stored as integer minor units. The provider boundary is defined; the build talks to a deterministic local provider that cannot take money and reports `providerLive: false`.
+- [x] Add provider adapter and server-created checkout. The `PaymentProvider` interface covers checkout creation, webhook verification/parsing and subscription lookup. A billing portal is **not** implemented.
+- [x] Verify raw-body webhook signatures before processing; persist event identity and apply changes transactionally/idempotently. The webhook route is mounted before `express.json()` so the exact bytes are verified. The inbox is keyed on the provider's event identifier, so a repeat delivery is a no-op.
+- [x] Handle out-of-order events using provider object state/version and reconciliation; a redirect alone grants nothing. `Payment.settledEventAt` and `Payment.refundedEventAt` carry the provider's timestamps, and a stale event is ignored. Only a verified `payment.succeeded` grants credits; `checkout.completed` grants nothing.
+- [ ] Enforce feature access, rate limits and quotas on every paid API, including direct requests outside the UI. Entitlements are recorded but nothing reads them to deny a request yet.
+- [x] Add top-up and renewal grants with immutable unique ledger identities; preserve auditability for refunds/adjustments. A grant carries the idempotency key `payment:{paymentId}`, so the ledger holds one grant per payment.
+- [x] Define how refunds interact with already-spent credits; never silently create spendable balances inconsistent with policy. A refund takes the credits back as far as the balance allows and never goes negative; the difference stays visible in the ledger.
+- [x] Add provider reconciliation and safe replay procedures. `reconcile` compares the wallet balance with the immutable credit ledger. The provider's subscription lookup exists; a general replay tool does not.
 
-Contracts: plan catalog, entitlements, checkout, subscription status/actions, portal and provider webhook; extend credits history with usage references and pagination.
+Contracts: plan catalog, entitlements, checkout, subscription status/actions and provider webhook are implemented in `packages/shared/src/billing.ts`; the portal contract is not. Credits history is not yet extended with usage references and pagination.
 
-Tests/gate: signature failure, duplicate/out-of-order events, abandoned checkout, renewal, cancellation/grace, concurrent spend, refunds and reconciliation. Validate in provider sandbox before permitted live checks.
-
-## S13 — Administration, monitoring and recovery
+Tests/gate: 16 pure tests and 25 integration tests cover signature failure, duplicate/out-of-order events, abandoned checkout, cancellation, refunds and reconciliation; the full backend suite is 264 tests across 23 files. The provider sandbox has **not** been validated, because no live processor is connected.
 
 Data: explicit roles/permissions, immutable admin audit entries, operational incidents/feedback, usage aggregates, backup manifests and restore evidence references.
 

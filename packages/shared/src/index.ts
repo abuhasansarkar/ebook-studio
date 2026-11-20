@@ -11,3 +11,4 @@ export * from './quality';
 export * from './exports';
 export * from './sources';
 export * from './citations';
+export * from './billing';

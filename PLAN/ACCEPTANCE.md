@@ -23,7 +23,7 @@ Do not rerun the Mailpit-dependent browser journey against real Gmail. Use a ded
 | S09 | Known defects produce correctly anchored findings | Clean fixtures, edited/missing anchors and stale reports avoid misleading results | Curated report evaluation with detection limitations and browser navigation |
 | S10 | PDF/EPUB/DOCX validate, download and open | Bad assets, corrupt file, unavailable storage and interrupted upload never report false readiness | Validator reports, file hashes/downloads and reader/editor opening record |
 | S11 | Source import previews/applies and Q&A links real passages | Hostile file/prompt injection, unsupported scan and duplicate confirmation handled | Extraction/security tests, idempotent import and passage-level source review |
-| S12 | Verified purchase grants the correct entitlement/credits | Bad signature, duplicate/out-of-order event, refund and concurrent spend reconcile | Provider sandbox event records and independent ledger/entitlement assertions |
+| S12 | Verified purchase grants the correct entitlement/credits | Bad signature, duplicate/out-of-order event, refund and concurrent spend reconcile | Local provider event records and independent ledger/entitlement assertions; a live processor is not connected |
 | S13 | Operator diagnoses a failure and restores a backup safely | Ordinary user denied, unsafe intervention rejected, alert failure surfaced | Permission tests, audit trail, alert receipt and isolated restore report |
 | S14 | Destination package contains selected validated files/metadata | Missing files, stale input and foreign package access handled | ZIP manifest/checksums, rules version and manual publishing checklist review |
 | S15 | Marketing variants persist, edit and download | Regeneration preserves user edits; stale inputs and invented claims are reviewed | Asset/history tests, reviewed outputs and actual downloads |
@@ -413,7 +413,7 @@ Release boundaries:
 
 ## S11 private source imports and source-grounded research — 21 November 2026
 
-Status: core implementation complete and verified locally. This is not a production rollout, a marketplace certification, or a claim that an answer is factually correct. S12 remains the next ordered package.
+Status: core implementation complete and verified locally. This is not a production rollout, a marketplace certification, or a claim that an answer is factually correct. S12 is recorded in the iteration below.
 
 Implemented:
 
@@ -508,3 +508,79 @@ The report cross-references the citation; it does not judge whether the chapter 
 - The digest is a change detector, not a security control. It is a 32-bit FNV-1a hash so the shared package stays free of a Node dependency and usable in the browser; two different passages could in principle collide.
 - The tombstone keeps the source title, the link and the locators. The passages themselves are deleted with the extraction, so a deleted citation cannot be re-opened; the report can say the text is gone but cannot show what it said.
 - The evidence was produced locally against the fake AI provider and a local database. It was not run against a deployed stack or a production worker fleet, and no remote push or deployment was performed.
+
+## S12 paid plans — 21 November 2026
+
+Status: core implementation complete and verified locally against a local payment provider. **No live payment processor is connected and no money can be taken.** S13 remains the next ordered package.
+
+### The release gate
+
+> only verified payment state grants entitlements, and customer credit balances reconcile
+
+Both halves are enforced by the server, not by the browser. The browser starts a checkout and shows a state; it never writes credits, entitlements or a payment status. The only path that grants value is a webhook whose HMAC signature the server has verified against the raw request bytes.
+
+### What was built
+
+**Shared contract** — `packages/shared/src/billing.ts`
+
+- `Plan`, `Subscription`, `Payment`, `BillingState`, `CheckoutSession`, the entitlement keys and the payment/subscription statuses, with zod validation on the checkout body.
+- The currencies are `USD`, `EUR` and `GBP`. Prices are stored as integer minor units, so a price is never a floating-point value.
+- `eventGrantsCredits` names `payment.succeeded` as the only credit-granting event. `checkout.completed` is explicitly not one.
+- `signWebhook` / `verifyWebhookSignature` cover the body and a timestamp, so a captured body cannot be replayed indefinitely. The comparison is constant-time.
+- The HMAC-SHA256 and SHA-256 implementations are dependency-free so the shared package stays usable in the browser. They are checked against `node:crypto` by the tests.
+
+**Provider boundary** — `backend/src/services/billing/provider.ts`
+
+- A `PaymentProvider` interface with three duties: create a checkout, verify and parse a webhook, look up a subscription. The rest of the product does not know which provider it is talking to.
+- The local provider is deterministic and explicitly **not live**: its identifiers come from the checkout's idempotency key, and it signs its events with `PAYMENT_WEBHOOK_SECRET`. It cannot take money.
+
+**Data** — migration `20261123090000_paid_plans`
+
+- `Plan`, `Subscription`, `Payment`, `PaymentEvent` and `Entitlement`, with the relations from `User`.
+- A `Payment` records the provider's payment identifier, the provider's checkout identifier and the provider's customer reference, so a settlement event can be matched to the checkout it belongs to.
+- `PaymentEvent` is the webhook inbox. The provider's event identifier is unique, so a repeat delivery is a no-op.
+- `Payment.settledEventAt` and `Payment.refundedEventAt` carry the provider's timestamps, so an event that arrives out of order cannot undo newer state.
+
+**Service** — `backend/src/services/billing/billingService.ts`
+
+- A checkout creates a **pending** payment and nothing else. The idempotency key is `checkout:{userId}:{planId}`, so a second request returns the same pending payment instead of a second one.
+- The webhook is verified against the raw bytes **before** the payload is parsed. An invalid signature is refused and nothing is written.
+- Only a verified `payment.succeeded` grants credits. The credit grant carries the idempotency key `payment:{paymentId}`, so the ledger holds exactly one grant per payment.
+- Entitlements are written only from verified payment or subscription state. A one-off plan's capabilities come from the payment; a recurring plan's capabilities come from its subscription, and they are withdrawn when the subscription is cancelled.
+- A refund takes the credits back as far as the balance allows, so a customer who already spent them does not end up with a negative balance, and it withdraws the capabilities the payment granted. A second refund changes nothing.
+- `reconcile` compares the wallet balance with the immutable credit ledger and reports the difference.
+
+**Routes** — `backend/src/routes/billing.ts`
+
+| Route | Who | What |
+| --- | --- | --- |
+| `GET /billing/plans` | public | The catalog of active plans, and the provider's name and whether it is live. |
+| `GET /billing` | signed in | The author's subscription, entitlements, plans and payments. |
+| `POST /billing/checkout` | signed in | Starts a checkout. Grants nothing. |
+| `POST /billing/cancel` | signed in | Cancels the subscription and withdraws its capabilities. |
+| `GET /billing/payments` | signed in | The author's own payments, newest first. |
+| `POST /billing/webhook` | the provider | Raw-body, signature-verified event intake. Mounted before `express.json()`. |
+
+**The local provider's own server** — `backend/src/routes/local-provider.ts`
+
+A payment processor runs its own checkout page and then tells the merchant "this customer paid". The local provider stands in for that processor, so the merchant side is exercised exactly as it would be with a real one: `GET /api/v1/local-provider/pay/:session` shows the checkout the **merchant** created, and `POST` to it settles the payment by delivering a signed event through the same verification path a real callback takes. The route refuses to act when the build talks to a live provider.
+
+### Verification
+
+- 16 pure tests in `backend/tests/pure-billing-checks.test.ts` cover the currency rules, the entitlement rules, the credit-granting event set, the signature scheme and the hash vectors.
+- 25 integration tests in `backend/tests/billing.test.ts` cover the catalog, checkout, signature failure (invalid, missing, expired), the credit grant, `checkout.completed` granting nothing, a failed payment granting nothing, a repeated event, an out-of-order event, an unknown customer, refunds, a repeated refund, owner isolation, reconciliation, the provider boundary, the local provider's payment page and the recurring subscription lifecycle.
+- The full backend suite passes: **264 tests across 23 files**.
+- Shared, backend and frontend type checks pass; the frontend lint passes; the frontend production build completes with **28 routes**, including `/app/credits/billing` and `/app/credits/checkout`.
+- The browser journey `e2e/billing-flow.e2e.ts` (`pnpm --filter e2e run e2e:billing`) passes end to end: sign up → verify → the billing page shows the catalog and says the provider is not live → **a forged callback sent from the browser is refused and grants nothing** → a checkout is started and grants nothing on its own → the provider's payment page confirms it → the credits go from 100 to 600 and the capabilities appear → the payment is not counted twice → the subscription is cancelled and the capabilities are withdrawn.
+- The S11 journeys `e2e/sources-flow.e2e.ts` and `e2e/citation-impact-flow.e2e.ts` were re-run and still pass, so the billing work did not regress the import or citation paths.
+- The shared HMAC and SHA-256 outputs were compared directly with `node:crypto` and match.
+
+### Boundaries
+
+- **No live processor is connected.** The build talks to the local provider, which cannot take money and reports `providerLive: false`. Nothing here has been tested against a real processor's sandbox, and no money has moved.
+- The local provider is deterministic, so it cannot reproduce a real processor's failure modes: network partitions between the processor and the merchant, duplicate deliveries in flight, clock skew, or a processor that changes its event shape. The webhook contract is written to survive those, but they are not demonstrated.
+- The provider boundary covers checkout creation, webhook verification and subscription lookup. It does not yet cover a billing portal, saved payment methods, invoices, tax or a dunning process.
+- The refund policy is deliberately simple: a refund takes the credits back as far as the balance allows and never creates a negative balance. A customer who already spent the credits has their capabilities withdrawn but keeps the spent credits unrefunded, and the difference is visible in the ledger rather than silently forgiven.
+- The entitlement rules are published in the plan catalog, but the paid APIs do not yet gate on them. A free author can still call a paid endpoint directly; the entitlements exist and are recorded, but nothing reads them to deny a request yet. That is the remaining part of the gate and is not claimed here.
+- The plan catalog is seeded at startup and seeded plans are never overwritten, so a price change is a deliberate act rather than a side effect of a restart.
+- The evidence was produced locally against the fake AI provider, a local database and the local provider. It was not run against a deployed stack, and no deployment or remote push was performed.

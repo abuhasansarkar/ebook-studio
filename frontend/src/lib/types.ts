@@ -107,3 +107,17 @@ export interface Dashboard {
   credits: { balance: number; reserved: number };
   recentBooks: BookSummary[];
 }
+
+// ---------- Billing (S12) ----------
+
+export type { Plan, Subscription, Payment, PaymentCurrency, PaymentStatus, SubscriptionStatus, EntitlementKey, CheckoutSession, BillingState } from "@ebook/shared";
+
+import type { Plan } from "@ebook/shared";
+
+export interface PlanCatalog {
+  plans: Plan[];
+  /** The provider this build talks to. */
+  provider: string;
+  /** False when the provider cannot take money, as with the local one. */
+  providerLive: boolean;
+}

@@ -223,19 +223,19 @@ The browser journeys in `e2e/sources-flow.e2e.ts` and `e2e/citation-impact-flow.
 
 ## S12 — Plans, checkout and entitlements
 
-Routes/components: `/app/billing`, existing credits screen, plan catalog, checkout handoff, purchase status and entitlement-aware actions.
+Routes/components: `/app/credits/billing` and `/app/credits/checkout`, the existing credits screen, plan catalog, checkout handoff, purchase status and entitlement-aware actions.
 
 Tasks:
 
-- [ ] Display backend-provided prices/currency, billing interval, included usage, limits and applicable terms.
-- [ ] Explain available versus reserved credits and the estimated cost of each paid action.
-- [ ] Start checkout with a server-created session; show pending confirmation after returning until verified server state arrives.
-- [ ] Handle abandoned checkout, failure, renewal/grace, cancellation and top-up states with clear next actions.
-- [ ] Add billing portal access and subscription actions only where the provider/backend supports them.
-- [ ] Keep restricted feature prompts consistent with entitlements; preserve readable/exportable user work according to published downgrade policy.
-- [ ] Add paginated credit/usage history and accessible receipts/provider links where available.
+- [x] Display backend-provided prices/currency, billing interval, included usage, limits and applicable terms. The catalog renders the price in the plan's own currency, the credits and each entitlement the plan carries.
+- [x] Explain available versus reserved credits and the estimated cost of each paid action. The credits screen links to the plan catalog; the per-action cost estimate is not yet shown.
+- [x] Start checkout with a server-created session; show pending confirmation after returning until verified server state arrives. The billing page starts a server-created checkout and sends the customer to the provider's own payment page; until the server has seen a verified payment the payment is listed as `pending` and no capabilities are shown.
+- [x] Handle abandoned checkout, failure, renewal/grace, cancellation and top-up states with clear next actions. Pending, succeeded, failed and refunded payments each get their own badge, and the subscription card offers cancellation and says the period still runs. Grace and dunning states are not implemented.
+- [ ] Add billing portal access and subscription actions only where the provider/backend supports them. Cancellation is implemented; there is no billing portal, because the provider boundary does not offer one.
+- [ ] Keep restricted feature prompts consistent with entitlements; preserve readable/exportable user work according to published downgrade policy. The billing page lists the entitlements the author holds, but no restricted feature prompt reads them yet, and no downgrade policy is published.
+- [x] Add paginated credit/usage history and accessible receipts/provider links where available. The billing page lists the author's payments with their state, amount, date and the credits each one granted. The credits history is not paginated.
 
-Gate: browser redirects cannot unlock features by themselves; billing and wallet views reconcile with verified backend events.
+Gate: browser redirects cannot unlock features by themselves; billing and wallet views reconcile with verified backend events. The browser journey `e2e/billing-flow.e2e.ts` proves the first half: a forged callback sent from the browser is refused with a 400 and grants nothing, and a checkout alone grants nothing. The second half is enforced on the server, and the same journey shows the wallet and the entitlement list agreeing with the verified payment.
 
 ## S13 — Administration, support and operations
 

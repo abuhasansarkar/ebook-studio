@@ -1,4 +1,5 @@
 import { coverRouter } from './covers.js';
+import { billingRouter } from './billing.js';
 import { designRouter } from './design.js';
 import { qualityRouter } from './quality.js';
 import { sourceRouter } from './sources.js';
@@ -37,6 +38,7 @@ apiRouter.get("/config", accountController.publicConfig);
 // ---- Everything below requires a verified session ----
 apiRouter.use(requireAuth);
 apiRouter.use(assetRouter);
+apiRouter.use(billingRouter);
 apiRouter.use(coverRouter);
 apiRouter.use(designRouter);
 apiRouter.use(qualityRouter);

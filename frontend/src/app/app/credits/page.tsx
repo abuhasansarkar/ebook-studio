@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Coins } from "lucide-react";
 import { CREDIT_COSTS } from "@ebook/shared";
 import { PageHeader } from "@/components/app/app-shell";
@@ -26,7 +27,12 @@ export default function CreditsPage() {
               <p className="text-sm text-muted-foreground">Available</p>
               <p className="mt-1 text-4xl font-bold">{formatNumber(data.wallet.balance)}</p>
               {data.wallet.reserved > 0 && <p className="mt-1 text-sm text-muted-foreground">+ {data.wallet.reserved} reserved for running jobs</p>}
-              <p className="mt-4 text-xs text-muted-foreground">Paid plans and top-ups are coming soon.</p>
+              <p className="mt-4 text-xs text-muted-foreground">
+                <Link href="/app/credits/billing" className="text-primary-hover underline-offset-4 hover:underline">
+                  Buy a plan
+                </Link>{" "}
+                to add credits and unlock paid capabilities.
+              </p>
             </Card>
             <Card className="p-6">
               <p className="mb-3 text-sm font-semibold">What things cost</p>

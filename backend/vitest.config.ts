@@ -17,6 +17,10 @@ export default defineConfig({
       APP_URL: "http://localhost:3000",
       BETTER_AUTH_URL: "http://localhost:3000",
       BETTER_AUTH_SECRET: base.BETTER_AUTH_SECRET ?? "test-secret-test-secret-test-secret",
+      // The webhook secret the payment tests sign their events with. It is a
+      // test value: the same verification code runs in production with a real
+      // secret.
+      PAYMENT_WEBHOOK_SECRET: base.PAYMENT_WEBHOOK_SECRET ?? "test-webhook-secret-test-webhook-secret",
     },
     globalSetup: "tests/global-setup.ts",
     fileParallelism: false,

@@ -8,6 +8,8 @@ import { env } from "./config/env.js";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
 import { apiLimiter } from "./middleware/rateLimits.js";
 import { apiRouter } from "./routes/index.js";
+import { billingWebhookRouter } from "./routes/billing.js";
+import { localProviderRouter } from "./routes/local-provider.js";
 import { auth } from "./services/auth/auth.js";
 import { logger } from "./utils/logger.js";
 
@@ -38,6 +40,15 @@ export function createApp() {
 
   // Better Auth must see the raw body, so it is mounted before express.json().
   app.all("/api/v1/auth/*splat", toNodeHandler(auth));
+
+  // The payment webhook is verified against the raw bytes, so it is mounted
+  // before express.json() parses them. It needs no session: the signature is
+  // the authentication.
+  app.use("/api/v1", billingWebhookRouter);
+
+  // The local provider's own checkout server. It is only reachable while the
+  // build talks to the local provider, which cannot take money.
+  app.use("/api/v1/local-provider", localProviderRouter);
 
   app.use(express.json({ limit: "5mb" }));
   app.use("/api/v1", apiLimiter, apiRouter);

@@ -22,15 +22,18 @@ model User {
   sessions      Session[]
   accounts      Account[]
 
-  projects     Project[]
-  books        Book[]
-  wallet       CreditWallet?
-  transactions CreditTransaction[]
-  jobs         GenerationJob[]
-  exports      Export[]
-  operations   Operation[]
-  assets       Asset[]
-  sources      ResearchSource[]
+  projects      Project[]
+  books         Book[]
+  wallet        CreditWallet?
+  transactions  CreditTransaction[]
+  jobs          GenerationJob[]
+  exports       Export[]
+  operations    Operation[]
+  assets        Asset[]
+  sources       ResearchSource[]
+  subscriptions Subscription[]
+  payments      Payment[]
+  entitlements  Entitlement[]
 
   @@map("user")
 }
@@ -288,6 +291,144 @@ model CreditTransaction {
 
   @@index([userId, createdAt])
   @@map("credit_transactions")
+}
+
+// ---------------------------------------------------------------------------
+// S12 paid plans, subscriptions, payments and entitlements
+// ---------------------------------------------------------------------------
+
+/// A plan in the catalog. The price is in the currency's minor unit.
+model Plan {
+  id              String         @id
+  name            String
+  description     String         @default("")
+  /// Price in the currency's minor unit: 1200 is USD 12.00.
+  priceMinor      Int
+  currency        String         @default("USD")
+  /// Credits granted when the plan is bought.
+  credits         Int            @default(0)
+  /// The capabilities this plan carries.
+  entitlements    Json           @default("{}")
+  /// Only an active plan can be bought.
+  active          Boolean        @default(true)
+  /// Whether the plan renews at the end of its period.
+  recurring       Boolean        @default(false)
+  /// The provider's identifier for this plan, when it has one.
+  providerPriceId String?
+  subscriptions   Subscription[]
+  payments        Payment[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@map("plans")
+}
+
+/// A subscription to a plan. Only a verified provider event creates or changes one.
+model Subscription {
+  id                     String    @id @default(cuid())
+  userId                 String
+  user                   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planId                 String
+  plan                   Plan      @relation(fields: [planId], references: [id], onDelete: Restrict)
+  provider               String    @default("local")
+  /// The provider's identifier for this subscription.
+  providerSubscriptionId String    @unique
+  /// active | trialing | past_due | canceled | incomplete | incomplete_expired
+  status                 String
+  /// When the current period ends.
+  currentPeriodEnd       DateTime?
+  /// When the author cancelled. A cancelled subscription runs to the end of its period.
+  canceledAt             DateTime?
+  /// The provider event this state came from, so an older event cannot overwrite it.
+  lastEventAt            DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@index([userId, status])
+  @@map("subscriptions")
+}
+
+/// A payment. Credits are granted only from a verified payment.succeeded event.
+model Payment {
+  id                        String    @id @default(cuid())
+  userId                    String
+  user                      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planId                    String?
+  plan                      Plan?     @relation(fields: [planId], references: [id], onDelete: SetNull)
+  provider                  String    @default("local")
+  /// The provider's identifier for this payment.
+  providerPaymentId         String    @unique
+  /// The provider's identifier for the checkout that created this payment.
+  providerCheckoutId        String    @unique
+  /// The provider's identifier for the customer who is paying.
+  providerCustomerReference String    @default("")
+  /// Amount in the currency's minor unit.
+  amountMinor               Int
+  currency                  String    @default("USD")
+  /// pending | succeeded | failed | refunded | partially_refunded
+  status                    String    @default("pending")
+  /// The credits this payment granted.
+  credits                   Int       @default(0)
+  description               String    @default("")
+  /// The provider event that settled this payment.
+  settledEventAt            DateTime?
+  /// The provider event that refunded it.
+  refundedEventAt           DateTime?
+  /// The credits this payment took back, when it was refunded.
+  refundedCredits           Int       @default(0)
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@map("payments")
+}
+
+/// The webhook inbox. Every received event is recorded before it is applied.
+model PaymentEvent {
+  id              String    @id @default(cuid())
+  provider        String    @default("local")
+  /// The provider's identifier for this event. A repeat delivery is a no-op.
+  providerEventId String    @unique
+  type            String
+  /// The provider's timestamp, used to reject an event that arrives out of order.
+  occurredAt      DateTime
+  /// The payload as received.
+  payload         Json
+  /// The signature of the payload, so a stored event can be re-verified.
+  signature       String    @default("")
+  /// received | processed | ignored | failed
+  status          String    @default("received")
+  error           String?
+  processedAt     DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([provider, createdAt])
+  @@index([status])
+  @@map("payment_events")
+}
+
+/// A capability the author holds. Only verified payment state grants one.
+model Entitlement {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// The entitlement key, one of ENTITLEMENT_KEYS.
+  key       String
+  /// The value: a number, a boolean or a string.
+  value     Json
+  /// plan | subscription | payment
+  source    String    @default("subscription")
+  /// The record that granted it.
+  sourceId  String?
+  /// When the entitlement stops applying.
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([userId, key])
+  @@index([userId])
+  @@map("entitlements")
 }
 
 model Export {
@@ -591,21 +732,21 @@ model SourceVersion {
 
 /// A chapter and the source passages the author linked to it.
 model ChapterSourceLink {
-  id        String         @id @default(cuid())
-  sourceId  String
-  source    ResearchSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
-  bookId    String
-  book      Book           @relation(fields: [bookId], references: [id], onDelete: Cascade)
-  chapterId String
-  chapter   Chapter        @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  id            String         @id @default(cuid())
+  sourceId      String
+  source        ResearchSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  bookId        String
+  book          Book           @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  chapterId     String
+  chapter       Chapter        @relation(fields: [chapterId], references: [id], onDelete: Cascade)
   /// Locators of the passages that support this chapter.
-  locators  Json           @default("[]")
-  note      String         @default("")
+  locators      Json           @default("[]")
+  note          String         @default("")
   /// The source version that was current when the link was made.
-  sourceVersion Int        @default(0)
+  sourceVersion Int            @default(0)
   /// Digest of the cited passages, so a changed text can be detected.
-  passageDigest String     @default("")
-  createdAt DateTime       @default(now())
+  passageDigest String         @default("")
+  createdAt     DateTime       @default(now())
 
   @@unique([sourceId, chapterId])
   @@index([chapterId])

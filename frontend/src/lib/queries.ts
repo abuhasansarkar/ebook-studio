@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { BookBriefInput, Outline } from "@ebook/shared";
 import { operationRequest } from "./operation-request";
 import { api } from "./api";
-import type { BookDetail, BookSummary, ChapterFull, ChapterMeta, CreditTransaction, Dashboard, ExportRecord, ExportFormat, GenerationJob } from "./types";
+import type { BillingState, BookDetail, BookSummary, ChapterFull, ChapterMeta, CheckoutSession, CreditTransaction, Dashboard, ExportRecord, ExportFormat, GenerationJob, PlanCatalog } from "./types";
 
 export const qk = {
   dashboard: ["dashboard"] as const,
@@ -14,6 +14,8 @@ export const qk = {
   chapter: (id: string) => ["chapter", id] as const,
   exports: (bookId: string) => ["exports", bookId] as const,
   credits: ["credits"] as const,
+  plans: ["billing-plans"] as const,
+  billing: ["billing"] as const,
   config: ["config"] as const,
 };
 
@@ -76,6 +78,52 @@ export function useCredits() {
   return useQuery({
     queryKey: qk.credits,
     queryFn: () => api.get<{ wallet: { balance: number; reserved: number }; transactions: CreditTransaction[] }>("/credits"),
+  });
+}
+
+// ---------- Billing (S12) ----------
+
+export function usePlans() {
+  return useQuery({
+    queryKey: qk.plans,
+    queryFn: () => api.get<PlanCatalog>("/billing/plans"),
+    staleTime: 60_000,
+  });
+}
+
+export function useBilling() {
+  return useQuery({
+    queryKey: qk.billing,
+    queryFn: () => api.get<BillingState>("/billing"),
+  });
+}
+
+/**
+ * Starts a checkout.
+ *
+ * The checkout only creates a pending payment. Nothing is granted until the
+ * provider sends a verified payment event, so the browser cannot grant
+ * credits by itself.
+ */
+export function useStartCheckout() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (planId: string) => api.post<{ checkout: CheckoutSession }>("/billing/checkout", { planId }),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: qk.billing });
+      void qc.invalidateQueries({ queryKey: qk.credits });
+    },
+  });
+}
+
+export function useCancelSubscription() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<{ subscription: BillingState["subscription"] }>("/billing/cancel"),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: qk.billing });
+      void qc.invalidateQueries({ queryKey: qk.credits });
+    },
   });
 }
 

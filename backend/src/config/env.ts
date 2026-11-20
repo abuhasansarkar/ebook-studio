@@ -46,6 +46,13 @@ const envSchema = z.object({
   S3_ACCESS_KEY: z.string().optional().default(""),
   S3_SECRET_KEY: z.string().optional().default(""),
   S3_FORCE_PATH_STYLE: bool,
+
+  // ---------- Payments (S12) ----------
+  /** The secret a provider signs its webhooks with. A webhook without a valid
+   *  signature is refused, so this must never be a default value in production. */
+  PAYMENT_WEBHOOK_SECRET: z.string().min(16, "PAYMENT_WEBHOOK_SECRET must be at least 16 chars"),
+  /** How old a webhook signature may be, in seconds. */
+  PAYMENT_WEBHOOK_TOLERANCE_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
 });
 
 const parsed = envSchema.safeParse(process.env);
