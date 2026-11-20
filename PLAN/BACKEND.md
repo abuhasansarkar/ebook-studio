@@ -226,19 +226,21 @@ Data: `ImportJob`, `ResearchSource`, `SourceVersion`, extracted passage/locator 
 
 Implementation:
 
-- [ ] Start with notes, DOCX and text-extractable PDF; state unsupported scanned/OCR cases until OCR is implemented and validated.
-- [ ] Parse in isolated, resource-limited workers; reject active content, unsafe archives and oversized documents. Preserve original files privately.
-- [ ] Store extraction warnings and a proposed chapter mapping; require explicit confirmation before applying changes.
-- [ ] Make import application idempotent and version-aware; append/create by default rather than overwriting existing manuscripts.
-- [ ] Persist extracted source passages with stable page/paragraph locators and version hashes.
-- [ ] Add source-grounded summaries and Q&A with retrieved passages and evidence links. Abstain when sources do not support an answer.
-- [ ] Treat imported instructions as untrusted document content, not privileged AI instructions.
+- [x] Start with notes, DOCX and text-extractable PDF; state unsupported scanned/OCR cases until OCR is implemented and validated.
+- [x] Parse in isolated, resource-limited workers; reject active content, unsafe archives and oversized documents. Preserve original files privately.
+- [x] Store extraction warnings and a proposed chapter mapping; require explicit confirmation before applying changes.
+- [x] Make import application idempotent and version-aware; append/create by default rather than overwriting existing manuscripts.
+- [x] Persist extracted source passages with stable page/paragraph locators and version hashes.
+- [x] Add source-grounded summaries and Q&A with retrieved passages and evidence links. Abstain when sources do not support an answer.
+- [x] Treat imported instructions as untrusted document content, not privileged AI instructions.
 - [ ] Add URL ingestion only after SSRF controls: approved protocols, DNS/redirect revalidation, blocked internal addresses, bounded content and timeouts.
-- [ ] Enforce source deletion/retention semantics and flag citations broken by changed/deleted sources; update quality findings accordingly.
+- [x] Enforce source deletion/retention semantics and flag citations broken by changed/deleted sources; update quality findings accordingly.
 
 Contracts: import upload/status/preview/confirm; source CRUD/version/excerpts, chapter association, source-summary and Q&A operations.
 
 Tests/gate: corrupted/hostile files, extraction warnings, repeated confirmation, cross-owner sources, unsupported questions, accurate passage links, prompt injection and SSRF attempts.
+
+Status: core implementation complete and verified locally. `packages/shared/src/sources.ts` holds the shared contract (formats `notes`/`docx`/`pdf`, 5 MiB upload limit, 400,000-character extraction limit, 4,000-character passages, 2,000 passages, extraction states `ready`/`empty`/`scanned`/`failed`). The schema adds `ResearchSource`, `SourceVersion` and `ChapterSourceLink`, migrated by `backend/prisma/migrations/20261121090000_research_sources/migration.sql`. `backend/src/services/sources/extractors.ts` checks the declared type against the file signature and refuses empty, oversized, renamed-binary, corrupt and unsupported files; the DOCX reader reads only `word/document.xml` and never executes macros, embedded objects or external references; image-only PDFs are reported as `scanned` because OCR is not implemented; the notes reader keeps a heading with its own text and records the heading on the passage. Passage locators (`p1`, `p2`, …) are numbered across the whole document, so a locator always identifies one passage. `backend/src/services/sources/sourceService.ts` performs upload, extraction, preview, transactional apply, chapter linking and deletion; applying a version is idempotent because the version is claimed by setting `appliedAt` inside the transaction, so a repeated confirmation returns the same result and never duplicates chapters. `backend/src/services/sources/researchService.ts` and `backend/src/services/ai/sourceAnswerer.ts` answer questions and write summaries from retrieved passages only, turn an invented or missing citation into an abstention, and treat passage text as quoted evidence rather than instructions. `backend/src/routes/sources.ts` is registered in `backend/src/routes/index.ts`. The full backend suite (192 tests in 19 files, including 42 source tests), the shared and backend type checks, and the frontend lint and production build pass. URL ingestion is deliberately not implemented, so there is no SSRF surface to test. See ACCEPTANCE.md for the evidence record and the release boundaries.
 
 ## S12 — Payments, plans and entitlements
 

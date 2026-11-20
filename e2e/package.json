@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "e2e": "tsx ui-flow.e2e.ts"
+    "e2e": "tsx ui-flow.e2e.ts",
+    "e2e:sources": "tsx sources-flow.e2e.ts"
   },
   "devDependencies": {
     "puppeteer": "^25.18.1",

@@ -110,6 +110,38 @@ export async function validatePdf(buffer: Buffer): Promise<number> {
   return (await inspectPdf(buffer)).pageCount;
 }
 
+/**
+ * Extracts the text layer of a PDF.
+ *
+ * Chromium's PDF viewer is used because it is the only PDF text extractor this
+ * server has. The document is opened from a data URL with no network access, so
+ * a PDF that references an external resource cannot reach the network.
+ *
+ * A PDF whose pages carry no text (a scan) yields an empty string, which the
+ * caller reports as `scanned` rather than as an empty source.
+ */
+export async function extractPdfPageText(buffer: Buffer): Promise<string> {
+  const browser = await getBrowser();
+  const page = await browser.newPage();
+  try {
+    await page.setRequestInterception(true);
+    // Nothing is loaded from the network: the PDF is inlined and every request is refused.
+    page.on("request", (req) => void req.abort("blockedbyclient"));
+    const dataUrl = `data:application/pdf;base64,${buffer.toString('base64')}`;
+    await page.goto(dataUrl, { waitUntil: "load", timeout: 60_000 });
+    // Chromium's viewer renders the PDF into an embedded plugin; the text layer
+    // is read back through the accessibility tree.
+    await page.waitForFunction(() => document.querySelector('embed') !== null || document.body.innerText.length > 0, { timeout: 30_000 }).catch(() => undefined);
+    const text = await page.evaluate(() => {
+      const body = document.body?.innerText ?? '';
+      return body.replace(/\r\n/g, '\n');
+    });
+    return text;
+  } finally {
+    await page.close().catch(() => undefined);
+  }
+}
+
 async function inspectPdf(buffer: Buffer) {
   if (buffer.length < 1024) throw new Error("Generated PDF is unexpectedly small");
   if (buffer.subarray(0, 5).toString("latin1") !== "%PDF-") throw new Error("Generated file is not a PDF");

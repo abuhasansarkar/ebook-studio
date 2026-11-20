@@ -22,14 +22,15 @@ model User {
   sessions      Session[]
   accounts      Account[]
 
-  projects      Project[]
-  books         Book[]
-  wallet        CreditWallet?
-  transactions  CreditTransaction[]
-  jobs          GenerationJob[]
-  exports       Export[]
-  operations    Operation[]
-  assets        Asset[]
+  projects     Project[]
+  books        Book[]
+  wallet       CreditWallet?
+  transactions CreditTransaction[]
+  jobs         GenerationJob[]
+  exports      Export[]
+  operations   Operation[]
+  assets       Asset[]
+  sources      ResearchSource[]
 
   @@map("user")
 }
@@ -102,31 +103,33 @@ model Project {
 }
 
 model Book {
-  id          String          @id @default(cuid())
-  userId      String
-  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  projectId   String?
-  project     Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  title       String
-  subtitle    String          @default("")
-  language    String          @default("en")
-  bookType    String          @default("guide")
+  id              String              @id @default(cuid())
+  userId          String
+  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId       String?
+  project         Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  title           String
+  subtitle        String              @default("")
+  language        String              @default("en")
+  bookType        String              @default("guide")
   /// draft | outline_ready | generating | written | failed
-  status      String          @default("draft")
-  brief       BookBrief?
-  outlines    Outline[]
-  chapters    Chapter[]
-  jobs        GenerationJob[]
-  exports     Export[]
+  status          String              @default("draft")
+  brief           BookBrief?
+  outlines        Outline[]
+  chapters        Chapter[]
+  jobs            GenerationJob[]
+  exports         Export[]
   assetReferences AssetReference[]
-  coverDesigns CoverDesign[]
-  designs     BookDesign[]
-  contexts    BookContext[]
-  qualityReports QualityReport[]
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
-  archivedAt  DateTime?
-  deletedAt   DateTime?
+  coverDesigns    CoverDesign[]
+  designs         BookDesign[]
+  contexts        BookContext[]
+  qualityReports  QualityReport[]
+  sources         ResearchSource[]
+  sourceLinks     ChapterSourceLink[]
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  archivedAt      DateTime?
+  deletedAt       DateTime?
 
   @@index([userId, deletedAt, updatedAt])
   @@index([userId, deletedAt, archivedAt, createdAt, id], map: "books_owner_archive_created_idx")
@@ -160,26 +163,27 @@ model Outline {
 }
 
 model Chapter {
-  id          String   @id @default(cuid())
+  id          String              @id @default(cuid())
   bookId      String
-  book        Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  book        Book                @relation(fields: [bookId], references: [id], onDelete: Cascade)
   position    Int
   title       String
-  goal        String   @default("")
-  keyPoints   Json     @default("[]")
-  targetWords Int      @default(1500)
+  goal        String              @default("")
+  keyPoints   Json                @default("[]")
+  targetWords Int                 @default(1500)
   /// pending | generating | done | failed
-  status      String   @default("pending")
+  status      String              @default("pending")
   /// TipTap/ProseMirror JSON document
   contentJson Json?
   /// Rolling summary used as context for later chapters
   summary     String?
-  wordCount   Int      @default(0)
+  sourceLinks ChapterSourceLink[]
+  wordCount   Int                 @default(0)
   /// Optimistic concurrency control
-  version     Int      @default(0)
+  version     Int                 @default(0)
   error       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
   revisions   DocumentVersion[]
 
   @@unique([bookId, position])
@@ -203,52 +207,53 @@ model DocumentVersion {
 }
 
 model GenerationSection {
-  id String @id @default(cuid())
-  jobId String
-  job GenerationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  chapterId String
-  position Int
+  id           String        @id @default(cuid())
+  jobId        String
+  job          GenerationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  chapterId    String
+  position     Int
   /// section | summary | committed
-  kind String
-  text String
-  inputTokens Int @default(0)
-  outputTokens Int @default(0)
-  model String
-  createdAt DateTime @default(now())
+  kind         String
+  text         String
+  inputTokens  Int           @default(0)
+  outputTokens Int           @default(0)
+  model        String
+  createdAt    DateTime      @default(now())
+
   @@unique([jobId, chapterId, kind, position])
   @@map("generation_sections")
 }
 
 model GenerationJob {
-  id               String    @id @default(cuid())
-  userId           String
-  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  bookId           String
-  book             Book      @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  id              String              @id @default(cuid())
+  userId          String
+  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookId          String
+  book            Book                @relation(fields: [bookId], references: [id], onDelete: Cascade)
   /// outline | chapters | image | quality
-  type             String
+  type            String
   /// queued | running | completed | failed | cancelled
-  status           String    @default("queued")
-  progress         Int       @default(0)
-  total            Int       @default(0)
-  inputSnapshot Json?
-  leaseToken String?
-  leaseExpiresAt DateTime?
-  sections GenerationSection[]
-  assetId String?
-  asset Asset? @relation(fields: [assetId], references: [id], onDelete: Restrict)
-  qualityReport QualityReport?
-  cancelRequested  Boolean   @default(false)
-  creditsReserved  Int       @default(0)
-  creditsCharged   Int       @default(0)
-  inputTokens      Int       @default(0)
-  outputTokens     Int       @default(0)
-  model            String?
-  error            String?
-  startedAt        DateTime?
-  finishedAt       DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  status          String              @default("queued")
+  progress        Int                 @default(0)
+  total           Int                 @default(0)
+  inputSnapshot   Json?
+  leaseToken      String?
+  leaseExpiresAt  DateTime?
+  sections        GenerationSection[]
+  assetId         String?
+  asset           Asset?              @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  qualityReport   QualityReport?
+  cancelRequested Boolean             @default(false)
+  creditsReserved Int                 @default(0)
+  creditsCharged  Int                 @default(0)
+  inputTokens     Int                 @default(0)
+  outputTokens    Int                 @default(0)
+  model           String?
+  error           String?
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
 
   @@index([bookId, createdAt])
   @@index([userId])
@@ -286,35 +291,35 @@ model CreditTransaction {
 }
 
 model Export {
-  id         String    @id @default(cuid())
-  userId     String
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  bookId     String
-  book       Book      @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookId         String
+  book           Book      @relation(fields: [bookId], references: [id], onDelete: Cascade)
   /// pdf | epub | docx
-  format     String
+  format         String
   /// queued | processing | ready | failed
-  status     String    @default("queued")
-  storageKey String?
-  fileSize   Int?
-  pageCount  Int?
-  error      String?
+  status         String    @default("queued")
+  storageKey     String?
+  fileSize       Int?
+  pageCount      Int?
+  error          String?
   /// Book design version captured at request time (0 = default design); null for pre-S08 exports
-  designVersion Int?
+  designVersion  Int?
   /// Immutable design snapshot rendered by the worker; null for pre-S08 exports
   designSnapshot Json?
   /// Post-render findings such as glyphs drawn by non-bundled fonts
-  diagnostics Json?
+  diagnostics    Json?
   /// Immutable export snapshot: options, chapter versions, pinned assets and content hash
-  snapshot Json?
+  snapshot       Json?
   /// Validation result of the file read back from storage; null until the worker validates it
-  validation Json?
+  validation     Json?
   /// SHA-256 of the stored file, used to detect a replaced or corrupted artifact
-  sha256 String?
+  sha256         String?
   /// MIME type of the stored file
-  contentType String?
-  createdAt  DateTime  @default(now())
-  finishedAt DateTime?
+  contentType    String?
+  createdAt      DateTime  @default(now())
+  finishedAt     DateTime?
 
   @@index([bookId, createdAt])
   @@map("exports")
@@ -344,16 +349,16 @@ model Operation {
 
 /// Durable dispatch retries; processors must still guard domain-side effects.
 model QueueDispatch {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   namespace     String
   queue         String
   jobId         String
   fingerprint   String
   payload       Json
   dispatchedAt  DateTime?
-  attempts      Int      @default(0)
-  nextAttemptAt DateTime @default(now())
-  createdAt     DateTime @default(now())
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime  @default(now())
+  createdAt     DateTime  @default(now())
 
   @@unique([namespace, queue, jobId])
   @@index([namespace, dispatchedAt, nextAttemptAt])
@@ -362,147 +367,239 @@ model QueueDispatch {
 
 /// Short-lived encrypted OTP delivery; never exposes recipient or code in logs/API.
 model EmailDelivery {
-  id String @id @default(cuid())
-  verificationId String @unique
-  runtimeId String
-  type String
-  payload String?
-  status String @default("queued")
-  attempts Int @default(0)
-  nextAttemptAt DateTime @default(now())
-  expiresAt DateTime
-  leaseToken String?
+  id             String    @id @default(cuid())
+  verificationId String    @unique
+  runtimeId      String
+  type           String
+  payload        String?
+  status         String    @default("queued")
+  attempts       Int       @default(0)
+  nextAttemptAt  DateTime  @default(now())
+  expiresAt      DateTime
+  leaseToken     String?
   leaseExpiresAt DateTime?
-  failureCode String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  failureCode    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
   @@index([runtimeId, status, nextAttemptAt])
   @@map("email_deliveries")
 }
 
 /// Only sanitized raster bytes become ready. Originals are never persisted.
 model Asset {
-  id String @id @default(cuid())
-  userId String
-  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
-  storageKey String @unique
-  status String @default("processing")
-  mediaType String @default("image/webp")
-  sha256 String
-  width Int
-  height Int
-  bytes Int
-  alt String @default("")
-  caption String @default("")
-  provenance String @default("user_upload")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String           @id @default(cuid())
+  userId     String
+  user       User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  storageKey String           @unique
+  status     String           @default("processing")
+  mediaType  String           @default("image/webp")
+  sha256     String
+  width      Int
+  height     Int
+  bytes      Int
+  alt        String           @default("")
+  caption    String           @default("")
+  provenance String           @default("user_upload")
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
   references AssetReference[]
-  imageJobs GenerationJob[]
+  imageJobs  GenerationJob[]
+
   @@index([userId, status, id])
   @@map("assets")
 }
 
 /// Conservative lifetime pin: keeps chapter history and copied manuscripts readable.
 model AssetReference {
-  assetId String
-  asset Asset @relation(fields: [assetId], references: [id], onDelete: Restrict)
-  bookId String
-  book Book @relation(fields: [bookId], references: [id], onDelete: Restrict)
+  assetId   String
+  asset     Asset    @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  bookId    String
+  book      Book     @relation(fields: [bookId], references: [id], onDelete: Restrict)
   createdAt DateTime @default(now())
+
   @@id([assetId, bookId])
   @@map("asset_references")
 }
 
 model CoverDesign {
-  id String @id @default(cuid())
-  bookId String
-  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
-  version Int
-  data Json
+  id        String   @id @default(cuid())
+  bookId    String
+  book      Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  version   Int
+  data      Json
   createdAt DateTime @default(now())
+
   @@unique([bookId, version])
   @@map("cover_designs")
 }
 
 /// Immutable interior design versions. Template application and restore create new versions.
 model BookDesign {
-  id String @id @default(cuid())
-  bookId String
-  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
-  version Int
-  data Json
+  id        String   @id @default(cuid())
+  bookId    String
+  book      Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  version   Int
+  data      Json
   /// save | template | restore
-  action String
+  action    String
   /// e.g. template id/version or restored version
-  detail String @default("")
+  detail    String   @default("")
   createdAt DateTime @default(now())
+
   @@unique([bookId, version])
   @@map("book_designs")
 }
 
 /// Versioned voice and terminology used by quality checks and AI review.
 model BookContext {
-  id String @id @default(cuid())
-  bookId String
-  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
-  version Int
-  data Json
+  id        String   @id @default(cuid())
+  bookId    String
+  book      Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  version   Int
+  data      Json
   createdAt DateTime @default(now())
+
   @@unique([bookId, version])
   @@map("book_contexts")
 }
 
 /// A quality report over an exact input fingerprint. Analysis never edits the manuscript.
 model QualityReport {
-  id String @id @default(cuid())
-  bookId String
-  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
-  userId String
+  id           String           @id @default(cuid())
+  bookId       String
+  book         Book             @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  userId       String
   /// rules | ai
-  kind String
+  kind         String
   /// queued | running | completed | failed | cancelled (AI reports follow their job)
-  status String
+  status       String
   rulesVersion Int
-  fingerprint String
+  fingerprint  String
   /// Chapter ids/versions, design/context versions and other inputs the report was computed from
-  inputs Json
+  inputs       Json
   /// Counts by severity/category, coverage (checks run and not run), discarded AI references
-  summary Json?
-  jobId String? @unique
-  job GenerationJob? @relation(fields: [jobId], references: [id], onDelete: Restrict)
-  findings QualityFinding[]
-  createdAt DateTime @default(now())
-  completedAt DateTime?
+  summary      Json?
+  jobId        String?          @unique
+  job          GenerationJob?   @relation(fields: [jobId], references: [id], onDelete: Restrict)
+  findings     QualityFinding[]
+  createdAt    DateTime         @default(now())
+  completedAt  DateTime?
+
   @@index([bookId, createdAt])
   @@map("quality_reports")
 }
 
 model QualityFinding {
-  id String @id @default(cuid())
-  reportId String
-  report QualityReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  id               String        @id @default(cuid())
+  reportId         String
+  report           QualityReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
   /// Stable identity across reports (rule + chapter + quote) for carrying review decisions forward
-  key String
-  ruleId String
-  category String
-  severity String
+  key              String
+  ruleId           String
+  category         String
+  severity         String
   /// rule | heuristic | ai
-  method String
-  chapterId String?
-  anchor Json?
-  message String
-  evidence String @default("")
-  suggestion Json?
-  needsHumanReview Boolean @default(false)
+  method           String
+  chapterId        String?
+  anchor           Json?
+  message          String
+  evidence         String        @default("")
+  suggestion       Json?
+  needsHumanReview Boolean       @default(false)
   /// open | resolved | dismissed
-  status String @default("open")
-  reviewNote String @default("")
-  reviewedById String?
-  reviewedByName String?
-  reviewedAt DateTime?
-  createdAt DateTime @default(now())
+  status           String        @default("open")
+  reviewNote       String        @default("")
+  reviewedById     String?
+  reviewedByName   String?
+  reviewedAt       DateTime?
+  createdAt        DateTime      @default(now())
+
   @@index([reportId])
   @@index([key])
   @@map("quality_findings")
+}
+
+// ---------------------------------------------------------------------------
+// S11 sources and imports
+// ---------------------------------------------------------------------------
+
+/// A private document the author imported. The original file stays private.
+model ResearchSource {
+  id         String              @id @default(cuid())
+  userId     String
+  user       User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookId     String
+  book       Book                @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  title      String
+  /// notes | docx | pdf
+  format     String
+  /// Where the document came from, in the author's own words.
+  provenance String              @default("")
+  /// Permission or licensing note, in the author's own words.
+  license    String              @default("")
+  /// Current extracted version; 0 until a file has been extracted.
+  version    Int                 @default(0)
+  /// pending | ready | empty | scanned | failed
+  status     String              @default("pending")
+  /// Storage key of the original uploaded file; null once it has been removed.
+  storageKey String?
+  /// SHA-256 of the original uploaded bytes.
+  sha256     String?
+  bytes      Int                 @default(0)
+  error      String?
+  versions   SourceVersion[]
+  links      ChapterSourceLink[]
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @default(now())
+
+  @@index([bookId, createdAt])
+  @@index([userId, createdAt])
+  @@map("research_sources")
+}
+
+/// An immutable extraction of one uploaded file. Citations point at a version.
+model SourceVersion {
+  id             String         @id @default(cuid())
+  sourceId       String
+  source         ResearchSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  version        Int
+  /// notes | docx | pdf
+  format         String
+  /// SHA-256 of the original uploaded bytes.
+  sha256         String
+  bytes          Int
+  /// ready | empty | scanned | failed
+  status         String
+  passageCount   Int            @default(0)
+  characterCount Int            @default(0)
+  /// Extraction warnings: truncated passages, unsupported elements, missing text layer.
+  warnings       Json           @default("[]")
+  /// Extracted passages with their stable locators.
+  passages       Json           @default("[]")
+  /// Set when this version was applied to the manuscript.
+  appliedAt      DateTime?
+  createdAt      DateTime       @default(now())
+
+  @@unique([sourceId, version])
+  @@map("source_versions")
+}
+
+/// A chapter and the source passages the author linked to it.
+model ChapterSourceLink {
+  id        String         @id @default(cuid())
+  sourceId  String
+  source    ResearchSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  bookId    String
+  book      Book           @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  chapterId String
+  chapter   Chapter        @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  /// Locators of the passages that support this chapter.
+  locators  Json           @default("[]")
+  note      String         @default("")
+  createdAt DateTime       @default(now())
+
+  @@unique([sourceId, chapterId])
+  @@index([chapterId])
+  @@map("chapter_source_links")
 }

@@ -204,16 +204,18 @@ Routes/components: add an import entry to creation/library and `/app/research?bo
 
 Tasks:
 
-- [ ] Let users choose notes, DOCX or supported PDF input and explain extraction/OCR limitations before upload.
-- [ ] Show source provenance, permission reminder, processing progress and extraction warnings.
-- [ ] Preview chapter mapping and extracted content; require confirmation before creation/merge and protect existing manuscripts.
-- [ ] Keep import failure and retry independent from the original source file and existing book content.
-- [ ] Add source organization, chapter associations, excerpts and stable page/paragraph navigation.
-- [ ] Show source-based summaries/Q&A with supporting passages; distinguish absent support and generated interpretation.
-- [ ] Warn when citations reference changed/deleted sources and connect these to quality reports.
+- [x] Let users choose notes, DOCX or supported PDF input and explain extraction/OCR limitations before upload.
+- [x] Show source provenance, permission reminder, processing progress and extraction warnings.
+- [x] Preview chapter mapping and extracted content; require confirmation before creation/merge and protect existing manuscripts.
+- [x] Keep import failure and retry independent from the original source file and existing book content.
+- [x] Add source organization, chapter associations, excerpts and stable page/paragraph navigation.
+- [x] Show source-based summaries/Q&A with supporting passages; distinguish absent support and generated interpretation.
+- [x] Warn when citations reference changed/deleted sources and connect these to quality reports.
 - [ ] Expose URL import only after backend protections and supported extraction are available.
 
 Gate: imported content remains editable; duplicate confirmation creates no duplicate chapters; source answers and citation clicks open genuine supporting passages.
+
+Status: core implementation complete and verified locally. The research workspace lives at `/app/books/[bookId]/research` (`frontend/src/app/app/books/[bookId]/research/page.tsx`) and is reachable from a "Research" entry in the book navigation (`frontend/src/components/books/book-header.tsx`). `frontend/src/components/research/research-workspace.tsx` provides the import form (format, file, title, provenance, permission, with the size limit and the per-format limits explained before upload), the source list with its extraction state, the source detail, the extraction preview with a selectable chapter mapping, the chapter-source picker, the question and summary panel with the passages it rests on, and the chapter-citations panel. The imported text is never written into the manuscript before the author confirms the preview, and the screen says so where the author would otherwise expect a write. A citation opens the exact supporting passage in a dialog, and a citation whose source has changed is flagged as such. `frontend/src/lib/sources.ts` holds the typed API layer. The browser journey in `e2e/sources-flow.e2e.ts` covers the whole path — upload, extraction with stable locators, a hostile file refused, the preview before any write, the confirmed import, a repeated confirmation that changes nothing, linking a source to a chapter, opening a cited passage, a supported answer with visible evidence, and an unsupported question that abstains — and it passes against the isolated stack with the deterministic fake AI provider. The frontend type check, lint and production build pass. URL import is not exposed because the backend does not implement it. See ACCEPTANCE.md for the evidence record and the release boundaries.
 
 ## S12 — Plans, checkout and entitlements
 

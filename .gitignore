@@ -20,4 +20,6 @@ backend/assets/fonts/fetched
 .env.e2e
 backend/storage-e2e
 e2e-shots
+e2e-shots-*
 backend/e2e-exports-check.sql
+.tmp-logs
