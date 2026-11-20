@@ -1,3 +1,4 @@
+import { submitOperation } from "../services/operations/operationService.js";
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { userId } from "../middleware/requireAuth.js";
@@ -10,7 +11,7 @@ export const exportController = {
     res.json({ exports: await exportService.list(userId(req), String(req.params.bookId)) });
   },
   async create(req: Request, res: Response) {
-    res.status(202).json({ export: await exportService.request(userId(req), String(req.params.bookId), req.body.format) });
+    await submitOperation(req, res, userId(req), "export", String(req.params.bookId), async () => ({ status: 202, body: { export: await exportService.request(userId(req), String(req.params.bookId), req.body.format) } }));
   },
   async download(req: Request, res: Response) {
     const file = await exportService.getForDownload(userId(req), String(req.params.exportId));

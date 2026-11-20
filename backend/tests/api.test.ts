@@ -54,11 +54,17 @@ describe("auth & access control", () => {
     const a = await createUser("owner");
     const b = await createUser("intruder");
     const bookId = await bookWithOutline(a.agent);
-    await a.agent.post(`/api/v1/books/${bookId}/outline/approve`).set("Origin", ORIGIN).expect(200);
+    await a.agent.post(`/api/v1/books/${bookId}/outline/approve`).set("Origin", ORIGIN).send({ version: 1 }).expect(200);
     const chapter = await prisma.chapter.findFirstOrThrow({ where: { bookId } });
 
     expect((await b.agent.get(`/api/v1/books/${bookId}`)).status).toBe(404);
     expect((await b.agent.get(`/api/v1/chapters/${chapter.id}`)).status).toBe(404);
+    await b.agent.get(`/api/v1/books/${bookId}/publishing-checks?destination=etsy`).expect(404);
+    await a.agent.get(`/api/v1/books/${bookId}/publishing-checks?destination=unknown`).expect(400);
+    const report = (await a.agent.get(`/api/v1/books/${bookId}/publishing-checks?destination=kdp_ebook`).expect(200)).body.report;
+    expect(report.status).toBe('blocked');
+    expect(report.chapterVersions).toHaveLength(3);
+    expect(report.checks.some((c: { id: string; status: string }) => c.id === 'format' && c.status === 'blocker')).toBe(true);
     expect((await b.agent.patch(`/api/v1/chapters/${chapter.id}`).set("Origin", ORIGIN).send({ version: 0, title: "hacked" })).status).toBe(404);
     expect((await b.agent.post(`/api/v1/books/${bookId}/generate`).set("Origin", ORIGIN)).status).toBe(404);
   });
@@ -83,7 +89,7 @@ describe("book pipeline", () => {
 
     // Generation requires approval
     expect((await agent.post(`/api/v1/books/${bookId}/generate`).set("Origin", ORIGIN)).status).toBe(409);
-    await agent.post(`/api/v1/books/${bookId}/outline/approve`).set("Origin", ORIGIN).expect(200);
+    await agent.post(`/api/v1/books/${bookId}/outline/approve`).set("Origin", ORIGIN).send({ version: 1 }).expect(200);
 
     const start = await agent.post(`/api/v1/books/${bookId}/generate`).set("Origin", ORIGIN);
     expect(start.status).toBe(202);
@@ -103,7 +109,7 @@ describe("book pipeline", () => {
   it("resumes after a crash without rewriting or double-charging finished chapters", async () => {
     const { agent, user } = await createUser("restart");
     const bookId = await bookWithOutline(agent);
-    await agent.post(`/api/v1/books/${bookId}/outline/approve`).set("Origin", ORIGIN).expect(200);
+    await agent.post(`/api/v1/books/${bookId}/outline/approve`).set("Origin", ORIGIN).send({ version: 1 }).expect(200);
     const start = await agent.post(`/api/v1/books/${bookId}/generate`).set("Origin", ORIGIN).expect(202);
     const jobId = start.body.job.id;
 
@@ -112,6 +118,7 @@ describe("book pipeline", () => {
     const marker = { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "written before crash" }] }] };
     await prisma.$transaction([
       prisma.chapter.update({ where: { id: first.id }, data: { status: "done", contentJson: marker, wordCount: 3 } }),
+      prisma.generationSection.create({ data: { jobId, chapterId: first.id, kind: "committed", position: 0, text: "Saved before interruption", model: "mock" } }),
       prisma.generationJob.update({ where: { id: jobId }, data: { status: "running", progress: 1, creditsCharged: chapterCredits(800) } }),
     ]);
 
@@ -128,7 +135,7 @@ describe("book pipeline", () => {
   it("refunds everything when a queued job is cancelled", async () => {
     const { agent, user } = await createUser("cancel");
     const bookId = await bookWithOutline(agent);
-    await agent.post(`/api/v1/books/${bookId}/outline/approve`).set("Origin", ORIGIN).expect(200);
+    await agent.post(`/api/v1/books/${bookId}/outline/approve`).set("Origin", ORIGIN).send({ version: 1 }).expect(200);
     await agent.post(`/api/v1/books/${bookId}/generate`).set("Origin", ORIGIN).expect(202);
     expect((await creditService.getWallet(user.id)).reserved).toBeGreaterThan(0);
 
@@ -141,7 +148,7 @@ describe("book pipeline", () => {
   it("returns 402 and leaves no job behind when credits are insufficient", async () => {
     const { agent, user } = await createUser("broke");
     const bookId = await bookWithOutline(agent, { chapterCount: 20, wordsPerChapter: 5000 });
-    await agent.post(`/api/v1/books/${bookId}/outline/approve`).set("Origin", ORIGIN).expect(200);
+    await agent.post(`/api/v1/books/${bookId}/outline/approve`).set("Origin", ORIGIN).send({ version: 1 }).expect(200);
     const res = await agent.post(`/api/v1/books/${bookId}/generate`).set("Origin", ORIGIN);
     expect(res.status).toBe(402);
     expect(res.body.error.code).toBe("INSUFFICIENT_CREDITS");
@@ -154,7 +161,7 @@ describe("editor", () => {
   it("rejects stale saves with 409 (optimistic concurrency)", async () => {
     const { agent } = await createUser("occ");
     const bookId = await bookWithOutline(agent);
-    await agent.post(`/api/v1/books/${bookId}/outline/approve`).set("Origin", ORIGIN).expect(200);
+    await agent.post(`/api/v1/books/${bookId}/outline/approve`).set("Origin", ORIGIN).send({ version: 1 }).expect(200);
     const ch = await prisma.chapter.findFirstOrThrow({ where: { bookId } });
     const doc = { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Tab A wrote this" }] }] };
 
@@ -172,7 +179,7 @@ describe("editor", () => {
     const { agent } = await createUser("history");
     const other = await createUser("history-other");
     const bookId = await bookWithOutline(agent);
-    await agent.post(`/api/v1/books/${bookId}/outline/approve`).set("Origin", ORIGIN).expect(200);
+    await agent.post(`/api/v1/books/${bookId}/outline/approve`).set("Origin", ORIGIN).send({ version: 1 }).expect(200);
     const [ch, second] = await prisma.chapter.findMany({ where: { bookId }, orderBy: { position: "asc" } });
     const url = `/api/v1/chapters/${ch.id}`;
     const doc = (text: string) => ({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text }] }] });
@@ -213,7 +220,7 @@ describe("editor", () => {
   it("records only the winning edit when two saves race", async () => {
     const { agent } = await createUser("history-race");
     const bookId = await bookWithOutline(agent);
-    await agent.post(`/api/v1/books/${bookId}/outline/approve`).set("Origin", ORIGIN).expect(200);
+    await agent.post(`/api/v1/books/${bookId}/outline/approve`).set("Origin", ORIGIN).send({ version: 1 }).expect(200);
     const ch = await prisma.chapter.findFirstOrThrow({ where: { bookId } });
     const results = await Promise.all(["A", "B"].map((title) => agent.patch(`/api/v1/chapters/${ch.id}`).set("Origin", ORIGIN).send({ version: ch.version, title })));
     expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
@@ -223,7 +230,7 @@ describe("editor", () => {
   it("rejects malformed documents", async () => {
     const { agent } = await createUser("baddoc");
     const bookId = await bookWithOutline(agent);
-    await agent.post(`/api/v1/books/${bookId}/outline/approve`).set("Origin", ORIGIN).expect(200);
+    await agent.post(`/api/v1/books/${bookId}/outline/approve`).set("Origin", ORIGIN).send({ version: 1 }).expect(200);
     const ch = await prisma.chapter.findFirstOrThrow({ where: { bookId } });
     const res = await agent.patch(`/api/v1/chapters/${ch.id}`).set("Origin", ORIGIN).send({ version: ch.version, contentJson: { type: "paragraph" } });
     expect(res.status).toBe(400);

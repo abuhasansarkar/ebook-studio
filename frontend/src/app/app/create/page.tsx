@@ -1,5 +1,7 @@
 "use client";
 
+import { useSession } from "@/lib/auth-client";
+import { usePlanningDraft } from "@/components/books/use-planning-draft";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm, useWatch, type FieldPath } from "react-hook-form";
@@ -22,7 +24,7 @@ import {
 import { PageHeader } from "@/components/app/app-shell";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
-import { Alert, Card } from "@/components/ui/misc";
+import { Alert, Card, PageLoader } from "@/components/ui/misc";
 import { ApiError, errorMessage } from "@/lib/api";
 import { useCreateBook, useCredits } from "@/lib/queries";
 import { cn } from "@/lib/utils";
@@ -54,7 +56,7 @@ const STEPS = [
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).replace("_", " ");
 
-export default function CreateBookPage() {
+function CreateBookForm() {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const createBook = useCreateBook();
@@ -80,6 +82,7 @@ export default function CreateBookPage() {
     },
     mode: "onTouched",
   });
+  const planning = usePlanningDraft(form);
   const { register, control, setValue, formState, trigger, handleSubmit } = form;
   const errors = formState.errors;
   const bookType = useWatch({ control, name: "bookType" });
@@ -96,6 +99,7 @@ export default function CreateBookPage() {
   const onSubmit = handleSubmit(async (values) => {
     try {
       const res = await createBook.mutateAsync(values);
+      await planning.clear();
       if (res.outlineError) toast.warning(`Book created, but the outline couldn't start: ${res.outlineError.message}`);
       else toast.success("Planning your outline…");
       router.push(`/app/books/${res.book.id}/outline`);
@@ -108,6 +112,9 @@ export default function CreateBookPage() {
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-8">
       <PageHeader title="Create a new eBook" description="Tell us about your book. Only the idea is required — everything else has a sensible default." />
 
+      {!planning.ready && <p role="status" className="mb-4 text-sm">Checking for an unfinished brief…</p>}
+      {planning.error && <Alert tone="warning" className="mb-4">{planning.error}</Alert>}
+      {planning.recovery && <Alert tone="info" className="mb-4"><p>An unfinished book brief was found in this tab.</p><div className="mt-2 flex gap-2"><Button size="sm" onClick={() => { planning.recover(); setStep(0); }}>Recover brief</Button><Button size="sm" variant="secondary" onClick={() => void planning.discard()}>Start fresh</Button></div></Alert>}
       {/* Stepper */}
       <ol className="mb-8 flex items-center gap-2" aria-label="Progress">
         {STEPS.map((s, i) => (
@@ -129,6 +136,7 @@ export default function CreateBookPage() {
         }}
         noValidate
       >
+        <fieldset disabled={!planning.ready || !!planning.recovery}>
         <Card className="p-6 sm:p-8">
           {step === 0 && (
             <div className="space-y-6">
@@ -233,6 +241,13 @@ export default function CreateBookPage() {
               <Field label="Author name (optional)" htmlFor="authorName" hint="Shown on the title page." className="sm:col-span-2">
                 <Input id="authorName" autoComplete="name" {...register("authorName")} />
               </Field>
+              <details className="sm:col-span-2">
+                <summary className="cursor-pointer font-semibold">Optional publishing and style details</summary>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  {([['purpose', 'Book purpose', 300], ['readerAge', 'Reader age range', 100], ['writingStyle', 'Writing style', 300], ['pointOfView', 'Point of view', 100], ['brandName', 'Author brand', 120]] as const).map(([key, label, max]) => <Field key={key} label={label} htmlFor={key}><Input id={key} maxLength={max} {...register(key)} /></Field>)}
+                  <Field label="Preferred terminology" htmlFor="terminology" className="sm:col-span-2"><Textarea id="terminology" maxLength={2000} {...register('terminology')} /></Field>
+                </div>
+              </details>
               <Field label="Anything else the writer should know? (optional)" htmlFor="extraInstructions" className="sm:col-span-2">
                 <Textarea id="extraInstructions" rows={3} placeholder="e.g. Use metric units. Include a shopping checklist in every chapter." {...register("extraInstructions")} />
               </Field>
@@ -255,16 +270,22 @@ export default function CreateBookPage() {
             <ArrowLeft className="h-4 w-4" /> Back
           </Button>
           {step < STEPS.length - 1 ? (
-            <Button type="submit">
+            <Button type="submit" disabled={!planning.ready || !!planning.recovery}>
               Continue <ArrowRight className="h-4 w-4" />
             </Button>
           ) : (
-            <Button type="submit" size="lg" loading={createBook.isPending}>
+            <Button type="submit" size="lg" disabled={!planning.ready || !!planning.recovery} loading={createBook.isPending}>
               <Sparkles className="h-4 w-4" /> Create outline
             </Button>
           )}
         </div>
+        </fieldset>
       </form>
     </div>
   );
+}
+
+export default function CreateBookPage() {
+  const { data: session } = useSession();
+  return session?.user ? <CreateBookForm key={session.user.id} /> : <PageLoader />;
 }

@@ -1,9 +1,12 @@
+import { startEmailDispatcher } from "./services/email/otpDelivery.js";
 import { env } from "./config/env.js";
 import { createApp } from "./app.js";
 import { prisma } from "./database/prisma.js";
-import { closeQueues } from "./queues/index.js";
+import { closeQueues, startDispatcher } from "./queues/index.js";
 import { logger } from "./utils/logger.js";
 
+const stopDispatcher = startDispatcher();
+const stopEmailDispatcher = startEmailDispatcher();
 const app = createApp();
 const server = app.listen(env.PORT, () => {
   logger.info(`eBookStudio API listening on http://localhost:${env.PORT}`);
@@ -13,6 +16,8 @@ const server = app.listen(env.PORT, () => {
 
 async function shutdown(signal: string) {
   logger.info({ signal }, "Shutting down API");
+  stopDispatcher();
+  stopEmailDispatcher();
   server.close();
   await Promise.allSettled([closeQueues(), prisma.$disconnect()]);
   process.exit(0);

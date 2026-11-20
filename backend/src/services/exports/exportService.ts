@@ -1,3 +1,4 @@
+import { assertRuntimeAvailable } from "../runtime/readiness.js";
 import { prisma } from "../../database/prisma.js";
 import { enqueueExport } from "../../queues/index.js";
 import { conflict, notFound } from "../../utils/errors.js";
@@ -22,6 +23,7 @@ function slugify(s: string) {
 export const exportService = {
   async request(userId: string, bookId: string, format: "pdf") {
     await getOwnedBook(userId, bookId);
+    await assertRuntimeAvailable();
     const written = await prisma.chapter.count({ where: { bookId, wordCount: { gt: 0 } } });
     if (written === 0) throw conflict("Write at least one chapter before exporting.");
     const pending = await prisma.export.findFirst({ where: { bookId, status: { in: ["queued", "processing"] } } });

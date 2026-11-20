@@ -22,7 +22,8 @@ export function createApp() {
     pinoHttp({
       logger,
       genReqId: (req, res) => {
-        const id = (req.headers["x-request-id"] as string) || randomUUID();
+        const incoming = req.headers["x-request-id"];
+        const id = typeof incoming === "string" && /^[A-Za-z0-9_-]{1,100}$/.test(incoming) ? incoming : randomUUID();
         res.setHeader("x-request-id", id);
         return id;
       },

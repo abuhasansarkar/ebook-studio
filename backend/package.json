@@ -16,6 +16,8 @@
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
     "postinstall": "prisma generate",
+    "generation:audit": "tsx --env-file=../.env scripts/audit-generation.ts",
+    "email:status": "tsx --env-file=../.env scripts/email-status.ts",
     "email:check": "tsx --env-file=../.env scripts/check-smtp.ts"
   },
   "devDependencies": {

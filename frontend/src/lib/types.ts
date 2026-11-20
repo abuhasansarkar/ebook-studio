@@ -1,6 +1,8 @@
 import type { BookBrief, BookStatus, ChapterStatus, JobStatus, Outline } from "@ebook/shared";
 
 export interface BookSummary {
+  projectId?: string | null;
+  archivedAt?: string | null;
   id: string;
   title: string;
   subtitle: string;
@@ -21,6 +23,8 @@ export interface GenerationJob {
   progress: number;
   total: number;
   cancelRequested: boolean;
+  savedSections?: number;
+  recovering?: boolean;
   creditsReserved: number;
   creditsCharged: number;
   inputTokens: number;

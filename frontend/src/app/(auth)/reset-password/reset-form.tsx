@@ -21,7 +21,7 @@ export function ResetPasswordForm() {
 
   return (
     <>
-      <AuthHeader title="Choose a new password" subtitle="Enter the code we emailed you and your new password." />
+      <AuthHeader title="Choose a new password" subtitle="If the account exists, use the latest code from your email and choose a new password. Delivery may take a moment." />
       <form
         className="space-y-4"
         noValidate

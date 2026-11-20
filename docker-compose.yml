@@ -2,6 +2,7 @@ name: ebook-studio
 
 x-backend-env: &backend-env
   NODE_ENV: production
+  QUEUE_NAMESPACE: ${DOCKER_QUEUE_NAMESPACE:-docker-local}
   PORT: "4000"
   DATABASE_URL: postgresql://ebook:ebook@postgres:5432/ebook_studio
   REDIS_URL: redis://redis:6379

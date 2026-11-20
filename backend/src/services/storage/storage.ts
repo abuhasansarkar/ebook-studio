@@ -1,8 +1,8 @@
 import { createReadStream } from "node:fs";
-import { mkdir, writeFile, stat } from "node:fs/promises";
+import { mkdir, writeFile, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
-import { CreateBucketCommand, GetObjectCommand, HeadBucketCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { CreateBucketCommand, DeleteObjectCommand, GetObjectCommand, HeadBucketCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { env } from "../../config/env.js";
 import { logger } from "../../utils/logger.js";
 
@@ -10,7 +10,7 @@ import { logger } from "../../utils/logger.js";
  * S3-compatible object storage (MinIO in dev). Falls back to the local filesystem
  * when S3_ENDPOINT is not configured.
  */
-const LOCAL_DIR = path.resolve(process.cwd(), "storage");
+const LOCAL_DIR = path.resolve(env.STORAGE_DIR || path.join(process.cwd(), "storage"));
 const useS3 = Boolean(env.S3_ENDPOINT);
 
 const s3 = useS3
@@ -47,6 +47,13 @@ function localPath(key: string) {
 }
 
 export const storage = {
+  async remove(key: string): Promise<void> {
+    if (s3) {
+      await s3.send(new DeleteObjectCommand({ Bucket: env.S3_BUCKET, Key: key }));
+      return;
+    }
+    await unlink(localPath(key)).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
+  },
   async put(key: string, body: Buffer, contentType: string): Promise<void> {
     if (s3) {
       await ensureBucket();

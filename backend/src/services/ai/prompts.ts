@@ -25,6 +25,12 @@ export function briefContext(brief: BookBrief): string {
     brief.readerProblem ? `Reader's main problem: ${brief.readerProblem}` : null,
     brief.readerOutcome ? `Desired reader outcome: ${brief.readerOutcome}` : null,
     `Tone: ${brief.tone}. Depth: ${brief.depth.replace("_", " ")}.`,
+    brief.purpose ? `Purpose: ${brief.purpose}` : null,
+    brief.readerAge ? `Reader age range: ${brief.readerAge}` : null,
+    brief.writingStyle ? `Writing style: ${brief.writingStyle}` : null,
+    brief.pointOfView ? `Point of view: ${brief.pointOfView}` : null,
+    brief.brandName ? `Author brand: ${brief.brandName}` : null,
+    brief.terminology ? `Preferred terminology: ${brief.terminology}` : null,
     brief.extraInstructions ? `Author's extra instructions: ${brief.extraInstructions}` : null,
   ]
     .filter(Boolean)

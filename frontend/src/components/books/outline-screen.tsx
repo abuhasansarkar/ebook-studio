@@ -1,5 +1,6 @@
 "use client";
 
+import { OutlineHistory } from "./outline-history";
 import { useRouter } from "next/navigation";
 import { use, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -111,7 +112,7 @@ export function OutlineScreen({ params }: { params: Promise<{ bookId: string }> 
     setDirty(false);
   }
 
-  const written = book?.chapters.some((c) => c.status === "done") ?? false;
+  const written = book?.chapters.some((c) => c.status === "done" || c.version > 0 || c.wordCount > 0) ?? false;
   const locked = written || book?.activeJob?.type === "chapters";
   const outlineJobRunning = book?.activeJob?.type === "outline";
   const lang = getLanguage(book?.language ?? "en");
@@ -141,23 +142,24 @@ export function OutlineScreen({ params }: { params: Promise<{ bookId: string }> 
 
   const save = async () => {
     const o = validate();
-    if (!o) return false;
+    if (!o) return null;
     try {
-      await actions.saveOutline.mutateAsync(o);
+      const saved = await actions.saveOutline.mutateAsync({ ...o, baseVersion: loadedVersion ?? 0 });
       setDirty(false);
       setLoadedVersion(null); // accept the new server version
       toast.success("Outline saved");
-      return true;
+      return saved.outline.version;
     } catch (err) {
       toast.error(errorMessage(err));
-      return false;
+      return null;
     }
   };
 
   const approve = async () => {
-    if (dirty && !(await save())) return;
+    const version = dirty ? await save() : loadedVersion;
+    if (!version) return;
     try {
-      await actions.approveOutline.mutateAsync();
+      await actions.approveOutline.mutateAsync(version);
       toast.success("Outline approved");
       router.push(`/app/books/${bookId}/generate`);
     } catch (err) {
@@ -207,6 +209,7 @@ export function OutlineScreen({ params }: { params: Promise<{ bookId: string }> 
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-8">
+      {book.outline && <div className="mb-4 flex items-center gap-3"><OutlineHistory bookId={bookId} currentVersion={book.outline.version} disabled={dirty || !!book.activeJob} onRestored={() => { setDirty(false); setLoadedVersion(null); }} /><span className="text-xs text-muted-foreground">Version {book.outline.version}{dirty ? ' · Save edits before opening history' : ''}</span></div>}
       {locked && (
         <Alert tone="info" className="mb-6 flex items-center gap-2">
           <Lock className="h-4 w-4 shrink-0" /> Chapters have already been written from this outline, so it&apos;s locked. Edit the text in the editor instead.

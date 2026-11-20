@@ -1,3 +1,4 @@
+import { lockProject } from "./libraryService.js";
 import { bookBriefSchema, type BookBrief } from "@ebook/shared";
 import { prisma } from "../../database/prisma.js";
 import { notFound } from "../../utils/errors.js";
@@ -18,19 +19,9 @@ export async function getBrief(bookId: string): Promise<BookBrief> {
 
 export const bookService = {
   async create(userId: string, brief: BookBrief, projectId?: string) {
-    if (projectId) {
-      const project = await prisma.project.findFirst({ where: { id: projectId, userId, deletedAt: null } });
-      if (!project) throw notFound("Project");
-    }
-    return prisma.book.create({
-      data: {
-        userId,
-        projectId: projectId ?? null,
-        title: brief.title || "Untitled book",
-        language: brief.language,
-        bookType: brief.bookType,
-        brief: { create: { data: brief } },
-      },
+    return prisma.$transaction(async tx => {
+      if (projectId) await lockProject(tx, userId, projectId, true);
+      return tx.book.create({ data: { userId, projectId: projectId ?? null, title: brief.title || 'Untitled book', language: brief.language, bookType: brief.bookType, brief: { create: { data: brief } } } });
     });
   },
 
@@ -39,6 +30,7 @@ export const bookService = {
       where: {
         userId,
         deletedAt: null,
+        archivedAt: null,
         ...(opts.search ? { title: { contains: opts.search, mode: "insensitive" as const } } : {}),
       },
       orderBy: { updatedAt: "desc" },
@@ -67,7 +59,13 @@ export const bookService = {
       prisma.generationJob.findFirst({ where: { bookId, status: { in: ACTIVE_JOB_STATUSES } }, orderBy: { createdAt: "desc" } }),
       prisma.generationJob.findFirst({ where: { bookId }, orderBy: { createdAt: "desc" } }),
     ]);
-    return { ...book, brief, outline, chapters, activeJob, lastJob };
+    const publicJob = async (job: typeof activeJob) => {
+      if (!job) return null;
+      const { inputSnapshot: _snapshot, leaseToken: _token, ...visible } = job;
+      const savedSections = await prisma.generationSection.count({ where: { jobId: job.id, kind: 'section' } });
+      return { ...visible, savedSections, recovering: job.status === 'running' && !!job.leaseExpiresAt && job.leaseExpiresAt.getTime() <= Date.now() };
+    };
+    return { ...book, brief, outline, chapters, activeJob: await publicJob(activeJob), lastJob: await publicJob(lastJob) };
   },
 
   async softDelete(userId: string, bookId: string) {
@@ -81,9 +79,9 @@ export const bookService = {
 
   async dashboard(userId: string) {
     const [bookCount, chapterAgg, wallet, recent] = await Promise.all([
-      prisma.book.count({ where: { userId, deletedAt: null } }),
+      prisma.book.count({ where: { userId, deletedAt: null, archivedAt: null } }),
       prisma.chapter.aggregate({
-        where: { book: { userId, deletedAt: null }, status: "done" },
+        where: { book: { userId, deletedAt: null, archivedAt: null }, status: "done" },
         _count: { _all: true },
         _sum: { wordCount: true },
       }),

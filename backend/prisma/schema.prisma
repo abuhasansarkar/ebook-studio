@@ -28,6 +28,7 @@ model User {
   transactions  CreditTransaction[]
   jobs          GenerationJob[]
   exports       Export[]
+  operations    Operation[]
 
   @@map("user")
 }
@@ -91,9 +92,11 @@ model Project {
   books       Book[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+  archivedAt  DateTime?
   deletedAt   DateTime?
 
   @@index([userId])
+  @@index([userId, deletedAt, createdAt, id], map: "projects_owner_created_idx")
   @@map("projects")
 }
 
@@ -116,9 +119,11 @@ model Book {
   exports     Export[]
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
+  archivedAt  DateTime?
   deletedAt   DateTime?
 
   @@index([userId, deletedAt, updatedAt])
+  @@index([userId, deletedAt, archivedAt, createdAt, id], map: "books_owner_archive_created_idx")
   @@map("books")
 }
 
@@ -191,6 +196,23 @@ model DocumentVersion {
   @@map("document_versions")
 }
 
+model GenerationSection {
+  id String @id @default(cuid())
+  jobId String
+  job GenerationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  chapterId String
+  position Int
+  /// section | summary | committed
+  kind String
+  text String
+  inputTokens Int @default(0)
+  outputTokens Int @default(0)
+  model String
+  createdAt DateTime @default(now())
+  @@unique([jobId, chapterId, kind, position])
+  @@map("generation_sections")
+}
+
 model GenerationJob {
   id               String    @id @default(cuid())
   userId           String
@@ -203,6 +225,10 @@ model GenerationJob {
   status           String    @default("queued")
   progress         Int       @default(0)
   total            Int       @default(0)
+  inputSnapshot Json?
+  leaseToken String?
+  leaseExpiresAt DateTime?
+  sections GenerationSection[]
   cancelRequested  Boolean   @default(false)
   creditsReserved  Int       @default(0)
   creditsCharged   Int       @default(0)
@@ -269,4 +295,64 @@ model Export {
 
   @@index([bookId, createdAt])
   @@map("exports")
+}
+
+/// Durable request identity. Submitted work references existing generation/export records.
+model Operation {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  idempotencyKey String
+  requestHash    String
+  kind           String
+  bookId         String?
+  resourceId     String?
+  /// submitting | submitted | failed | needs_review
+  state          String   @default("submitting")
+  responseStatus Int?
+  responseBody   Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId, createdAt])
+  @@map("operations")
+}
+
+/// Durable dispatch retries; processors must still guard domain-side effects.
+model QueueDispatch {
+  id            String   @id @default(cuid())
+  namespace     String
+  queue         String
+  jobId         String
+  fingerprint   String
+  payload       Json
+  dispatchedAt  DateTime?
+  attempts      Int      @default(0)
+  nextAttemptAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  @@unique([namespace, queue, jobId])
+  @@index([namespace, dispatchedAt, nextAttemptAt])
+  @@map("queue_dispatches")
+}
+
+/// Short-lived encrypted OTP delivery; never exposes recipient or code in logs/API.
+model EmailDelivery {
+  id String @id @default(cuid())
+  verificationId String @unique
+  runtimeId String
+  type String
+  payload String?
+  status String @default("queued")
+  attempts Int @default(0)
+  nextAttemptAt DateTime @default(now())
+  expiresAt DateTime
+  leaseToken String?
+  leaseExpiresAt DateTime?
+  failureCode String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([runtimeId, status, nextAttemptAt])
+  @@map("email_deliveries")
 }

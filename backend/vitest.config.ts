@@ -9,6 +9,7 @@ export default defineConfig({
     env: {
       ...base,
       NODE_ENV: "test",
+      QUEUE_NAMESPACE: "test",
       AI_MOCK: "1",
       DATABASE_URL: dbUrl,
       REDIS_URL: process.env.TEST_REDIS_URL ?? "redis://localhost:6379/1",

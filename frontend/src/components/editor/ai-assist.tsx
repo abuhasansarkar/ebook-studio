@@ -3,7 +3,7 @@
 import type { Editor, JSONContent } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ChevronDown, RefreshCw, Sparkles } from "lucide-react";
 import { ASSIST_ACTION_LABELS, CREDIT_COSTS, type AssistAction } from "@ebook/shared";
 import { Button } from "@/components/ui/button";
@@ -21,12 +21,14 @@ interface Request {
   from: number;
   to: number;
   text: string;
+  document: string;
   instruction?: string;
 }
 
 /** Selection bubble menu + suggestion dialog. Suggestions never replace text until accepted. */
 export function AiAssist({ editor, bookId, dir }: { editor: Editor; bookId: string; dir: string }) {
   const qc = useQueryClient();
+  const requestSequence = useRef(0);
   const [moreOpen, setMoreOpen] = useState(false);
   const [req, setReq] = useState<Request | null>(null);
   const [needsInstruction, setNeedsInstruction] = useState(false);
@@ -36,6 +38,7 @@ export function AiAssist({ editor, bookId, dir }: { editor: Editor; bookId: stri
   const [error, setError] = useState<string | null>(null);
 
   const run = async (r: Request) => {
+    const sequence = ++requestSequence.current;
     setLoading(true);
     setError(null);
     setResult(null);
@@ -45,11 +48,11 @@ export function AiAssist({ editor, bookId, dir }: { editor: Editor; bookId: stri
         { bookId, action: r.action, text: r.text, instruction: r.instruction },
         { "Idempotency-Key": crypto.randomUUID() },
       );
-      setResult(res);
+      if (sequence === requestSequence.current) setResult(res);
     } catch (err) {
-      setError(errorMessage(err));
+      if (sequence === requestSequence.current) setError(errorMessage(err));
     } finally {
-      setLoading(false);
+      if (sequence === requestSequence.current) setLoading(false);
       void qc.invalidateQueries({ queryKey: qk.credits });
     }
   };
@@ -59,7 +62,11 @@ export function AiAssist({ editor, bookId, dir }: { editor: Editor; bookId: stri
     const { from, to } = editor.state.selection;
     const text = editor.state.doc.textBetween(from, to, "\n\n").trim();
     if (!text) return;
-    const r = { action, from, to, text: text.slice(0, 8000) };
+    if (text.length > 8000) {
+      window.alert('Select up to 8,000 characters. A longer selection cannot be replaced safely.');
+      return;
+    }
+    const r = { action, from, to, text, document: JSON.stringify(editor.getJSON()) };
     setReq(r);
     if (action === "custom") {
       setNeedsInstruction(true);
@@ -73,6 +80,8 @@ export function AiAssist({ editor, bookId, dir }: { editor: Editor; bookId: stri
   };
 
   const close = () => {
+    requestSequence.current++;
+    setLoading(false);
     setReq(null);
     setResult(null);
     setError(null);
@@ -81,6 +90,10 @@ export function AiAssist({ editor, bookId, dir }: { editor: Editor; bookId: stri
 
   const accept = () => {
     if (!req || !result) return;
+    if (!editor.isEditable || JSON.stringify(editor.getJSON()) !== req.document) {
+      setError('The chapter changed while this suggestion was being prepared. Reject it and select the text again.');
+      return;
+    }
     const nodes = result.content;
     // A single paragraph replaces inline (keeps the surrounding paragraph intact).
     const content = nodes.length === 1 && nodes[0].type === "paragraph" ? nodes[0].content ?? [] : nodes;

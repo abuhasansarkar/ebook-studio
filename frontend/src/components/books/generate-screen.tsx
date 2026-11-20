@@ -1,5 +1,6 @@
 "use client";
 
+import { OperationActivity } from "./operation-activity";
 import Link from "next/link";
 import { use, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -22,7 +23,7 @@ function ChapterRow({ ch, dir }: { ch: ChapterMeta; dir: string }) {
       <span className="w-6 text-sm font-semibold text-muted-foreground">{ch.position + 1}</span>
       <span dir={dir} className="min-w-0 flex-1 truncate text-sm font-medium">{ch.title}</span>
       <span className="text-xs text-muted-foreground">
-        {ch.status === "done" ? `${formatNumber(ch.wordCount)} words` : ch.status === "generating" ? "Writing…" : ch.status === "failed" ? "Failed" : "Waiting"}
+        {ch.status === "done" ? `${formatNumber(ch.wordCount)} words` : ch.status === "generating" ? "Queued / writing…" : ch.status === "failed" ? "Failed" : "Waiting"}
       </span>
     </li>
   );
@@ -67,7 +68,7 @@ export function GenerateScreen({ params }: { params: Promise<{ bookId: string }>
   const totalWords = done.reduce((s, c) => s + c.wordCount, 0);
   const lastFailed = !job && book.lastJob?.type === "chapters" && book.lastJob.status === "failed" ? book.lastJob : null;
 
-  if (!approved || book.chapters.length === 0) {
+  if ((!approved && done.length !== book.chapters.length) || book.chapters.length === 0) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-12 sm:px-8">
         <Card className="p-8 text-center">
@@ -96,16 +97,17 @@ export function GenerateScreen({ params }: { params: Promise<{ bookId: string }>
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <h2 className="flex items-center gap-2 text-lg font-semibold">
-                <Spinner /> {job.cancelRequested ? "Stopping after the current section…" : "Writing your book"}
+                <Spinner /> {job.cancelRequested ? "Stopping after the current section…" : job.recovering ? "Recovering interrupted writing…" : "Writing your book"}
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                {job.progress} of {job.total} chapters done. You can leave this page — writing continues in the background.
+                {job.progress} of {job.total} chapters done · {job.savedSections ?? 0} sections saved. You can leave this page — writing continues in the background.
               </p>
             </div>
             <Button variant="secondary" onClick={() => actions.cancelGeneration.mutate()} loading={actions.cancelGeneration.isPending} disabled={job.cancelRequested}>
               <Square className="h-3.5 w-3.5" /> Stop
             </Button>
           </div>
+          <p className="mt-3 text-xs text-muted-foreground">Saved sections resume automatically after a worker interruption. Stopping or retrying after an error keeps finished chapters; a new run rewrites unfinished chapters.</p>
           <Progress className="mt-5" value={job.total ? (job.progress / job.total) * 100 : 0} />
         </Card>
       ) : remaining.length > 0 ? (
@@ -161,6 +163,7 @@ export function GenerateScreen({ params }: { params: Promise<{ bookId: string }>
           ))}
         </ul>
       </Card>
+      <OperationActivity bookId={bookId} />
     </div>
   );
 }

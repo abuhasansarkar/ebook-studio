@@ -54,9 +54,9 @@ export function createOtpMailer(config: MailConfig, transport: MailTransport = n
           <h2 style="color:#e8603c;margin:0 0 16px">eBookStudio</h2>
           <p>${subject}. Your code is:</p>
           <p style="font-size:32px;letter-spacing:8px;font-weight:700;margin:16px 0">${otp}</p>
-          <p style="color:#6b625c;font-size:14px">This code expires in 10 minutes. If you didn't request it, you can ignore this email.</p>
+          <p style="color:#6b625c;font-size:14px">This code expires 10 minutes after it was requested. If you didn't request it, you can ignore this email.</p>
         </div>`,
-        text: `${subject}. Your code is ${otp}. This code expires in 10 minutes. If you didn't request it, you can ignore this email.`,
+        text: `${subject}. Your code is ${otp}. This code expires 10 minutes after it was requested. If you didn't request it, you can ignore this email.`,
       });
       if (!result.accepted?.length || result.rejected?.length) throw new Error("SMTP did not accept the OTP recipient.");
     },

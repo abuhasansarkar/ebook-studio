@@ -7,6 +7,7 @@ import { getLanguage } from "@ebook/shared";
 import { ChapterEditor } from "@/components/editor/chapter-editor";
 import { buttonVariants } from "@/components/ui/button";
 import { Alert, EmptyState, ErrorState, PageLoader, Spinner } from "@/components/ui/misc";
+import { useSession } from "@/lib/auth-client";
 import { errorMessage } from "@/lib/api";
 import { useBook, useChapter, useChapters } from "@/lib/queries";
 import { cn, formatNumber } from "@/lib/utils";
@@ -28,6 +29,7 @@ function useBookFont(language: string) {
 
 export function EditorScreen({ params }: { params: Promise<{ bookId: string }> }) {
   const { bookId } = use(params);
+  const { data: session } = useSession();
   const book = useBook(bookId);
   const generating = book.data?.activeJob?.type === "chapters";
   const chapters = useChapters(bookId, generating);
@@ -80,6 +82,7 @@ export function EditorScreen({ params }: { params: Promise<{ bookId: string }> }
               <button
                 key={c.id}
                 type="button"
+                data-editor-navigation="true"
                 onClick={() => setSelectedId(c.id)}
                 aria-current={active ? "true" : undefined}
                 className={cn("flex min-w-48 cursor-pointer items-start gap-2.5 rounded-xl px-3 py-2.5 text-start text-sm lg:min-w-0", active ? "bg-primary-soft" : "hover:bg-muted")}
@@ -108,7 +111,7 @@ export function EditorScreen({ params }: { params: Promise<{ bookId: string }> }
         ) : chapter.data.status === "generating" ? (
           <div className="p-8"><EmptyState icon={<Spinner className="h-6 w-6" />} title="This chapter is being written" description="It will open for editing as soon as the AI finishes." /></div>
         ) : (
-          <ChapterEditor key={chapter.data.id} chapter={chapter.data} bookId={bookId} language={language} />
+          <ChapterEditor key={`${session?.user.id}:${chapter.data.id}`} ownerId={session?.user.id ?? ""} chapter={chapter.data} bookId={bookId} language={language} />
         )}
       </section>
     </div>

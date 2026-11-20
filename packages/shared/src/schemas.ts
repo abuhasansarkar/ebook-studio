@@ -47,6 +47,12 @@ export const bookBriefSchema = z.object({
   chapterCount: z.number().int().min(3).max(20).default(8),
   wordsPerChapter: z.number().int().min(300).max(5000).default(1500),
   authorName: z.string().trim().max(120).optional().or(z.literal("")),
+  purpose: z.string().trim().max(300).default(""),
+  readerAge: z.string().trim().max(100).default(""),
+  writingStyle: z.string().trim().max(300).default(""),
+  pointOfView: z.string().trim().max(100).default(""),
+  brandName: z.string().trim().max(120).default(""),
+  terminology: z.string().trim().max(2000).default(""),
   extraInstructions: z.string().trim().max(2000).optional().or(z.literal("")),
 });
 export type BookBriefInput = z.input<typeof bookBriefSchema>;

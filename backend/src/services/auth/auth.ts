@@ -40,9 +40,8 @@ export const auth = betterAuth({
       sendVerificationOnSignUp: true,
       overrideDefaultEmailVerification: true,
       async sendVerificationOTP({ email, otp, type }) {
-        // Await the sender so SMTP work completes before this callback finishes.
-        // Better Auth catches callback failures and returns neutral auth responses;
-        // the mailer records sanitized delivery failures for operators.
+        // Persist the encrypted delivery before returning; eligible SMTP failures retry.
+        // Better Auth keeps auth responses neutral, including unknown accounts.
         try {
           await sendOtpEmail(email, otp, type);
         } catch {

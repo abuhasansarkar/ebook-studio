@@ -8,6 +8,8 @@ const bool = z
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().default(4000),
+  QUEUE_NAMESPACE: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/).optional(),
+  STORAGE_DIR: z.string().optional(),
   APP_URL: z.string().url().default("http://localhost:3000"),
   BETTER_AUTH_URL: z.string().url().default("http://localhost:3000"),
   BETTER_AUTH_SECRET: z.string().min(16, "BETTER_AUTH_SECRET must be at least 16 chars"),

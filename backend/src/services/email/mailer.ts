@@ -1,3 +1,4 @@
+import { enqueueOtp, dispatchOtp } from "./otpDelivery.js";
 import { env, isTest } from "../../config/env.js";
 import { logger } from "../../utils/logger.js";
 import { createOtpMailer, type OtpType } from "./otpMailer.js";
@@ -20,8 +21,9 @@ export async function sendOtpEmail(email: string, otp: string, type: OtpType): P
   // Automated auth tests never send real mail, even if .env contains Gmail credentials.
   if (isTest) return;
   try {
-    await mailer.send(email, otp, type);
-    logger.info({ type }, "SMTP accepted OTP email");
+    const delivery = await enqueueOtp(email, otp, type);
+    // The durable record survives transient SMTP failure; response remains neutral.
+    void dispatchOtp(delivery.id).catch(() => logger.warn({ deliveryId: delivery.id }, "OTP immediate dispatch deferred"));
   } catch (err) {
     const failure = err as { code?: string; responseCode?: number };
     // Avoid logging SMTP response bodies, credentials, recipients, or OTP values.

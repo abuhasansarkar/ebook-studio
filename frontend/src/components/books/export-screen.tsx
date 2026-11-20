@@ -1,5 +1,7 @@
 "use client";
 
+import { PublishingChecks } from "./publishing-checks";
+import { OperationActivity } from "./operation-activity";
 import Link from "next/link";
 import { use } from "react";
 import { toast } from "sonner";
@@ -43,8 +45,8 @@ export function ExportScreen({ params }: { params: Promise<{ bookId: string }> }
               <FileText className="h-6 w-6" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold">Print-ready PDF</h2>
-              <p className="mt-1 text-sm text-muted-foreground">6 × 9 in trade paperback size, embedded fonts, page numbers and a clickable table of contents. Free to export.</p>
+              <h2 className="text-lg font-semibold">PDF manuscript</h2>
+              <p className="mt-1 text-sm text-muted-foreground">6 × 9 in layout with page numbers and a clickable table of contents. Review the file before sale; KDP print specifications need separate validation. Free to export.</p>
             </div>
           </div>
           <Button
@@ -84,6 +86,7 @@ export function ExportScreen({ params }: { params: Promise<{ bookId: string }> }
         </Card>
       </div>
 
+      <PublishingChecks bookId={bookId} />
       <h3 className="mb-3 mt-10 text-lg font-semibold">Export history</h3>
       {exports.isLoading ? (
         <PageLoader />
@@ -126,6 +129,7 @@ export function ExportScreen({ params }: { params: Promise<{ bookId: string }> }
           ))}
         </Card>
       )}
+      <OperationActivity bookId={bookId} />
     </div>
   );
 }

@@ -5,6 +5,7 @@ export class ApiError extends Error {
     public code: string,
     message: string,
     public details?: unknown,
+    public requestId?: string,
   ) {
     super(message);
     this.name = "ApiError";
@@ -29,7 +30,7 @@ async function request<T>(method: Method, path: string, body?: unknown, headers?
   const data = await res.json().catch(() => null);
   if (!res.ok) {
     const err = data?.error;
-    throw new ApiError(res.status, err?.code ?? "UNKNOWN", err?.message ?? `Request failed (${res.status})`, err?.details);
+    throw new ApiError(res.status, err?.code ?? "UNKNOWN", err?.message ?? `Request failed (${res.status})`, err?.details, err?.requestId ?? res.headers.get("x-request-id") ?? undefined);
   }
   return data as T;
 }
@@ -47,7 +48,7 @@ export function errorMessage(err: unknown): string {
     if (err.code === "BAD_REQUEST" && Array.isArray(err.details) && err.details.length) {
       return (err.details as { message: string }[]).map((d) => d.message).join(". ");
     }
-    return err.message;
+    return err.requestId && err.status >= 500 ? `${err.message} Support reference: ${err.requestId}` : err.message;
   }
   return err instanceof Error ? err.message : "Something went wrong";
 }

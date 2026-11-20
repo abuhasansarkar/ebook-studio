@@ -1,0 +1,252 @@
+# Acceptance tests and release evidence
+
+This checklist defines completion for the sixteen steps in [IMPLEMENTATION_ORDER.md](./IMPLEMENTATION_ORDER.md). A checked box must link to evidence from a named environment/commit; implementation presence alone is insufficient.
+
+## Evidence baseline
+
+Historical session checks: 38 backend tests passed after Gmail changes; TypeScript and backend build passed; Gmail authentication verified natively and inside Docker; four diagnostic email templates accepted by Gmail. Earlier frontend checks and a mock-AI browser journey through PDF download passed. Inbox receipt, real AI writing quality, paid billing, disaster recovery and production performance were not established by those checks.
+
+Do not rerun the Mailpit-dependent browser journey against real Gmail. Use a dedicated test stack with isolated database, queues, asset storage, captured email and mock AI. Live SMTP/AI/payment checks require explicitly scoped accounts, recipients, budgets and safe test data.
+
+## Step acceptance matrix
+
+| Step | Positive scenario | Failure/concurrency scenario | Evidence required |
+| --- | --- | --- | --- |
+| S01 | API schedules work and its worker returns a retrievable result | Different environments cannot cross-consume; repeated request is one operation; foreign owner denied | Configuration/isolation test, operation API test and actual artifact retrieval |
+| S02 | User saves, recovers a browser draft and restores a revision | Offline/refresh/quota error/two tabs/history race/stale suggestion preserve recovery choices | API concurrency results and browser recovery walkthrough |
+| S03 | Approved outline produces durable sections and a coherent book | Worker crash, lost lease, dispatch gap, duplicate delivery and cancel settle credits correctly | Checkpoint fault tests, reconciled ledger and reviewed writing samples |
+| S04 | Eligible code is delivered/accepted, verifies once and resets password | SMTP outage/retry, expiry, superseded resend, attempt limits and unknown account | Captured-mail tests, safe logs, queue expiry proof and separately scoped live SMTP check |
+| S05 | User organizes, archives, duplicates and restores planning | Foreign assignment, pagination ties and outline changes cannot lose writing | API ownership tests and multi-book browser journey |
+| S06 | Safe upload becomes a private reusable asset | Malformed/huge input, interrupted upload, foreign access and referenced deletion handled | Processing tests, storage/retrieval proof and upload UI journey |
+| S07 | User creates/reopens/edits/exports a cover and inserts an illustration | Provider failure/cancel/repeat request does not destroy concepts or double-charge | Image job/ledger tests, cover artifact and typography review |
+| S08 | Template application persists in digital and print preview | Missing glyph/font, long table, RTL/mixed text and stale design update handled | Language fixture review, reversible settings test and preview/export comparison |
+| S09 | Known defects produce correctly anchored findings | Clean fixtures, edited/missing anchors and stale reports avoid misleading results | Curated report evaluation with detection limitations and browser navigation |
+| S10 | PDF/EPUB/DOCX validate, download and open | Bad assets, corrupt file, unavailable storage and interrupted upload never report false readiness | Validator reports, file hashes/downloads and reader/editor opening record |
+| S11 | Source import previews/applies and Q&A links real passages | Hostile archive/SSRF/prompt injection, unsupported scan and duplicate confirmation handled | Extraction/security tests, reversible import and passage-level source review |
+| S12 | Verified purchase grants the correct entitlement/credits | Bad signature, duplicate/out-of-order event, refund and concurrent spend reconcile | Provider sandbox event records and independent ledger/entitlement assertions |
+| S13 | Operator diagnoses a failure and restores a backup safely | Ordinary user denied, unsafe intervention rejected, alert failure surfaced | Permission tests, audit trail, alert receipt and isolated restore report |
+| S14 | Destination package contains selected validated files/metadata | Missing files, stale input and foreign package access handled | ZIP manifest/checksums, rules version and manual publishing checklist review |
+| S15 | Marketing variants persist, edit and download | Regeneration preserves user edits; stale inputs and invented claims are reviewed | Asset/history tests, reviewed outputs and actual downloads |
+| S16 | Complete release journey succeeds in staging | Outages, rollback, scale, expired sessions and recovery remain controlled | Signed-off release record with all required gates and limitations |
+
+## Shared functional requirements
+
+- [ ] Every persisted resource and nested download enforces ownership/roles.
+- [ ] Every visible action works or is explicitly unavailable; no placeholder success messages.
+- [ ] Validation and loading/error/permission states have meaningful user actions.
+- [ ] Paid operations show estimates and charge/refund according to one documented policy.
+- [ ] Repeated clicks, retries and uncertain responses do not create duplicate effects.
+- [ ] Concurrent edits return conflicts without losing recoverable data.
+- [ ] Session expiry and reauthentication preserve safe recovery choices.
+- [ ] Polling is bounded, resumes after reconnect and stops for terminal states.
+- [ ] Private cached data and local drafts cannot cross accounts.
+- [ ] Auth responses/logging do not expose credentials, OTPs or unnecessary account-existence information.
+
+## Artifact and content review
+
+Use small, medium and long books containing headings, lists, quotes, tables, links, images/captions, front/back matter and source citations. Include empty/incomplete content and corrupted assets intentionally.
+
+- [ ] PDF page layout, font rendering, TOC/link targets, image resolution and selected print settings reviewed.
+- [ ] EPUB conformance report has no unresolved blocking errors; navigation, metadata, cover, links and reading order checked.
+- [ ] EPUB accessibility checked separately from structural validation; document remaining limitations.
+- [ ] DOCX opens with editable styles, headings/tables/images/links and documented TOC behavior.
+- [ ] Cover output uses correct dimensions and reproduces saved editable overlays.
+- [ ] Distribution ZIP contains safe paths, expected file versions and the full reviewed manifest.
+- [ ] Marketing/sample-chapter downloads open and match their stated source version.
+- [ ] Files remain retrievable after a worker/container restart and from the deployed API, not only from a worker's local disk.
+
+AI review uses a curated brief/outline set and human assessment of usefulness, factual support, originality concerns, repetition, voice, continuity, examples and target length. Record model/configuration, prompt version, token usage/cost and reviewer observations. Mock outputs establish orchestration behavior only. Quality scores and similarity checks must not be presented as accuracy/originality certificates.
+
+## Language and accessibility matrix
+
+| Fixture | Verify in editor and preview | Verify in each export |
+| --- | --- | --- |
+| English/Latin | Headings, punctuation, links, search/replace | Font embedding, line breaks and navigation |
+| Bengali | Conjuncts, vowel signs, cursor/selection, mixed English terms | Glyph shaping, wrapping, selectable text and title/cover layout |
+| Arabic RTL | Logical reading order, lists/tables, mixed numbers/Latin terms | Direction metadata, shaping, navigation and paragraphs |
+| Representative CJK | Input, wrapping, counts and long headings | Font coverage, line breaking and overflow |
+| Mixed/long content | Images, captions, long tables and narrow screens | No clipping, missing assets or broken structural references |
+
+- [ ] Keyboard users can reach and operate all controls, including reorder and design positioning.
+- [ ] Dialogs trap/restore focus correctly; labels and error descriptions are meaningful.
+- [ ] Save/generation/validation changes have appropriate announcements without excessive noise.
+- [ ] Contrast, zoom, touch targets, responsive layout and reduced motion pass review.
+- [ ] Supported manuscript languages and UI translation scope are stated accurately.
+
+## Reliability, security and operational checks
+
+- [ ] Prove queue namespaces and worker/database/storage compatibility across local, test, staging and production.
+- [ ] Kill workers at dispatch, provider response, checkpoint, charge and upload boundaries; reconcile resulting state.
+- [ ] Confirm lease fencing prevents a stale worker from committing.
+- [ ] Test unavailable Redis/database/storage/SMTP/provider services and subsequent recovery.
+- [ ] Review auth/origin/CSRF controls, request sizes, rate limits, upload parsing, source SSRF and privileged endpoints.
+- [ ] Verify payment signature handling and provider reconciliation without relying on browser success pages.
+- [ ] Verify encryption keys, token-payload expiration, secret redaction and data/backup retention rules.
+- [ ] Restore database and assets into an isolated environment and open recovered books/files.
+- [ ] Demonstrate alert delivery and operator runbooks without automatic unauthorized external messaging.
+- [ ] Load-test measured book sizes/concurrency and record response time, editor responsiveness, memory, queue age and cost budgets.
+- [ ] Document rollback/forward repair for migrations and compatibility during staggered worker deployment.
+
+Recovery targets, performance budgets, supported file sizes and production concurrency must be explicitly approved before their tests are considered passing. Do not invent a universal SLA from local development results.
+
+## Test and release execution
+
+Existing commands:
+
+```sh
+pnpm typecheck
+pnpm --filter frontend lint
+pnpm --filter backend test
+pnpm --filter backend build
+pnpm --filter frontend build
+pnpm e2e
+```
+
+Use targeted checks while implementing a step and the full regression suite at release boundaries. Browser tests must verify actual API results, downloaded files and credit changes. Wait for concrete saved/job states; manuscript text containing “Saved” is not a valid save assertion.
+
+A future Playwright suite may replace/extend Puppeteer only after equivalent assertions pass. Keep the old working journey until coverage migration is demonstrated.
+
+## Final release gate
+
+- [ ] S01–S15 gates complete with evidence for the advertised scope.
+- [ ] Zero unresolved critical data-loss, ownership, payment-accounting or invalid-export defects.
+- [ ] Important residual issues have an owner, customer impact and explicit release decision.
+- [ ] Actual release artifact, commit, configuration and migration versions recorded.
+- [ ] Staging registration-to-package/marketing journey passed with approved live-provider checks separately recorded.
+- [ ] Production backups, restore/rollback procedure, readiness and alert destinations verified.
+- [ ] Published feature/language/format claims match implemented and tested capabilities.
+- [ ] Release decision and follow-up monitoring owner recorded.
+
+## Evidence record template
+
+```text
+Step / requirement:
+Status: not run | passed | failed | blocked
+Commit / build / migration version:
+Environment and relevant non-secret configuration:
+Dataset / book size / languages / provider mode:
+Commands and test identifiers:
+Expected result and observed result:
+Artifact / validator / audit / screenshot references:
+Cost and performance measurements where relevant:
+Remaining limitations / defect link / responsible owner:
+Review date and release decision:
+```
+
+Do not fill this record with assumed passes. Store secrets, authentication tokens, customer manuscripts and live payment data outside shared evidence documents.
+
+## S01 implementation evidence — 20 November 2026
+
+Status: foundation gate passed; S02–S16 remain planned. Source changes are not a production rollout claim.
+
+Implemented: shared operation/error/pagination schemas; durable owner/request/input identity; book/outline/writing/export submission replay and support references; durable queue dispatch retry records; namespace/configuration-specific BullMQ prefixes; worker capabilities with expiring heartbeats; cross-process private storage probes; bounded readiness; recent-activity UI; browser request-key recovery and account-change cache cleanup.
+
+Verification:
+
+- 48 backend tests passed, including real queue isolation, concurrent request replay, owner/deleted-book checks, changed-input rejection, uncertain submissions, broker-failure retry, unreadable worker probes and actual validated PDF download.
+- Workspace TypeScript and frontend lint passed; backend and frontend production builds passed.
+- Expanded browser journey passed against the production frontend with an isolated test-database/Mailpit/mock-AI API and worker: signup/OTP, wizard/outline, writing, idempotency headers, recent activity/support-reference action, autosave/history restore, AI suggestions, PDF download, credits and mobile dashboard.
+- Isolated and native runtime readiness returned database/Redis/workers/storage all healthy.
+- Additive migration `20261120130000_operation_foundation` applied to the isolated test and development databases.
+- Existing Gmail configuration was preserved; browser test mail was captured in Mailpit and no paid AI requests were used.
+
+Limits and rollout: domain job creation/reservation/outbox transaction gaps, orphan-credit reconciliation, exclusive processing/fencing and durable section checkpoints are S03 work. Uncertain requests are held for inspection rather than re-executed. Old unprefixed queues require an explicit drain/reconciliation cutover. Docker configuration/source is updated, but these checks do not constitute a new full Docker/production deployment. See [runtime runbook](../backend/RUNTIME.md).
+
+Browser harness note: the temporary development-server proxy did not activate signup validation; using the release frontend with the same isolated API/worker passed the complete suite. No change to the signup form was needed.
+
+## S02 and initial marketplace checks — 20 November 2026
+
+Status: implemented and verified for the scenarios below; S02's complete resilience gate and S14's package gate remain open. No production deployment or marketplace approval is implied.
+
+Implemented:
+
+- Bounded structured-document grammar, supported nodes/marks/attributes, safe link protocols, depth and node limits before rendering or persistence.
+- Serialized autosaves, explicit Save/keyboard shortcut, paused errors/conflicts, offline state and reconnection, retained failed edits, per-instance IndexedDB journal scoped by owner/chapter/base version.
+- Explicit recovery review, conditional removal of recovered records, manual JSON backup, browser-close and clicked-navigation protection, storage-failure warnings.
+- AI suggestions rejected if the document changed; cancelled suggestion responses cannot populate a newer request; oversized selections are rejected rather than silently truncated.
+- Owner-protected publishing-check API and UI for KDP eBooks, Etsy, Gumroad and direct sales, versioned rules, official sources, JSON checklist download, and removal of the unverified print-ready label.
+
+Verification:
+
+- 53 backend tests passed: prior regressions plus bounded-document rejection/acceptance and marketplace language, format, file-size and review rules. API tests cover publishing report ownership and invalid destinations.
+- Workspace TypeScript, frontend lint, backend build and frontend release build passed.
+- Expanded Puppeteer browser journey passed against release frontend and isolated mock-AI/Mailpit API/worker: original signup-to-PDF journey, failed-save pause, draft persistence across reload, explicit recovery/manual save, concurrent server edit/OCC conflict pause and keep-mine, offline reconnect save, unavailable IndexedDB warning with successful server saving, marketplace destination selection and refreshed file checks after export. PDF response downloaded successfully (293184 bytes in this run).
+- No paid AI requests or Gmail test delivery in this iteration. Screenshot collection disabled for this browser run.
+
+Limits requiring further evidence/work:
+
+- Concurrent server-edit test reproduces OCC through a second HTTP write; a full two-browser-tab editing/account-switch/logout matrix is still needed. Browser storage is local plaintext, isolated by application owner keys, not encryption against people with access to the browser profile.
+- Failed IndexedDB access was simulated; actual disk-full/write-quota exhaustion, abrupt OS crash and termination during in-flight saves require additional failure tests. The final uncommitted keystroke cannot be guaranteed durable before IndexedDB commits. Existing recovery records are retained until explicit discard or successful recovery; retention controls remain pending.
+- Navigation warning covers browser unload and clicked links/chapter buttons; programmatic routing/history can rely on the journal but does not yet have a universal navigation blocker.
+- Backup download is JSON, not a completed import workflow. Stale AI guard is compiled and normal acceptance is browser-tested; a deliberately stale AI response race still needs its own browser fixture.
+- Publishing checks inspect manuscript/export metadata, not live seller-account eligibility, file bytes or independent commercial rights. Current exports lack immutable snapshot identity and marketplace bundles. No eBook is automatically submitted or declared accepted.
+- Frontend build initially failed under sandbox port restrictions; a permission-enabled retry repeated the diagnostic until the Turbopack cache was moved aside. A clean release build and subsequent warm build succeeded.
+
+See [marketplace release track](./MARKETPLACE_RELEASE.md) for the prioritized remaining work. S03 transaction/checkpoint work remains the next dependency before commercial generation can be released.
+
+## S03 generation recovery and S04 OTP delivery — 20 November 2026
+
+Status: core implementations verified locally; production cutover and full release gates remain open. S05 is the next ordered implementation package.
+
+S03 implemented:
+
+- Transactional generation job, immutable input snapshot, credit reservation and outbox creation, with book-row serialization for starts and planning changes.
+- Expiring worker leases, heartbeat and fenced writes; durable ordered sections and summaries; atomic manuscript revision/progress/charge commits; atomic terminal state/settlement.
+- Matching-protocol lost-delivery reconciliation, cancellation checks before commits, preserved completed chapters, and reservation invariant checks.
+- Read-only generation audit, sanitized job responses, saved-section/recovery UI and explicit behavior for new runs after cancellation/failure.
+
+S04 implemented:
+
+- AES-256-GCM encrypted, short-lived OTP outbox tied to actual verification IDs; atomic dispatcher claims and SMTP-runtime isolation.
+- Bounded transient retries, permanent-failure handling, pre-send expiration/supersession/consumption/attempt checks, payload erasure and 14-day terminal metadata cleanup.
+- Neutral UI wording, unchanged neutral Better Auth account responses, read-only email status counts, preserved direct SMTP diagnostic.
+
+Verification:
+
+- Full backend suite: **65 tests passed across 8 files**. Seven new generation recovery tests include concurrent starts, section reuse after lease loss, immutable inputs, a real child worker terminated with **SIGKILL** after a section commit, stale provider response fencing, transactional settlement rollback, lost Redis delivery reconciliation, and cancellation before a provider result commits (some tests cover multiple scenarios).
+- Five new OTP delivery tests cover encryption, retry/acceptance/erasure, expired/consumed/attempt-exhausted/superseded codes, concurrent claims, permanent failures, tampering, retry limits, and successful verification using the actual Better Auth hash and expiry representation.
+- Workspace type checking, frontend lint, backend build and frontend release build passed. `git diff --check` passed.
+- Full Puppeteer browser workflow passed against the release frontend with an isolated mock-AI API/worker and **actual Mailpit SMTP delivery through the encrypted outbox**. Coverage retains signup/OTP, outline approval, generation, editor/history/AI acceptance, failed-save reload recovery, conflict handling, offline reconnect, unavailable IndexedDB, destination checks, valid PDF download (293184 bytes), credits and mobile dashboard. Screenshots disabled.
+- Additive migrations `20261120143000_generation_checkpoints` and `20261120150000_email_delivery` applied to local test and development databases.
+- Read-only local development generation audit returned no wallet mismatches and no jobs requiring review.
+- No paid AI calls, Gmail diagnostic sends, marketplace submissions or production deployment performed in this iteration.
+
+Remaining boundaries:
+
+- Real process termination was tested at a section boundary, not every possible provider/network/commit boundary under production load. Provider billing can repeat when an external response is lost before durable checkpointing; customer chapter commits and settlement are fenced.
+- Interrupted running jobs resume their saved sections automatically. Explicit retries after terminal failure/cancellation start a new job for unfinished chapters; cross-job partial-section reuse is not implemented.
+- HTTP operation replay can still require operator review after a crash between domain commit and replay-response persistence. Historical ledger repairs are audited, not guessed automatically.
+- Protocol 2 requires a deliberate drain/cutover from protocol 1. Existing Docker images were not rebuilt or deployed. See [RUNTIME.md](../backend/RUNTIME.md).
+- SMTP cannot be atomically committed with PostgreSQL. A delivery may duplicate after acceptance followed by a process failure. Supersession during SMTP keeps the old code invalid, but cannot retract an already accepted message. The verification-to-outbox callback boundary still relies on a fresh resend after a process failure. Secret/configuration rotation invalidates pending dispatcher identity; see [EMAIL.md](../backend/EMAIL.md).
+- Live Gmail inbox receipt, production alert delivery, operator permissions, restoration, payment/provider reconciliation, load/security/accessibility review and marketplace file validators remain separate release gates.
+
+## S05 library and planning — 20 November 2026
+
+Status: core library/planning gate passed locally. S06 private assets is next. This is not a production deployment or completion of later roadmap packages.
+
+Implemented:
+
+- `/app/projects`: create/edit descriptions and names, search, pagination, archive/restore, and project-to-library navigation. Project deletion unassigns its books instead of deleting them.
+- Library filters for project/unassigned, language, type, status and archive state; newest/oldest/title ordering with ID tie-breakers, bounded cursor pagination, and filter/page state in the URL.
+- Owner-checked project assignment/reassignment; book archive/restore distinct from soft deletion; explicit brief/outline-only or manuscript duplication. Copies have new identities and no credit spend, jobs, exports or copied revision history.
+- Optional brief purpose, reader age, writing style, point of view, brand and terminology, with defaults and actual prompt integration. Progressive-disclosure form fields and account/tab-session-scoped IndexedDB recovery for unfinished briefs, independent of manuscript recovery.
+- Outline version list/detail/preview and restore as a new unapproved plan. HTTP saves require `baseVersion`; approval requires the reviewed `version`. Stale saves/approvals/restores reject with conflict. Repeated approval of the same version preserves materialized chapter IDs.
+- Restoring planning does not change manuscript chapters, order, text, history or book metadata. Structural approval/editing is blocked once manuscript edits exist; duplication provides a separate planning path.
+
+Verification:
+
+- **72 backend tests across 9 files passed**, including seven new library/planning tests: owner isolation, archived-project assignment rejection, metadata preservation, archive/deletion distinction, tied-timestamp pagination, bounded filters, independent manuscript duplication without credit spend, stale/missing version tokens, harmless repeated approval, written-manuscript preservation, busy-book rejection and deleted-book isolation.
+- Workspace type checks, frontend lint, both builds, and `git diff --check` passed.
+- Expanded Puppeteer journey passed with the release frontend, isolated test database, mock AI and Mailpit. It verifies wizard recovery after reload; original signup-to-PDF and edit-recovery flows; history restoration after writing with identical chapter metadata; project create/edit; assignment; URL filtering; book archive/restore; manuscript duplication; credits and mobile dashboard. PDF download validated (293184 bytes in this run). Screenshots disabled.
+- Initial browser run found the wizard could be clicked while its recovery check was still loading. Explicit disabled submit controls and visible recovery-loading state fixed this; the complete rerun passed.
+- Additive migration `20261120160000_library_archive` applied to test and local development databases. Release APIs and frontend must be updated together because outline write/approval version tokens are now required.
+
+Boundaries:
+
+- Archive is library organization, not deletion or a document access revocation. Book archive/duplication is rejected during active generation; archived books remain accessible to their owner by direct URL. Project archive does not cascade to books.
+- Pagination is deterministic across ties, not a historical snapshot of a changing library. A removed/filtered cursor requires restarting at the first page; UI retry resets that cursor.
+- Project lists paginate; assignment/filter dropdowns currently show up to 100 matching projects. A searchable assignment picker for accounts beyond that size remains a UX extension.
+- Planning recovery is local to the account and tab session, not cross-device sync. Closing the tab can lose its recovery key; a browser that clones session storage when duplicating a tab can share that key. Storage failure is reported; there is no guarantee against loss before an IndexedDB commit. Planning-draft retention controls and additional browser-failure tests remain future hardening work.
+- The current outline format has flat section topics. Nested sections, stable cross-version section mapping and destructive structural reconciliation of written books remain unsupported; current safeguards preserve the manuscript instead of guessing mappings.
+- Optional author-brand fields are per brief; reusable account-level brand presets are not implemented. Asset/design copying is deferred until those models exist.
+- No new Gmail sends, paid AI requests, remote push, Docker rollout or production deployment in this iteration. Full release gates in S16 remain open.

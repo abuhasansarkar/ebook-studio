@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { CREDIT_COSTS, type AssistAction } from "@ebook/shared";
+import { CREDIT_COSTS, documentError, type AssistAction } from "@ebook/shared";
 import { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../database/prisma.js";
 import { badRequest, conflict, notFound } from "../../utils/errors.js";
@@ -18,9 +18,8 @@ async function getOwnedChapter(userId: string, chapterId: string) {
 }
 
 function assertDoc(json: unknown): asserts json is PMNode {
-  if (!json || typeof json !== "object" || (json as PMNode).type !== "doc" || !Array.isArray((json as PMNode).content ?? [])) {
-    throw badRequest("contentJson must be a TipTap document ({ type: 'doc', content: [...] })");
-  }
+  const error = documentError(json);
+  if (error) throw badRequest(error);
 }
 
 export const chapterService = {

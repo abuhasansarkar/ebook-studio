@@ -49,6 +49,14 @@ async function getOtp(to: string): Promise<string> {
 const browser = await puppeteer.launch({ headless: HEADLESS, args: ["--no-sandbox"], defaultViewport: { width: 1360, height: 900 } });
 const page = await browser.newPage();
 const consoleErrors: string[] = [];
+const keyedRequests = new Set<string>();
+page.on("request", (req) => {
+  if (req.method() !== "POST" || !req.headers()["idempotency-key"]) return;
+  const path = new URL(req.url()).pathname;
+  if (path === "/api/v1/books") keyedRequests.add("create");
+  if (/\/books\/[^/]+\/generate$/.test(path)) keyedRequests.add("write");
+  if (/\/books\/[^/]+\/exports$/.test(path)) keyedRequests.add("export");
+});
 page.on("pageerror", (e) => consoleErrors.push(String(e)));
 page.on("console", (m) => m.type() === "error" && !m.text().includes("Failed to load resource") && consoleErrors.push(m.text()));
 
@@ -95,6 +103,21 @@ try {
   await waitText(page, "Describe your idea in at least a few words");
   log("wizard validation");
   await page.type("#topic", "A beginner's guide to meal prep for busy parents");
+  await page.waitForFunction(() => new Promise<boolean>(resolve => {
+    const request = indexedDB.open('ebook-planning-drafts', 1);
+    request.onsuccess = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains('drafts')) { db.close(); resolve(false); return; }
+      const tx = db.transaction('drafts', 'readonly');
+      const rows = tx.objectStore('drafts').getAll();
+      tx.oncomplete = () => { db.close(); resolve(rows.result.some((r: { topic?: string }) => r.topic === "A beginner's guide to meal prep for busy parents")); };
+    };
+    request.onerror = () => resolve(false);
+  }));
+  await page.reload({ waitUntil: 'networkidle0' });
+  await clickButton(page, 'Recover brief');
+  if (await page.$eval('#topic', el => (el as HTMLTextAreaElement).value) !== "A beginner's guide to meal prep for busy parents") throw new Error('Planning draft was not recovered');
+  log('unfinished wizard recovers after reload');
   await shot(page, "wizard-step1");
   await clickButton(page, "Continue");
   await page.waitForSelector("#language");
@@ -122,6 +145,11 @@ try {
   await waitText(page, "Your book is written", 60_000);
   await shot(page, "written");
   log("chapters generated with live progress");
+  await waitText(page, "Recent activity");
+  await clickButton(page, "Copy support reference");
+  await page.waitForFunction(() => document.body.innerText.includes("Reference copied") || document.body.innerText.includes("Support reference:"));
+  if (!keyedRequests.has("create") || !keyedRequests.has("write")) throw new Error("Writing requests are missing durable request identities");
+  log("operation activity and support reference");
 
   // Editor
   await clickButton(page, "Open editor");
@@ -154,6 +182,75 @@ try {
   await page.click('dialog[open] button[aria-label="Close"]');
   log("version preview, restore, and subsequent autosave");
 
+  // Failed saves retain a durable browser draft; reload must not silently submit it.
+  let rejectSaves = true;
+  let patchAttempts = 0;
+  await page.setRequestInterception(true);
+  page.on('request', request => {
+    if (request.isInterceptResolutionHandled()) return;
+    if (request.method() === 'PATCH' && /\/chapters\/[^/]+$/.test(new URL(request.url()).pathname)) {
+      patchAttempts++;
+      if (rejectSaves) { void request.abort('failed'); return; }
+    }
+    void request.continue();
+  });
+  await page.$eval('input[aria-label="Chapter title"]', el => (el as HTMLInputElement).select());
+  await page.type('input[aria-label="Chapter title"]', 'Recovered manuscript title');
+  await waitText(page, 'Not saved');
+  const failedAttempts = patchAttempts;
+  await new Promise(r => setTimeout(r, 2600));
+  if (patchAttempts !== failedAttempts) throw new Error('Failed save is retrying without permission');
+  page.on('dialog', dialog => void dialog.accept());
+  rejectSaves = false;
+  await page.reload({ waitUntil: 'networkidle0' });
+  await waitText(page, 'Unsaved browser drafts found');
+  await clickButton(page, 'Recover ');
+  if (await page.$eval('input[aria-label="Chapter title"]', el => (el as HTMLInputElement).value) !== 'Recovered manuscript title') throw new Error('Draft title lost on reload');
+  await page.click("::-p-xpath(//button[normalize-space(.)='Save' and not(@disabled)])");
+  await page.waitForFunction(() => Array.from(document.querySelectorAll('button')).some(b => b.textContent?.trim() === 'History' && !b.disabled));
+  log('failed save pauses, draft survives reload, explicit recovery and manual save');
+
+  // A concurrent server edit must produce one conflict and wait for a decision.
+  const currentBookId = new URL(page.url()).pathname.split('/')[3];
+  const concurrent = await page.evaluate(async bookId => {
+    const list = await (await fetch(`/api/v1/books/${bookId}/chapters`)).json();
+    const id = list.chapters[0].id;
+    const current = await (await fetch(`/api/v1/chapters/${id}`)).json();
+    const response = await fetch(`/api/v1/chapters/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: current.chapter.version, title: 'Changed in another tab' }) });
+    return response.status;
+  }, currentBookId);
+  if (concurrent !== 200) throw new Error('Concurrent edit setup failed');
+  await page.$eval('input[aria-label="Chapter title"]', el => (el as HTMLInputElement).select());
+  await page.type('input[aria-label="Chapter title"]', 'My reviewed title');
+  await waitText(page, 'This chapter was changed elsewhere');
+  const conflictedAttempts = patchAttempts;
+  await new Promise(r => setTimeout(r, 2600));
+  if (patchAttempts !== conflictedAttempts) throw new Error('Conflict is retrying without a decision');
+  await clickButton(page, 'Keep my version');
+  await page.waitForFunction(() => Array.from(document.querySelectorAll('button')).some(b => b.textContent?.trim() === 'History' && !b.disabled));
+  log('concurrent version conflict pauses and explicit keep-mine saves');
+
+  await page.setOfflineMode(true);
+  await page.$eval('input[aria-label="Chapter title"]', el => (el as HTMLInputElement).select());
+  await page.type('input[aria-label="Chapter title"]', 'Offline edits retained');
+  await waitText(page, 'Offline — changes pending');
+  await page.setOfflineMode(false);
+  await page.waitForFunction(() => Array.from(document.querySelectorAll('button')).some(b => b.textContent?.trim() === 'History' && !b.disabled));
+  log('offline editing and reconnect save');
+
+  const unavailableStorage = await page.evaluateOnNewDocument(() => {
+    IDBFactory.prototype.open = () => { throw new DOMException('Storage unavailable', 'QuotaExceededError'); };
+  });
+  await page.reload({ waitUntil: 'networkidle0' });
+  await waitText(page, 'Browser recovery is unavailable');
+  await page.$eval('input[aria-label="Chapter title"]', el => (el as HTMLInputElement).select());
+  await page.type('input[aria-label="Chapter title"]', 'Server saves without local storage');
+  await page.waitForFunction(() => Array.from(document.querySelectorAll('button')).some(b => b.textContent?.trim() === 'History' && !b.disabled));
+  await page.removeScriptToEvaluateOnNewDocument(unavailableStorage.identifier);
+  await page.reload({ waitUntil: 'networkidle0' });
+  if (await page.$eval('input[aria-label="Chapter title"]', el => (el as HTMLInputElement).value) !== 'Server saves without local storage') throw new Error('Storage failure prevented server save');
+  log('unavailable browser storage warns and server saving still works');
+
   // AI assist on a selection
   await page.evaluate(() => {
     const p = document.querySelector(".book-prose p")!;
@@ -179,6 +276,10 @@ try {
 
   // Export
   await page.goto(`${page.url().replace(/\/editor$/, "/export")}`, { waitUntil: "networkidle0" });
+  await waitText(page, 'Prepare for a marketplace');
+  await waitText(page, 'Preparation needed');
+  await page.select('select', 'etsy');
+  await waitText(page, 'Choose a delivery file no larger than 20 MB');
   await clickButton(page, "Export PDF");
   await waitText(page, "Ready", 90_000);
   await waitText(page, "pages");
@@ -190,7 +291,56 @@ try {
     return { status: r.status, type: r.headers.get("content-type"), head: String.fromCharCode(...b.slice(0, 5)), size: b.length };
   }, href);
   if (pdf.status !== 200 || pdf.head !== "%PDF-") throw new Error(`Bad PDF download: ${JSON.stringify(pdf)}`);
+  if (!keyedRequests.has("export")) throw new Error("Export request is missing a durable request identity");
+  await waitText(page, "Recent activity");
+  await clickButton(page, 'Refresh checks');
+  await page.waitForFunction(() => Array.from(document.querySelectorAll('li')).some(li => li.textContent?.includes('Choose a delivery file no larger than 20 MB') && li.textContent?.includes('Passed:')));
+  log('destination-specific publishing checks refresh after export');
   log(`PDF exported and downloaded (${pdf.size} bytes)`);
+
+  // Restore earlier planning after writing, preserving the manuscript.
+  const chapterList = await page.evaluate(async bookId => JSON.stringify(await (await fetch(`/api/v1/books/${bookId}/chapters`)).json()), currentBookId);
+  await page.goto(`${BASE}/app/books/${currentBookId}/outline`, { waitUntil: 'networkidle0' });
+  await clickButton(page, 'Outline history');
+  await clickButton(page, 'Version 1');
+  await clickButton(page, 'Restore this outline');
+  await page.waitForFunction(() => !document.querySelector('dialog[open]'));
+  const afterPlanning = await page.evaluate(async bookId => JSON.stringify(await (await fetch(`/api/v1/books/${bookId}/chapters`)).json()), currentBookId);
+  if (afterPlanning !== chapterList) throw new Error('Outline restore changed the manuscript');
+  log('outline history restores planning without changing written chapters');
+
+  await page.goto(`${BASE}/app/projects`, { waitUntil: 'networkidle0' });
+  await clickButton(page, 'New project');
+  await page.type('input[aria-label="Project name"]', 'Marketplace series');
+  await page.type('textarea[aria-label="Project description"]', 'Books prepared for digital stores');
+  await clickButton(page, 'Save project');
+  await page.waitForFunction(() => !document.querySelector('dialog[open]'));
+  await waitText(page, 'Marketplace series');
+  const projectHref = await page.$eval('a[href*="projectId="]', el => (el as HTMLAnchorElement).href);
+  const projectId = new URL(projectHref).searchParams.get('projectId')!;
+  await clickButton(page, 'Edit project');
+  await page.$eval('input[aria-label="Project name"]', el => (el as HTMLInputElement).select());
+  await page.type('input[aria-label="Project name"]', 'Digital publishing series');
+  await clickButton(page, 'Save project');
+  await page.waitForFunction(() => !document.querySelector('dialog[open]'));
+  await page.goto(`${BASE}/app/books`, { waitUntil: 'networkidle0' });
+  await page.waitForSelector('select[aria-label^="Project for "] option[value="' + projectId + '"]');
+  await page.select('select[aria-label^="Project for "]', projectId);
+  await page.waitForFunction(id => (document.querySelector('select[aria-label^="Project for "]') as HTMLSelectElement)?.value === id && !(document.querySelector('select[aria-label^="Project for "]') as HTMLSelectElement)?.disabled, {}, projectId);
+  await page.select('select[aria-label="Project filter"]', projectId);
+  await page.waitForFunction(id => new URL(location.href).searchParams.get('projectId') === id, {}, projectId);
+  await clickButton(page, 'Archive book');
+  await waitText(page, 'No books match');
+  await page.select('select[aria-label="Archive filter"]', 'archived');
+  await clickButton(page, 'Restore book');
+  await waitText(page, 'No books match');
+  await page.select('select[aria-label="Archive filter"]', '');
+  await clickButton(page, 'Duplicate');
+  await clickButton(page, 'Include manuscript');
+  await page.waitForFunction(() => !document.querySelector('dialog[open]'));
+  await clickButton(page, 'Clear filters');
+  await page.waitForFunction(() => document.querySelectorAll('select[aria-label^="Project for "]').length === 2);
+  log('project create/edit, assignment, URL filters, book archive/restore and manuscript duplication');
 
   // Credits
   await page.goto(`${BASE}/app/credits`, { waitUntil: "networkidle0" });

@@ -14,6 +14,7 @@ const NAV = [
   { href: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/app/create", label: "Create eBook", icon: PlusCircle },
   { href: "/app/books", label: "My eBooks", icon: BookOpen },
+  { href: "/app/projects", label: "Projects", icon: BookOpen },
   { href: "/app/credits", label: "Credits", icon: Coins },
   { href: "/app/settings", label: "Settings", icon: Settings },
 ];

@@ -6,10 +6,11 @@ import { TableKit } from "@tiptap/extension-table";
 import { CharacterCount, Placeholder } from "@tiptap/extensions";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Check, CloudOff, History, Loader2 } from "lucide-react";
+import { AlertTriangle, Check, CloudOff, History, Loader2, Save, Download } from "lucide-react";
 import { getLanguage } from "@ebook/shared";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
+import { Alert } from "@/components/ui/misc";
 import { qk } from "@/lib/queries";
 import type { ChapterFull, ChapterMeta } from "@/lib/types";
 import { formatNumber, timeAgo } from "@/lib/utils";
@@ -27,17 +28,17 @@ function SaveIndicator({ state, lastSavedAt, error, onRetry }: { state: SaveStat
   if (state === "saving") return <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</span>;
   if (state === "dirty") return <span className="text-xs text-muted-foreground">Unsaved changes</span>;
   if (state === "conflict") return <span className="flex items-center gap-1.5 text-xs text-warning"><AlertTriangle className="h-3.5 w-3.5" /> Edit conflict</span>;
-  if (state === "error")
+  if (state === "error" || state === "offline")
     return (
       <span className="flex items-center gap-1.5 text-xs text-danger" title={error ?? undefined}>
-        <CloudOff className="h-3.5 w-3.5" /> Not saved
+        <CloudOff className="h-3.5 w-3.5" /> {state === "offline" ? "Offline — changes pending" : "Not saved"}
         <button type="button" onClick={onRetry} className="cursor-pointer font-semibold underline">Retry</button>
       </span>
     );
   return <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><Check className="h-3.5 w-3.5 text-success" /> Saved {timeAgo(lastSavedAt)}</span>;
 }
 
-export function ChapterEditor({ chapter, bookId, language }: { chapter: ChapterFull; bookId: string; language: string }) {
+export function ChapterEditor({ ownerId, chapter, bookId, language }: { ownerId: string; chapter: ChapterFull; bookId: string; language: string }) {
   const qc = useQueryClient();
   const lang = getLanguage(language);
   const [title, setTitle] = useState(chapter.title);
@@ -55,7 +56,7 @@ export function ChapterEditor({ chapter, bookId, language }: { chapter: ChapterF
     },
     [qc, bookId],
   );
-  const save = useAutosave(chapter.id, chapter.version, chapter.updatedAt, onSaved);
+  const save = useAutosave(ownerId, chapter.id, chapter.version, chapter.updatedAt, onSaved);
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -74,8 +75,8 @@ export function ChapterEditor({ chapter, bookId, language }: { chapter: ChapterF
   });
 
   useEffect(() => {
-    editor?.setEditable(!historyOpen, false);
-  }, [editor, historyOpen]);
+    editor?.setEditable(!historyOpen && save.ready && save.drafts.length === 0 && !!ownerId, false);
+  }, [editor, historyOpen, save.ready, save.drafts.length, ownerId]);
 
   const words = useEditorState({ editor, selector: ({ editor: e }) => (e ? e.storage.characterCount.words() : 0) });
 
@@ -84,7 +85,7 @@ export function ChapterEditor({ chapter, bookId, language }: { chapter: ChapterF
     const h = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        void save.flush();
+        void save.retry();
       }
     };
     window.addEventListener("keydown", h);
@@ -96,20 +97,39 @@ export function ChapterEditor({ chapter, bookId, language }: { chapter: ChapterF
       <div className="sticky top-14 z-10 flex flex-wrap items-center justify-between gap-2 border-b border-border bg-surface/95 px-4 py-2 backdrop-blur lg:top-0 sm:px-6">
         {editor ? <EditorToolbar editor={editor} /> : <span />}
         <div className="flex items-center gap-4">
-          <Button variant="secondary" size="sm" disabled={save.state !== "saved" || !editor} onClick={() => setHistoryOpen(true)} title={save.state !== "saved" ? "Save your changes before opening history" : "View earlier drafts"}><History className="h-4 w-4" /> History</Button>
+          <Button variant="secondary" size="sm" disabled={!save.ready || save.drafts.length > 0 || save.state === 'saved' || save.state === 'saving' || save.state === 'conflict'} onClick={() => void save.retry()}><Save className="h-4 w-4" /> Save</Button>
+          <Button variant="secondary" size="sm" disabled={!editor} onClick={() => {
+            const url = URL.createObjectURL(new Blob([JSON.stringify({ title, contentJson: editor?.getJSON() }, null, 2)], { type: 'application/json' }));
+            const link = document.createElement('a'); link.href = url; link.download = 'chapter-backup.json'; link.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+          }}><Download className="h-4 w-4" /> Backup</Button>
+          <Button variant="secondary" size="sm" disabled={!save.ready || save.drafts.length > 0 || save.state !== "saved" || !editor} onClick={() => setHistoryOpen(true)} title={save.state !== "saved" ? "Save your changes before opening history" : "View earlier drafts"}><History className="h-4 w-4" /> History</Button>
           <span className="text-xs text-muted-foreground">{formatNumber(words ?? 0)} words</span>
-          <SaveIndicator state={save.state} lastSavedAt={save.lastSavedAt} error={save.errorMsg} onRetry={() => void save.flush()} />
+          <SaveIndicator state={save.state} lastSavedAt={save.lastSavedAt} error={save.errorMsg} onRetry={() => void save.retry()} />
         </div>
       </div>
 
+      {save.storageError && <Alert tone="danger" className="m-4">{save.storageError}</Alert>}
+      {save.drafts.length > 0 && <Alert tone="info" className="m-4">
+        <p className="font-semibold">Unsaved browser drafts found</p>
+        <p>Review a recovered draft before saving. If the server changed, you will be asked which version to keep. Other tabs’ newer edits are preserved.</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {save.drafts.map(draft => <Button key={draft.id} variant="secondary" size="sm" onClick={() => {
+            const patch = save.recover(draft);
+            if (patch.title !== undefined) setTitle(patch.title);
+            if (patch.contentJson) editor?.commands.setContent(patch.contentJson, { emitUpdate: false });
+          }}>Recover {new Date(draft.updatedAt).toLocaleString()} (v{draft.baseVersion})</Button>)}
+          <Button variant="secondary" size="sm" onClick={() => { if (window.confirm('Discard these browser drafts and keep the server version?')) void save.discardDrafts(); }}>Discard browser drafts</Button>
+        </div>
+      </Alert>}
       <div className="mx-auto w-full max-w-3xl flex-1 px-5 py-10 sm:px-10" style={{ fontFamily: lang.fontFamily }}>
         <p className="mb-2 text-sm font-bold text-primary">Chapter {chapter.position + 1}</p>
         <input
-          disabled={historyOpen}
+          disabled={historyOpen || !save.ready || save.drafts.length > 0}
           value={title}
           onChange={(e) => {
             setTitle(e.target.value);
-            if (e.target.value.trim()) save.schedule({ title: e.target.value.trim() });
+            save.schedule({ title: e.target.value.trim() });
           }}
           dir={lang.dir}
           lang={lang.code}
@@ -119,7 +139,7 @@ export function ChapterEditor({ chapter, bookId, language }: { chapter: ChapterF
           style={{ fontFamily: lang.fontFamily }}
         />
         <EditorContent editor={editor} />
-        {editor && !historyOpen && <AiAssist editor={editor} bookId={bookId} dir={lang.dir} />}
+        {editor && !historyOpen && save.ready && save.drafts.length === 0 && <AiAssist editor={editor} bookId={bookId} dir={lang.dir} />}
       </div>
 
       {historyOpen && <VersionHistory chapterId={chapter.id} currentVersion={chapter.version} onClose={() => setHistoryOpen(false)} onRestored={(saved, revision) => {
@@ -141,6 +161,8 @@ export function ChapterEditor({ chapter, bookId, language }: { chapter: ChapterF
               if (theirs && editor) {
                 editor.commands.setContent(theirs.contentJson ?? { type: "doc", content: [{ type: "paragraph" }] }, { emitUpdate: false });
                 setTitle(theirs.title);
+                void qc.invalidateQueries({ queryKey: qk.chapter(chapter.id) });
+                void qc.invalidateQueries({ queryKey: qk.chapters(bookId) });
               }
             }}
           >

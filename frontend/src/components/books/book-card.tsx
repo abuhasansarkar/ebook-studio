@@ -32,6 +32,7 @@ export function BookCard({ book }: { book: BookSummary }) {
           {book.title}
         </p>
         <span className="absolute end-3 top-3">
+          {book.archivedAt && <Badge tone="neutral" className="mr-1 bg-white/90">Archived</Badge>}
           <Badge tone={status.tone} className="bg-white/90">{status.label}</Badge>
         </span>
       </div>

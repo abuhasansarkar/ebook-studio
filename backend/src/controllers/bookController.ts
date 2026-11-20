@@ -1,3 +1,5 @@
+import { assertIdle, lockBook } from "../services/generation/jobRuntime.js";
+import { submitOperation } from "../services/operations/operationService.js";
 import type { Request, Response } from "express";
 import { bookBriefSchema, type BookBrief } from "@ebook/shared";
 import { userId } from "../middleware/requireAuth.js";
@@ -18,6 +20,7 @@ export const bookController = {
   async create(req: Request, res: Response) {
     const uid = userId(req);
     const { brief, projectId } = req.body as { brief: BookBrief; projectId?: string };
+    await submitOperation(req, res, uid, "create_book", null, async () => {
     const book = await bookService.create(uid, brief, projectId);
     let job = null;
     let outlineError: { code: string; message: string } | null = null;
@@ -27,7 +30,8 @@ export const bookController = {
       if (!(err instanceof AppError)) throw err;
       outlineError = { code: err.code, message: err.message };
     }
-    res.status(201).json({ book, job, outlineError });
+    return { status: 201, body: { book, job, outlineError } };
+    });
   },
 
   async get(req: Request, res: Response) {
@@ -44,13 +48,15 @@ export const bookController = {
     const uid = userId(req);
     const bookId = param(req, "bookId");
     await getOwnedBook(uid, bookId);
-    const written = await prisma.chapter.count({ where: { bookId, status: "done" } });
-    if (written > 0) throw conflict("The brief can't be changed after chapters are written.");
     const brief = bookBriefSchema.parse(req.body);
-    await prisma.$transaction([
-      prisma.bookBrief.update({ where: { bookId }, data: { data: brief } }),
-      prisma.book.update({ where: { id: bookId }, data: { language: brief.language, bookType: brief.bookType } }),
-    ]);
+    await prisma.$transaction(async tx => {
+      await lockBook(tx, bookId, uid);
+      await assertIdle(tx, bookId);
+      const written = await tx.chapter.count({ where: { bookId, status: 'done' } });
+      if (written > 0) throw conflict("The brief can't be changed after chapters are written.");
+      await tx.bookBrief.update({ where: { bookId }, data: { data: brief } });
+      await tx.book.update({ where: { id: bookId }, data: { language: brief.language, bookType: brief.bookType } });
+    });
     res.json({ brief });
   },
 

@@ -54,7 +54,7 @@ export function VerifyEmailForm() {
 
   return (
     <>
-      <AuthHeader title="Check your email" subtitle={`We sent a 6-digit code to ${email}. It expires in 10 minutes.`} />
+      <AuthHeader title="Check your email" subtitle={`A 6-digit code was requested for ${email}. It expires 10 minutes after the request. Delivery may take a moment.`} />
       <form
         className="space-y-5"
         onSubmit={(e) => {
@@ -86,7 +86,7 @@ export function VerifyEmailForm() {
             const { error } = await authClient.emailOtp.sendVerificationOtp({ email, type: "email-verification" });
             setResending(false);
             if (error) return toast.error(error.message ?? "Could not resend the code");
-            toast.success("A new code is on its way");
+            toast.success("A new code was requested. Use the latest code you receive.");
             setCooldown(30);
           }}
         >

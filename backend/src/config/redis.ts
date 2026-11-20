@@ -15,3 +15,22 @@ export function redisConnection(): ConnectionOptions {
     maxRetriesPerRequest: null,
   };
 }
+
+// Readiness uses a bounded connection independent of BullMQ's worker reconnect policy.
+let runtimeClient: Promise<import("ioredis").Redis> | null = null;
+export function getRuntimeRedis() {
+  runtimeClient ??= (async () => {
+    const { Redis } = await import("ioredis");
+    const client = new Redis(env.REDIS_URL, { lazyConnect: true, connectTimeout: 2000, maxRetriesPerRequest: 1, enableOfflineQueue: false });
+    client.on("error", () => undefined);
+    try { await client.connect(); return client; }
+    catch (err) { client.disconnect(); runtimeClient = null; throw err; }
+  })();
+  return runtimeClient;
+}
+export async function closeRuntimeRedis() {
+  const current = runtimeClient;
+  runtimeClient = null;
+  const client = await current?.catch(() => null);
+  if (client) { try { await client.quit(); } finally { client.disconnect(); } }
+}

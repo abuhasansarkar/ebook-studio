@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { BookBriefInput, Outline } from "@ebook/shared";
+import { operationRequest } from "./operation-request";
 import { api } from "./api";
 import type { BookDetail, BookSummary, ChapterFull, ChapterMeta, CreditTransaction, Dashboard, ExportRecord, GenerationJob } from "./types";
 
@@ -82,6 +83,7 @@ export function useCredits() {
 function useInvalidateBook(bookId: string) {
   const qc = useQueryClient();
   return () => {
+    void qc.invalidateQueries({ queryKey: ["operations", bookId] });
     void qc.invalidateQueries({ queryKey: qk.book(bookId) });
     void qc.invalidateQueries({ queryKey: qk.chapters(bookId) });
     void qc.invalidateQueries({ queryKey: qk.credits });
@@ -94,7 +96,7 @@ export function useCreateBook() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (brief: BookBriefInput) =>
-      api.post<{ book: BookSummary; job: GenerationJob | null; outlineError: { code: string; message: string } | null }>("/books", { brief }),
+      operationRequest<{ book: BookSummary; job: GenerationJob | null; outlineError: { code: string; message: string } | null }>("/books", { brief }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["books"] });
       void qc.invalidateQueries({ queryKey: qk.dashboard });
@@ -117,10 +119,10 @@ export function useDeleteBook() {
 export function useBookAction(bookId: string) {
   const invalidate = useInvalidateBook(bookId);
   return {
-    generateOutline: useMutation({ mutationFn: () => api.post(`/books/${bookId}/outline/generate`), onSettled: invalidate }),
-    saveOutline: useMutation({ mutationFn: (o: Outline) => api.put(`/books/${bookId}/outline`, o), onSettled: invalidate }),
-    approveOutline: useMutation({ mutationFn: () => api.post(`/books/${bookId}/outline/approve`), onSettled: invalidate }),
-    startGeneration: useMutation({ mutationFn: () => api.post<{ job: GenerationJob }>(`/books/${bookId}/generate`), onSettled: invalidate }),
+    generateOutline: useMutation({ mutationFn: () => operationRequest(`/books/${bookId}/outline/generate`), onSettled: invalidate }),
+    saveOutline: useMutation({ mutationFn: (o: Outline & { baseVersion: number }) => api.put<{ outline: { version: number } }>(`/books/${bookId}/outline`, o), onSettled: invalidate }),
+    approveOutline: useMutation({ mutationFn: (version: number) => api.post(`/books/${bookId}/outline/approve`, { version }), onSettled: invalidate }),
+    startGeneration: useMutation({ mutationFn: () => operationRequest<{ job: GenerationJob }>(`/books/${bookId}/generate`), onSettled: invalidate }),
     cancelGeneration: useMutation({ mutationFn: () => api.post(`/books/${bookId}/generate/cancel`), onSettled: invalidate }),
   };
 }
@@ -128,7 +130,7 @@ export function useBookAction(bookId: string) {
 export function useCreateExport(bookId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => api.post<{ export: ExportRecord }>(`/books/${bookId}/exports`, { format: "pdf" }),
-    onSettled: () => void qc.invalidateQueries({ queryKey: qk.exports(bookId) }),
+    mutationFn: () => operationRequest<{ export: ExportRecord }>(`/books/${bookId}/exports`, { format: "pdf" }),
+    onSettled: () => { void qc.invalidateQueries({ queryKey: qk.exports(bookId) }); void qc.invalidateQueries({ queryKey: ["operations", bookId] }); },
   });
 }
