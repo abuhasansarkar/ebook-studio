@@ -11,3 +11,6 @@ backend/storage
 playwright-report
 test-results
 backend/assets/fonts/fetched
+
+# Dev-server stderr from the local stack
+*.log.err

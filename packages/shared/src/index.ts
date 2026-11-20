@@ -8,3 +8,4 @@ export * from './library';
 export * from './covers';
 export * from './design';
 export * from './quality';
+export * from './exports';

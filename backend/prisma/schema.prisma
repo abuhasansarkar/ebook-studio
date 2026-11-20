@@ -305,6 +305,14 @@ model Export {
   designSnapshot Json?
   /// Post-render findings such as glyphs drawn by non-bundled fonts
   diagnostics Json?
+  /// Immutable export snapshot: options, chapter versions, pinned assets and content hash
+  snapshot Json?
+  /// Validation result of the file read back from storage; null until the worker validates it
+  validation Json?
+  /// SHA-256 of the stored file, used to detect a replaced or corrupted artifact
+  sha256 String?
+  /// MIME type of the stored file
+  contentType String?
   createdAt  DateTime  @default(now())
   finishedAt DateTime?
 

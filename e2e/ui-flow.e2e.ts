@@ -30,6 +30,11 @@ async function waitText(page: Page, text: string, timeout = 30_000) {
   await page.waitForFunction((t) => document.body.innerText.includes(t), { timeout }, text);
 }
 
+/** Waits for an element to exist. The report panel renders a loader until its detail arrives. */
+async function waitFor(page: Page, selector: string, timeout = 30_000) {
+  await page.waitForSelector(selector, { timeout });
+}
+
 async function clickButton(page: Page, text: string) {
   const handle = await page.waitForSelector(`::-p-xpath(//button[contains(normalize-space(.), ${JSON.stringify(text)}) and not(@disabled)] | //a[contains(normalize-space(.), ${JSON.stringify(text)})])`, { timeout: 30_000 });
   await handle!.click();
@@ -446,12 +451,16 @@ try {
     const chapter = (await (await fetch(`/api/v1/chapters/${list[0].id}`)).json()).chapter;
     chapter.contentJson.content.push({ type: 'paragraph', content: [{ type: 'text', text: 'TODO: এখানে একটি উদাহরণ যোগ করুন।' }] }, { type: 'paragraph', content: [{ type: 'text', text: 'ফ্রিজ পরিষ্কার রাখুন। ফ্রিজারে খাবার রাখুন।' }] });
     const r = await fetch(`/api/v1/chapters/${chapter.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: chapter.version, contentJson: chapter.contentJson }) });
-    if (!r.ok) throw new Error(`Seeding the review fixture failed: ${r.status}`);
+    if (!r.ok) throw new Error(`Seeding the review fixture failed: ${r.status} ${await r.text()}`);
+    const after = (await (await fetch(`/api/v1/chapters/${chapter.id}`)).json()).chapter;
+    const persisted = JSON.stringify(after.contentJson);
+    if (!persisted.includes('ফ্রিজ')) throw new Error('Seed did not persist the review fixture');
     return chapter.id as string;
   }, currentBookId);
   await page.goto(`${BASE}/app/books/${currentBookId}/quality`, { waitUntil: 'networkidle0' });
   await waitText(page, 'No reviews yet');
   await clickButton(page, 'Run checks (free)'); await waitText(page, 'Checks finished.');
+  await waitFor(page, '#f-category');
   await page.select('#f-category', 'content');
   await waitText(page, 'Placeholder marker left in the text.');
   await shot(page, 'quality-report');
@@ -470,11 +479,17 @@ try {
   await clickButton(page, 'Save voice and terminology'); await waitText(page, 'Voice and terminology (version 1)');
   await waitText(page, 'Out of date');
   await clickButton(page, 'Run checks again'); await waitText(page, 'Checks finished.');
+  await waitFor(page, '#f-category');
   await page.select('#f-category', 'consistency'); await waitText(page, 'Use “ফ্রিজার” instead of “ফ্রিজ”');
   const termCards = await page.evaluate(() => Array.from(document.querySelectorAll('article')).filter(a => a.textContent?.includes('instead of “ফ্রিজ”')).length);
   if (termCards !== 1) throw new Error(`Expected one whole-word terminology finding, found ${termCards}`);
   await page.goto(`${BASE}${await cardLink('instead of “ফ্রিজ”')}`, { waitUntil: 'networkidle0' });
   await clickButton(page, 'Replace with “ফ্রিজার”'); await waitText(page, 'Replacement applied');
+  // The replacement is saved by autosave; wait for it to reach the server before editing the chapter again.
+  await page.waitForFunction(async id => {
+    const c = (await (await fetch(`/api/v1/chapters/${id}`)).json()).chapter;
+    return JSON.stringify(c.contentJson).includes('ফ্রিজার পরিষ্কার রাখুন');
+  }, { timeout: 30000, polling: 500 }, seededChapter);
   // A definition the chapter contradicts must be reported under Contradictions.
   await page.goto(`${BASE}/app/books/${currentBookId}/quality`, { waitUntil: 'networkidle0' });
   await clickSummary('Voice and terminology');
@@ -484,14 +499,16 @@ try {
   await waitText(page, 'Voice and terminology (version 2)');
   await page.evaluate(async id => {
     const c = (await (await fetch(`/api/v1/chapters/${id}`)).json()).chapter;
+    if (!c.contentJson?.content) throw new Error('Chapter content is empty; nothing to extend');
     c.contentJson.content.push({ type: 'paragraph', content: [{ type: 'text', text: 'Batch cooking means preparing every ingredient before you begin.' }] });
     const r = await fetch(`/api/v1/chapters/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: c.version, contentJson: c.contentJson }) });
-    if (!r.ok) throw new Error(`Seeding the contradiction fixture failed: ${r.status}`);
+    if (!r.ok) throw new Error(`Seeding the contradiction fixture failed: ${r.status} ${await r.text()}`);
   }, seededChapter);
   await clickButton(page, 'Run checks again'); await waitText(page, 'Checks finished.');
+  // The report panel (and its filters) can unmount while the report list reloads.
+  await waitFor(page, '#f-category');
   await page.select('#f-category', 'contradiction'); await waitText(page, 'differently from your book context');
   await shot(page, 'quality-contradiction');
-  await page.waitForFunction(async id => { const c = (await (await fetch(`/api/v1/chapters/${id}`)).json()).chapter; return JSON.stringify(c.contentJson).includes('ফ্রিজার পরিষ্কার রাখুন'); }, { timeout: 30000, polling: 1000 }, seededChapter);
   // Dismissal needs a note and keeps attribution.
   await page.goto(`${BASE}/app/books/${currentBookId}/quality`, { waitUntil: 'networkidle0' });
   await page.select('#f-status', ''); await page.select('#f-category', 'content');
@@ -509,7 +526,7 @@ try {
   const perChapter = await page.evaluate(async () => (await (await fetch('/api/v1/quality/config')).json()).creditsPerChapter);
   if (creditsBeforeReview - creditsAfterReview !== perChapter) throw new Error(`AI review charged ${creditsBeforeReview - creditsAfterReview}, expected ${perChapter}`);
   await shot(page, 'quality-ai');
-  log('quality review: anchored checks, editor highlight, resolve, terminology replacement as a normal saved edit, attributed dismissal, stale report and costed AI review');
+  log('quality review: anchored checks, editor highlight, resolve, terminology replacement as a normal saved edit, attributed dismissal, stale report, definition contradiction and costed AI review');
 
   // Restore earlier planning after writing, preserving the manuscript.
   const chapterList = await page.evaluate(async bookId => JSON.stringify(await (await fetch(`/api/v1/books/${bookId}/chapters`)).json()), currentBookId);

@@ -17,6 +17,10 @@ export interface RenderOptions {
   /** Image sources by asset id: data URIs for export, owner-authenticated URLs for previews. */
   images: Record<string, string>;
   available: ReadonlySet<string>;
+  /** Include the front and back matter from the saved design. Defaults to true. */
+  includeMatter?: boolean;
+  /** Include the printed table of contents. Defaults to true. */
+  includeToc?: boolean;
 }
 /** Fonts requested by PDF export resolve here and are answered from verified bytes by the renderer. */
 export const EXPORT_FONT_ORIGIN = "https://fonts.ebook.invalid/";
@@ -91,6 +95,8 @@ function readerCss(doc: BookDocument) {
 
 export function renderBookHtml(doc: BookDocument, options: RenderOptions): string {
   const { typography: t, elements: e, matter } = doc.design.data;
+  const includeMatter = options.includeMatter !== false;
+  const includeToc = options.includeToc !== false;
   const lang = doc.book.language;
   const stacks = documentStacks(doc, options.available);
   const body = family(stacks.body), heading = family(stacks.heading), mono = family(stacks.mono);
@@ -101,16 +107,16 @@ export function renderBookHtml(doc: BookDocument, options: RenderOptions): strin
   if (matter.references.enabled) contents.push({ id: "references", title: matter.references.title });
 
   const front = [
-    matter.titlePage ? `<section class="front title-page"><h1 class="book-title">${text(doc.book.title)}</h1>${doc.book.subtitle ? `<p class="subtitle">${text(doc.book.subtitle)}</p>` : ""}<div class="rule" aria-hidden="true"></div>${doc.book.author ? `<p class="author">${text(doc.book.author)}</p>` : ""}</section>` : "",
-    matter.copyright.enabled ? `<section class="front copyright" aria-label="Copyright">${paragraphs(matter.copyright.text)}</section>` : "",
-    matter.dedication.enabled ? `<section class="front dedication" aria-label="Dedication">${paragraphs(matter.dedication.text)}</section>` : "",
-    matter.contents.enabled && contents.length ? `<nav class="front toc" aria-labelledby="toc-title"><h2 id="toc-title">${text(matter.contents.title)}</h2><ol>${contents.map((c, i) => `<li><a href="#${c.id}">${i < doc.chapters.length ? `<span class="toc-num">${i + 1}</span>` : ""}<span>${text(c.title)}</span></a></li>`).join("")}</ol></nav>` : "",
+    includeMatter && matter.titlePage ? `<section class="front title-page"><h1 class="book-title">${text(doc.book.title)}</h1>${doc.book.subtitle ? `<p class="subtitle">${text(doc.book.subtitle)}</p>` : ""}<div class="rule" aria-hidden="true"></div>${doc.book.author ? `<p class="author">${text(doc.book.author)}</p>` : ""}</section>` : "",
+    includeMatter && matter.copyright.enabled ? `<section class="front copyright" aria-label="Copyright">${paragraphs(matter.copyright.text)}</section>` : "",
+    includeMatter && matter.dedication.enabled ? `<section class="front dedication" aria-label="Dedication">${paragraphs(matter.dedication.text)}</section>` : "",
+    includeMatter && includeToc && matter.contents.enabled && contents.length ? `<nav class="front toc" aria-labelledby="toc-title"><h2 id="toc-title">${text(matter.contents.title)}</h2><ol>${contents.map((c, i) => `<li><a href="#${c.id}">${i < doc.chapters.length ? `<span class="toc-num">${i + 1}</span>` : ""}<span>${text(c.title)}</span></a></li>`).join("")}</ol></nav>` : "",
   ].join("");
   const label = (n: number) => e.chapterLabel === "number" ? `<p class="chapter-label">${n}</p>` : e.chapterLabel === "word" ? `<p class="chapter-label">${text(chapterWord(lang, n))}</p>` : "";
   const chapters = doc.chapters.map((c, i) => `<section class="chapter" id="chapter-${i + 1}"><header class="chapter-opening">${label(i + 1)}<h1>${text(c.title)}</h1>${e.chapterOrnament === "rule" ? '<div class="ornament" aria-hidden="true"></div>' : ""}</header><div class="chapter-body">${tiptapToHtml(c.content as PMNode, options.images)}</div></section>`).join("");
   const back = [
-    matter.aboutAuthor.enabled ? `<section class="back about" id="about-author"><h1>${text(matter.aboutAuthor.title)}</h1>${paragraphs(matter.aboutAuthor.text)}</section>` : "",
-    matter.references.enabled ? `<section class="back references" id="references"><h1>${text(matter.references.title)}</h1>${matter.references.text.split(/\n+/).filter((l) => l.trim()).map((l) => `<p class="reference">${text(l.trim())}</p>`).join("")}</section>` : "",
+    includeMatter && matter.aboutAuthor.enabled ? `<section class="back about" id="about-author"><h1>${text(matter.aboutAuthor.title)}</h1>${paragraphs(matter.aboutAuthor.text)}</section>` : "",
+    includeMatter && matter.references.enabled ? `<section class="back references" id="references"><h1>${text(matter.references.title)}</h1>${matter.references.text.split(/\n+/).filter((l) => l.trim()).map((l) => `<p class="reference">${text(l.trim())}</p>`).join("")}</section>` : "",
   ].join("");
 
   const tableBorders = e.tableStyle === "grid" ? "th,td{border:1px solid #d9d2cc}th{background:#f6f1ec}" : "th,td{border:0;border-bottom:1px solid #ddd5ce}thead th{border-bottom:2px solid #8a817a}";

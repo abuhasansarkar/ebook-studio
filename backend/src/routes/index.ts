@@ -125,4 +125,6 @@ apiRouter.get("/books/:bookId/publishing-checks", async (req, res) => {
 
 apiRouter.get("/books/:bookId/exports", exportController.list);
 apiRouter.post("/books/:bookId/exports", validateBody(createExportSchema), exportController.create);
+apiRouter.get("/exports/formats", exportController.formats);
+apiRouter.get("/exports/:exportId", exportController.detail);
 apiRouter.get("/exports/:exportId/download", exportController.download);
