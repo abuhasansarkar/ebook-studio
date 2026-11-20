@@ -2,7 +2,8 @@ import { documentError, publishingChecks } from "@ebook/shared";
 import { describe, expect, it } from "vitest";
 import { countWords, markdownToTiptap, tiptapToText } from "../src/services/editor/markdownToTiptap.js";
 import { tiptapToHtml } from "../src/services/exports/tiptapToHtml.js";
-import { buildBookHtml } from "../src/services/exports/bookHtml.js";
+import { renderBookHtml } from "../src/services/exports/bookHtml.js";
+import { testDocument } from "./design-fixtures.js";
 
 describe("markdown → TipTap", () => {
   it("converts headings, lists, tables and marks", () => {
@@ -40,10 +41,11 @@ describe("HTML rendering is safe", () => {
   });
 
   it("sets direction and language for RTL books", () => {
-    const html = buildBookHtml({ title: "عنوان", subtitle: "", language: "ar", chapters: [{ title: "فصل", contentJson: { type: "doc", content: [] } }] });
+    const doc = testDocument({ title: "عنوان", language: "ar", chapters: [{ title: "فصل", content: { type: "doc", content: [] } }] });
+    const html = renderBookHtml(doc, { mode: "print", fontSrc: (id) => `font:${id}`, images: {}, available: new Set(["notonaskharabic", "notoserif"]) });
     expect(html).toContain('dir="rtl"');
     expect(html).toContain('lang="ar"');
-    expect(html).toContain("Noto Naskh Arabic");
+    expect(html).toContain("EBS Noto Naskh Arabic");
     expect(html).toContain("المحتويات");
   });
 });

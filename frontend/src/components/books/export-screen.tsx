@@ -12,6 +12,7 @@ import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader } from "@/compon
 import { errorMessage } from "@/lib/api";
 import { useBook, useCreateExport, useExports } from "@/lib/queries";
 import { formatBytes, formatNumber, timeAgo } from "@/lib/utils";
+import type { ExportRecord } from "@/lib/types";
 
 export function ExportScreen({ params }: { params: Promise<{ bookId: string }> }) {
   const { bookId } = use(params);
@@ -32,8 +33,8 @@ export function ExportScreen({ params }: { params: Promise<{ bookId: string }> }
   const checks = [
     { ok: written.length > 0, label: `${written.length} of ${b.chapters.length} chapters have content`, warn: missing > 0 },
     { ok: Boolean(b.title.trim()), label: "Book has a title" },
-    { ok: true, label: `${lang.name} typesetting with ${lang.dir === "rtl" ? "right-to-left layout" : "native fonts"}` },
-    { ok: true, label: "Title page, copyright page and clickable table of contents" },
+    { ok: true, label: `${lang.name} typesetting with bundled fonts${lang.dir === "rtl" ? " and right-to-left layout" : ""}` },
+    { ok: true, label: "Front matter, contents and back matter from your saved design" },
   ];
 
   return (
@@ -46,7 +47,7 @@ export function ExportScreen({ params }: { params: Promise<{ bookId: string }> }
             </div>
             <div>
               <h2 className="text-lg font-semibold">PDF manuscript</h2>
-              <p className="mt-1 text-sm text-muted-foreground">6 × 9 in layout with page numbers and a clickable table of contents. Review the file before sale; KDP print specifications need separate validation. Free to export.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Print-layout PDF using your latest saved <Link href={`/app/books/${bookId}/design`} className="font-medium underline">interior design</Link> (trim, margins, typography and matter). Unsaved design changes are not included. Review the file before sale; KDP print specifications need separate validation. Free to export.</p>
             </div>
           </div>
           <Button
@@ -115,10 +116,12 @@ export function ExportScreen({ params }: { params: Promise<{ bookId: string }> }
                 </p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   {timeAgo(e.createdAt)}
+                  {e.designVersion !== null ? ` · ${e.designVersion ? `design v${e.designVersion}` : "default design"}` : ""}
                   {e.pageCount ? ` · ${e.pageCount} pages` : ""}
                   {e.fileSize ? ` · ${formatBytes(e.fileSize)}` : ""}
                   {e.status === "failed" && e.error ? ` · ${e.error}` : ""}
                 </p>
+                {e.status === "ready" && e.diagnostics && <ExportFindings d={e.diagnostics} />}
               </div>
               {e.status === "ready" && (
                 <a href={`/api/v1/exports/${e.id}/download`} className={buttonVariants({ variant: "secondary", size: "sm" })} download>
@@ -132,4 +135,17 @@ export function ExportScreen({ params }: { params: Promise<{ bookId: string }> }
       <OperationActivity bookId={bookId} />
     </div>
   );
+}
+
+function ExportFindings({ d }: { d: NonNullable<ExportRecord["diagnostics"]> }) {
+  const missing = d.glyphs.reduce((n, g) => n + g.count, 0);
+  const findings = [
+    missing ? `${missing} character${missing === 1 ? "" : "s"} without an approved font (${d.glyphs.flatMap((g) => g.characters.map((c) => c.char)).slice(0, 8).join(" ")})` : "",
+    d.foreignFonts.length ? `system fonts used: ${d.foreignFonts.join(", ")}` : "",
+    d.overflow.length ? `${d.overflow.length} element${d.overflow.length === 1 ? "" : "s"} wider than the page text block` : "",
+    d.type3Fonts.length ? `Type 3 fonts: ${d.type3Fonts.join(", ")}` : "",
+  ].filter(Boolean);
+  return findings.length
+    ? <p className="mt-1 flex items-start gap-1 text-xs text-warning"><AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />Review: {findings.join("; ")}.</p>
+    : <p className="mt-1 flex items-center gap-1 text-xs text-success"><CheckCircle2 className="h-3 w-3" />Bundled fonts only; nothing clipped at the page edge.</p>;
 }

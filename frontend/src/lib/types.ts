@@ -78,6 +78,9 @@ export interface ExportRecord {
   fileSize: number | null;
   pageCount: number | null;
   error: string | null;
+  /** Design version frozen when the export was requested (0 = default design); null before S08. */
+  designVersion: number | null;
+  diagnostics: { notes: string[]; glyphs: { role: string; count: number; characters: { char: string; codepoint: string }[] }[]; foreignFonts: string[]; overflow: string[]; type3Fonts: string[] } | null;
   createdAt: string;
   finishedAt: string | null;
 }

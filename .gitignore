@@ -10,3 +10,4 @@ backend/src/generated
 backend/storage
 playwright-report
 test-results
+backend/assets/fonts/fetched

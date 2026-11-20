@@ -161,13 +161,13 @@ Data: `TemplateVersion`, `BookDesignProfile` with separate reflowable/print sett
 
 Implementation:
 
-- [ ] Define a normalized book document from chapter/revision metadata, design and asset references.
-- [ ] Centralize typography, spacing, table/image rules and language/direction handling for preview/export adapters.
-- [ ] Store trim size, margins, print headers/footers and page numbering separately from digital typography preferences.
-- [ ] Support title/copyright/dedication/author/reference matter and navigable table of contents.
-- [ ] Version design edits with OCC and reversible template application.
-- [ ] Approve font embedding rights, bundle dependable fonts and define fallback diagnostics for unsupported glyphs.
-- [ ] Define how Bengali shaping, mixed-script paragraphs, RTL ordering, CJK line breaking and Unicode normalization are preserved.
+- [x] Define a normalized book document from chapter/revision metadata, design and asset references.
+- [x] Centralize typography, spacing, table/image rules and language/direction handling for preview/export adapters.
+- [x] Store trim size, margins, print headers/footers and page numbering separately from digital typography preferences.
+- [x] Support title/copyright/dedication/author/reference matter and navigable table of contents.
+- [x] Version design edits with OCC and reversible template application.
+- [x] Approve font embedding rights, bundle dependable fonts and define fallback diagnostics for unsupported glyphs.
+- [x] Define how Bengali shaping, mixed-script paragraphs, RTL ordering, CJK line breaking and Unicode normalization are preserved.
 
 Contracts: template list/detail; version-aware book design GET/PUT/apply/restore; normalized preview data and supported language/font capabilities.
 
@@ -354,3 +354,8 @@ Private image metadata, sanitization, owner retrieval, transactional reference p
 ### S07 implementation checkpoint — 20 November 2026
 
 Core cover/illustration generation and editable typography are implemented. See ACCEPTANCE.md for the verified scenarios and release limits. Image jobs reuse GenerationJob, operation/credit/outbox and lease infrastructure; cover designs use immutable versions. Four vendored Noto families support the tested fixtures. Full production provider verification, print covers, broader script coverage and release packaging remain pending.
+
+
+### S08 implementation checkpoint — 20 November 2026
+
+Core interior design is implemented: immutable `BookDesign` versions (save/template/restore) with OCC; versioned template definitions shipped in `packages/shared` and stored as full snapshots instead of a `TemplateVersion` table; separate digital and print profiles; structured front/back matter; one normalized document and renderer for reader preview, print preview and PDF export; exports freeze the design at request time. Static, hash-pinned OFL fonts replace Google Fonts at render time. CJK faces come from `fonts:fetch`. Runtime protocol 5 and migration `20261120190000_book_design` require a coordinated cutover. See ACCEPTANCE.md and RUNTIME.md for evidence and limits. EPUB/DOCX adapters remain S10.

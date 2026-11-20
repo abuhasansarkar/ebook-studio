@@ -375,6 +375,69 @@ try {
   await clickButton(page, 'Generate image'); await waitText(page, 'illustration · completed', 60000);
   log('cover generation, editable typography without extra charges, undo/redo, recovery, reopen, Bengali JPG and interior illustration');
 
+  // Interior design (S08): preview a template before applying, apply + undo, edit matter, reload, reader/print previews, conflicts, design-aware export.
+  const designApi = (bookId: string) => page.evaluate(async id => (await (await fetch(`/api/v1/books/${id}/design`)).json()).design as { version: number; data: { print: { trim: string }; matter: { dedication: { text: string } } } }, bookId);
+  const readerText = () => page.evaluate(() => (document.querySelector('iframe[title="Reader preview"]') as HTMLIFrameElement | null)?.contentDocument?.body?.innerText ?? '');
+  await page.goto(`${BASE}/app/books/${currentBookId}/design`, { waitUntil: 'networkidle0' });
+  await waitText(page, 'Default design (not saved yet)');
+  await page.waitForFunction(() => (document.querySelector('iframe[title="Reader preview"]') as HTMLIFrameElement | null)?.contentDocument?.body?.innerText.includes('সূচিপত্র'), { timeout: 30000 });
+  await clickButton(page, 'Preview Classic'); await waitText(page, 'Applying changes'); await waitText(page, 'Classic template (not applied)');
+  if ((await designApi(currentBookId)).version !== 0) throw new Error('Template preview persisted a design');
+  await clickButton(page, 'Apply Classic'); await waitText(page, 'Applied Classic as version 1');
+  if ((await designApi(currentBookId)).data.print.trim !== '5.5x8.5') throw new Error('Classic template trim was not applied');
+  await clickButton(page, 'Undo template'); await waitText(page, 'Template undone.');
+  if ((await designApi(currentBookId)).data.print.trim !== '6x9') throw new Error('Template undo did not restore the earlier design');
+  await clickButton(page, 'Apply Classic'); await waitText(page, 'Applied Classic as version 3');
+  await clickButton(page, 'Matter');
+  await page.click('#dedication-enabled');
+  // An included dedication needs text: the field explains why and Save stays disabled.
+  await page.waitForSelector('#dedication-text'); await waitText(page, 'Add text or turn this section off');
+  const saveDisabled = await page.$$eval('button', buttons => buttons.find(b => b.textContent?.trim() === 'Save design')?.disabled);
+  if (!saveDisabled) throw new Error('Save was enabled for an empty required dedication');
+  await page.type('#dedication-text', 'রবিবারে যাঁরা রান্না করেন, তাঁদের জন্য');
+  await clickButton(page, 'Save design'); await waitText(page, 'Design saved as version 4');
+  await page.reload({ waitUntil: 'networkidle0' }); await waitText(page, 'Saved version 4');
+  if ((await designApi(currentBookId)).data.matter.dedication.text !== 'রবিবারে যাঁরা রান্না করেন, তাঁদের জন্য') throw new Error('Dedication did not persist');
+  await page.waitForFunction(() => (document.querySelector('iframe[title="Reader preview"]') as HTMLIFrameElement | null)?.contentDocument?.body?.innerText.includes('রবিবারে যাঁরা রান্না করেন'), { timeout: 30000 });
+  const readerCss = await page.evaluate(() => Array.from((document.querySelector('iframe[title="Reader preview"]') as HTMLIFrameElement).contentDocument!.querySelectorAll('style')).map(s => s.textContent).join(''));
+  if (/@page|counter\(page\)/.test(readerCss)) throw new Error('Print-only rules leaked into the reader preview');
+  if (!(await readerText()).includes('অধ্যায়')) throw new Error('Localized chapter label missing from reader preview');
+  await clickButton(page, 'Tablet');
+  await page.waitForFunction(() => (document.querySelector('iframe[title="Reader preview"]') as HTMLIFrameElement).style.width === '768px' && document.body.innerText.includes('768 px wide, shown at'));
+  await page.click('button[aria-label="Larger reader text"]');
+  await page.waitForFunction(() => (document.querySelector('iframe[title="Reader preview"]') as HTMLIFrameElement).contentDocument?.documentElement.style.getPropertyValue('--reader-scale') === '1.1');
+  const fontsLoaded = await page.evaluate(() => { const d = (document.querySelector('iframe[title="Reader preview"]') as HTMLIFrameElement).contentDocument!; return d.fonts.ready.then(() => Array.from(d.fonts as unknown as Iterable<FontFace>).filter(f => f.status === 'loaded').map(f => f.family)); });
+  if (!fontsLoaded.some(f => f.includes('Noto Serif Bengali'))) throw new Error(`Bundled Bengali font did not load in the reader preview: ${fontsLoaded.join(', ')}`);
+  await shot(page, 'design-reader');
+  await page.setViewport({ width: 390, height: 844 }); await page.reload({ waitUntil: 'networkidle0' }); await waitText(page, 'Saved version 4'); await shot(page, 'design-mobile'); await page.setViewport({ width: 1360, height: 900 }); await page.reload({ waitUntil: 'networkidle0' }); await waitText(page, 'Saved version 4');
+  await clickButton(page, 'Print sample (PDF)');
+  await clickButton(page, 'Render print sample'); await waitText(page, ' pages · ', 60000);
+  await page.waitForSelector('iframe[title="Print sample PDF"][src^="blob:"]');
+  await shot(page, 'design-print');
+  const printSample = await page.evaluate(async bookId => {
+    const r = await fetch(`/api/v1/books/${bookId}/design/preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'print' }) });
+    return { ok: r.ok, type: r.headers.get('content-type'), fallback: r.headers.get('x-fallback-fonts'), type3: r.headers.get('x-type3-fonts'), text: await r.text() };
+  }, currentBookId);
+  if (!printSample.ok || !printSample.type?.includes('pdf') || printSample.fallback !== '' || printSample.type3 !== '' || !/\/MediaBox \[0 0 396 612\]/.test(printSample.text)) throw new Error('Print sample was not a clean 5.5 × 8.5 in PDF');
+  // A second tab saves first: the stale save must not overwrite it, and the local draft survives review.
+  await page.evaluate(async bookId => {
+    const latest = (await (await fetch(`/api/v1/books/${bookId}/design`)).json()).design;
+    latest.data.matter.dedication.text = 'Another tab dedication';
+    const r = await fetch(`/api/v1/books/${bookId}/design`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ baseVersion: latest.version, data: latest.data }) });
+    if (!r.ok) throw new Error('External design update failed');
+  }, currentBookId);
+  await clickButton(page, 'Print layout');
+  await page.select('#trim', '6x9');
+  await clickButton(page, 'Save design'); await waitText(page, 'This design was changed elsewhere');
+  await clickButton(page, 'Keep my draft and review latest'); await waitText(page, 'Your draft is kept on top of version 5');
+  if (await page.$eval('#trim', el => (el as HTMLSelectElement).value) !== '6x9') throw new Error('Conflict review lost the local design draft');
+  await clickButton(page, 'Save design'); await waitText(page, 'Design saved as version 6');
+  await page.goto(`${BASE}/app/books/${currentBookId}/export`, { waitUntil: 'networkidle0' });
+  await clickButton(page, 'Export PDF');
+  await waitText(page, 'design v6', 60000); await waitText(page, 'Bundled fonts only', 90000);
+  await shot(page, 'design-export');
+  log('interior design: template preview/apply/undo, matter save + reload, reader widths/text size, bundled Bengali fonts, real print sample, conflict review and design-aware export');
+
   // Restore earlier planning after writing, preserving the manuscript.
   const chapterList = await page.evaluate(async bookId => JSON.stringify(await (await fetch(`/api/v1/books/${bookId}/chapters`)).json()), currentBookId);
   await page.goto(`${BASE}/app/books/${currentBookId}/outline`, { waitUntil: 'networkidle0' });

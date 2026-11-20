@@ -146,14 +146,14 @@ Routes/components: `/app/templates?bookId=...`; add book design controls and rea
 
 Tasks:
 
-- [ ] Build a template gallery showing intended use, typography and digital/print applicability.
-- [ ] Preview before applying, show affected settings and preserve a reversible design version.
-- [ ] Add body/heading fonts, spacing, margins, trim size, chapter-opening and table/image styles supported by the backend.
-- [ ] Add title/copyright/dedication/author/reference matter editing with clear optional/required fields.
-- [ ] Add desktop/tablet/mobile reading widths and adjustable reader font size for reflowable previews.
-- [ ] Provide a distinct print preview with applicable page numbers, margins and headers/footers.
-- [ ] Load approved fonts with predictable fallback/error indicators; preserve Bengali shaping and RTL/mixed-script reading order.
-- [ ] Explain differences between an interactive browser preview and the final generated artifact; link to actual file preview where possible.
+- [x] Build a template gallery showing intended use, typography and digital/print applicability.
+- [x] Preview before applying, show affected settings and preserve a reversible design version.
+- [x] Add body/heading fonts, spacing, margins, trim size, chapter-opening and table/image styles supported by the backend.
+- [x] Add title/copyright/dedication/author/reference matter editing with clear optional/required fields.
+- [x] Add desktop/tablet/mobile reading widths and adjustable reader font size for reflowable previews.
+- [x] Provide a distinct print preview with applicable page numbers, margins and headers/footers.
+- [x] Load approved fonts with predictable fallback/error indicators; preserve Bengali shaping and RTL/mixed-script reading order.
+- [x] Explain differences between an interactive browser preview and the final generated artifact; link to actual file preview where possible.
 
 Gate: saved design settings survive reload, template changes can be undone and print-only features do not leak into the reflowable reader.
 
@@ -316,3 +316,8 @@ Image library, upload progress/errors, alt/caption editing, protected deletion, 
 ### S07 implementation checkpoint — 20 November 2026
 
 Core cover/illustration generation and editable typography are implemented. See ACCEPTANCE.md for the verified scenarios and release limits. Image jobs reuse GenerationJob, operation/credit/outbox and lease infrastructure; cover designs use immutable versions. Four vendored Noto families support the tested fixtures. Full production provider verification, print covers, broader script coverage and release packaging remain pending.
+
+
+### S08 implementation checkpoint — 20 November 2026
+
+The design studio is at **My eBooks → a book → Design**, not a global `/app/templates` page, so it keeps book context and avoids another sidebar item. Its sections are template gallery with preview-before-apply, an affected-settings diff and undo; typography/reader defaults; print layout with a live text-block readout; front and back matter; and version history with preview and restore. The reader preview is a script-less sandboxed iframe with phone/tablet/desktop widths, scaled to fit, plus a reader text size control. The print sample is an actual PDF from the export renderer. Drafts are recovered per tab, conflicts offer keep-draft/load-saved, and the export history shows the design version and font/overflow findings. See ACCEPTANCE.md for evidence.

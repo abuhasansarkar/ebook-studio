@@ -9,3 +9,4 @@ backend/src/generated
 e2e
 **/*.log
 .git
+backend/assets/fonts/fetched

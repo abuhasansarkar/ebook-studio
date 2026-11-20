@@ -42,7 +42,8 @@ export function tiptapToHtml(node: PMNode | null | undefined, images: Record<str
     case "doc":
       return children();
     case "text":
-      return wrapMarks(escapeHtml(node.text ?? ""), node.marks);
+      // NFC keeps composed and decomposed input (e.g. Bengali nukta forms) shaping and searching identically.
+      return wrapMarks(escapeHtml((node.text ?? "").normalize("NFC")), node.marks);
     case "paragraph":
       return `<p${align}>${children()}</p>`;
     case "heading": {
@@ -65,19 +66,28 @@ export function tiptapToHtml(node: PMNode | null | undefined, images: Record<str
       return `<hr />`;
     case "hardBreak":
       return `<br />`;
-    case "table":
-      return `<table>${children()}</table>`;
+    case "table": {
+      // A leading all-header row becomes <thead>, which repeats on every printed page of a long table.
+      const rows = node.content ?? [];
+      const headed = rows.length > 1 && (rows[0].content ?? []).every((cell) => cell.type === "tableHeader");
+      const render = (list: PMNode[]) => list.map((row) => tiptapToHtml(row, images)).join("");
+      const body = headed ? `<thead>${render(rows.slice(0, 1))}</thead><tbody>${render(rows.slice(1))}</tbody>` : `<tbody>${render(rows)}</tbody>`;
+      return `<div class="table-wrap"><table>${body}</table></div>`;
+    }
     case "tableRow":
       return `<tr>${children()}</tr>`;
     case "tableHeader":
-      return `<th>${children()}</th>`;
-    case "tableCell":
-      return `<td>${children()}</td>`;
+    case "tableCell": {
+      const tag = node.type === "tableHeader" ? "th" : "td";
+      const span = (["colspan", "rowspan"] as const).map((k) => { const v = Number(node.attrs?.[k]); return Number.isInteger(v) && v > 1 && v <= 100 ? ` ${k}="${v}"` : ""; }).join("");
+      return `<${tag}${span}>${children()}</${tag}>`;
+    }
     case "image": {
       const src = images[String(node.attrs?.assetId ?? "")];
-      if (!src || !/^data:image\/webp;base64,[A-Za-z0-9+/=]+$/.test(src)) throw new Error("Image is not available for export");
+      // Exports embed verified bytes; browser previews reference the owner-authenticated asset route.
+      if (!src || !(/^data:image\/webp;base64,[A-Za-z0-9+/=]+$/.test(src) || /^\/api\/v1\/assets\/[A-Za-z0-9_-]{1,100}\/content$/.test(src))) throw new Error("Image is not available for export");
       const alt = escapeHtml(String(node.attrs?.alt ?? ""));
-      return `<figure><img src="${escapeHtml(src)}" alt="${alt}" />${node.attrs?.caption ? `<figcaption>${escapeHtml(String(node.attrs.caption))}</figcaption>` : ""}</figure>`;
+      return `<figure><img src="${escapeHtml(src)}" alt="${alt}" />${node.attrs?.caption ? `<figcaption>${escapeHtml(String(node.attrs.caption).normalize("NFC"))}</figcaption>` : ""}</figure>`;
     }
     case "pageBreak":
       return `<div class="page-break"></div>`;

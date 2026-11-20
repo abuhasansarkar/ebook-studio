@@ -18,7 +18,9 @@
     "postinstall": "prisma generate",
     "generation:audit": "tsx --env-file=../.env scripts/audit-generation.ts",
     "email:status": "tsx --env-file=../.env scripts/email-status.ts",
-    "email:check": "tsx --env-file=../.env scripts/check-smtp.ts"
+    "email:check": "tsx --env-file=../.env scripts/check-smtp.ts",
+    "fonts:fetch": "node scripts/fetch-fonts.mjs",
+    "fonts:verify": "node scripts/fetch-fonts.mjs --verify"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",

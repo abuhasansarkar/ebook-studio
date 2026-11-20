@@ -6,3 +6,4 @@ export { documentError, imageAssetIds } from "./document";
 export * from "./publishing";
 export * from './library';
 export * from './covers';
+export * from './design';

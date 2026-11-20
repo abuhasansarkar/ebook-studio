@@ -120,6 +120,7 @@ model Book {
   exports     Export[]
   assetReferences AssetReference[]
   coverDesigns CoverDesign[]
+  designs     BookDesign[]
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   archivedAt  DateTime?
@@ -295,6 +296,12 @@ model Export {
   fileSize   Int?
   pageCount  Int?
   error      String?
+  /// Book design version captured at request time (0 = default design); null for pre-S08 exports
+  designVersion Int?
+  /// Immutable design snapshot rendered by the worker; null for pre-S08 exports
+  designSnapshot Json?
+  /// Post-render findings such as glyphs drawn by non-bundled fonts
+  diagnostics Json?
   createdAt  DateTime  @default(now())
   finishedAt DateTime?
 
@@ -405,4 +412,20 @@ model CoverDesign {
   createdAt DateTime @default(now())
   @@unique([bookId, version])
   @@map("cover_designs")
+}
+
+/// Immutable interior design versions. Template application and restore create new versions.
+model BookDesign {
+  id String @id @default(cuid())
+  bookId String
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  version Int
+  data Json
+  /// save | template | restore
+  action String
+  /// e.g. template id/version or restored version
+  detail String @default("")
+  createdAt DateTime @default(now())
+  @@unique([bookId, version])
+  @@map("book_designs")
 }

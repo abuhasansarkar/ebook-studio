@@ -4,10 +4,14 @@ import { prisma } from "../../database/prisma.js";
 import { enqueueExport } from "../../queues/index.js";
 import { conflict, notFound } from "../../utils/errors.js";
 import { logger } from "../../utils/logger.js";
-import { getBrief, getOwnedBook } from "../books/bookService.js";
+import { getLanguage, languageSupport, type BookDesign } from "@ebook/shared";
+import { getOwnedBook } from "../books/bookService.js";
+import { assertRenderable, buildBookDocument, documentDiagnostics } from "../design/bookDocument.js";
+import { designService } from "../design/designService.js";
+import { fontRegistry } from "../design/fonts.js";
 import { storage } from "../storage/storage.js";
-import { buildBookHtml } from "./bookHtml.js";
-import { renderPdf } from "./pdfRenderer.js";
+import { EXPORT_FONT_ORIGIN, renderBookHtml } from "./bookHtml.js";
+import { renderPdf, textBlockWidth } from "./pdfRenderer.js";
 
 export const SUPPORTED_FORMATS = ["pdf"] as const;
 
@@ -23,21 +27,25 @@ function slugify(s: string) {
 
 export const exportService = {
   async request(userId: string, bookId: string, format: "pdf") {
-    await getOwnedBook(userId, bookId);
+    const book = await getOwnedBook(userId, bookId);
     await assertRuntimeAvailable();
+    const support = languageSupport(book.language, await fontRegistry.available());
+    if (support.level === "unavailable") throw conflict(`${getLanguage(book.language).name} cannot be typeset on this server: ${support.notes[0]}`, { code: "FONT_UNAVAILABLE" });
     const written = await prisma.chapter.count({ where: { bookId, OR: [{ wordCount: { gt: 0 } }, { status: "done" }] } });
     if (written === 0) throw conflict("Write at least one chapter before exporting.");
     const pending = await prisma.export.findFirst({ where: { bookId, status: { in: ["queued", "processing"] } } });
     if (pending) throw conflict("An export for this book is already in progress.", { exportId: pending.id });
 
-    const exp = await prisma.export.create({ data: { userId, bookId, format } });
+    // The design is frozen at request time; later edits never change what a queued export renders.
+    const design = await designService.get(userId, bookId);
+    const exp = await prisma.export.create({ data: { userId, bookId, format, designVersion: design.version, designSnapshot: design.data } });
     await enqueueExport(exp.id);
     return exp;
   },
 
   async list(userId: string, bookId: string) {
     await getOwnedBook(userId, bookId);
-    return prisma.export.findMany({ where: { bookId }, orderBy: { createdAt: "desc" }, take: 20 });
+    return prisma.export.findMany({ where: { bookId }, orderBy: { createdAt: "desc" }, take: 20, omit: { designSnapshot: true } });
   },
 
   async getForDownload(userId: string, exportId: string) {
@@ -57,25 +65,25 @@ export const exportService = {
     if (claimed.count === 0) return;
     const exp = await prisma.export.findUniqueOrThrow({ where: { id: exportId } });
     try {
-      const [book, chapters, brief] = await Promise.all([
-        prisma.book.findUniqueOrThrow({ where: { id: exp.bookId } }),
-        prisma.chapter.findMany({ where: { bookId: exp.bookId, OR: [{ wordCount: { gt: 0 } }, { status: "done" }] }, orderBy: { position: "asc" } }),
-        getBrief(exp.bookId),
-      ]);
-      const html = buildBookHtml({
-        images: await assetService.exportImages(exp.userId, chapters.map(c => c.contentJson)),
-        title: book.title,
-        subtitle: book.subtitle,
-        authorName: brief.authorName || undefined,
-        language: book.language,
-        chapters: chapters.map((c) => ({ title: c.title, contentJson: c.contentJson })),
+      const design = exp.designSnapshot
+        ? { version: exp.designVersion ?? 0, data: exp.designSnapshot as unknown as BookDesign }
+        : await designService.get(exp.userId, exp.bookId);
+      const doc = await buildBookDocument(exp.userId, exp.bookId, design);
+      const support = await assertRenderable(doc);
+      const checks = await documentDiagnostics(doc);
+      const html = renderBookHtml(doc, {
+        mode: "print",
+        fontSrc: (id) => EXPORT_FONT_ORIGIN + id,
+        images: await assetService.exportImages(exp.userId, doc.chapters.map((c) => c.content)),
+        available: await fontRegistry.available(),
       });
-      const { buffer, pageCount } = await renderPdf(html);
+      const { buffer, pageCount, foreignFonts, overflow, type3Fonts } = await renderPdf(html, { textBlockWidthIn: textBlockWidth(doc.design.data) });
+      const diagnostics = { notes: support.notes, glyphs: checks.glyphs, foreignFonts, overflow, type3Fonts };
       const key = `exports/${exp.userId}/${exp.bookId}/${exp.id}.pdf`;
       await storage.put(key, buffer, "application/pdf");
       await prisma.export.update({
         where: { id: exp.id },
-        data: { status: "ready", storageKey: key, fileSize: buffer.length, pageCount, finishedAt: new Date(), error: null },
+        data: { status: "ready", storageKey: key, fileSize: buffer.length, pageCount, diagnostics, finishedAt: new Date(), error: null },
       });
     } catch (err) {
       logger.error({ err, exportId }, "Export failed");

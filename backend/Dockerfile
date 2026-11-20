@@ -20,6 +20,8 @@ RUN pnpm install --frozen-lockfile --filter backend... --prod=false
 
 COPY packages/shared packages/shared
 COPY backend backend
+# Interior fonts: vendored files are verified; CJK faces are downloaded and SHA-256 checked (build fails on mismatch).
+RUN node backend/scripts/fetch-fonts.mjs
 RUN pnpm --filter backend build
 
 WORKDIR /app/backend

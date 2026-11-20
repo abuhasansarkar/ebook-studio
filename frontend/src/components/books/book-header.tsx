@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { use, useState } from "react";
 import { toast } from "sonner";
-import { ArrowLeft, Check, FileDown, ListTree, PenLine, Trash2, Wand2 } from "lucide-react";
+import { ArrowLeft, Check, FileDown, ListTree, Palette, PenLine, Trash2, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { errorMessage } from "@/lib/api";
@@ -28,6 +28,7 @@ export function BookHeader({ params }: { params: Promise<{ bookId: string }> }) 
     { href: "outline", label: "Outline", icon: ListTree, done: approved, enabled: true },
     { href: "generate", label: "Write", icon: Wand2, done: book ? writtenCount > 0 && writtenCount === book.chapters.length : false, enabled: approved },
     { href: "editor", label: "Edit", icon: PenLine, done: false, enabled: writtenCount > 0 },
+    { href: "design", label: "Design", icon: Palette, done: false, enabled: true },
     { href: "cover", label: "Cover", icon: Wand2, done: false, enabled: true },
     { href: "export", label: "Export", icon: FileDown, done: false, enabled: writtenCount > 0 },
   ];
