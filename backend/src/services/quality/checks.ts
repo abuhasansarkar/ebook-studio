@@ -11,7 +11,8 @@ export interface CheckInput {
   chapters: ChapterInput[];
   /** Image asset ids that are owned by the book owner and ready. */
   readyAssets: ReadonlySet<string>;
-  context: BookContext;
+  /** The saved book context. Definitions and chapter summaries are optional for contexts stored before S09 added them. */
+  context: Omit<BookContext, 'definitions' | 'chapterSummaries'> & Partial<Pick<BookContext, 'definitions' | 'chapterSummaries'>>;
   referencesEnabled: boolean;
   /** Characters that no approved font for this book can draw (from the S08 font registry). */
   uncoveredCharacters: ReadonlySet<string>;
@@ -33,6 +34,7 @@ export const RULE_CHECKS: CheckDescriptor[] = [
   { id: 'assets', label: 'Unavailable images and missing alt text', method: 'rule', scope: 'All languages' },
   { id: 'links', label: 'Internal links without targets and insecure links', method: 'rule', scope: 'Links are not fetched; reachability is not checked' },
   { id: 'terminology', label: 'Variants your book context says to avoid', method: 'rule', scope: 'Whole-word matches of your term list' },
+  { id: 'contradiction', label: 'Conflicting numbers and repeated definitions', method: 'rule', scope: 'Same subject and measure across chapters; defined terms' },
   { id: 'language', label: 'Chapters mostly written in another script', method: 'heuristic', scope: 'Script-based; cannot tell languages sharing a script apart' },
   { id: 'typesetting', label: 'Characters no approved font can draw', method: 'rule', scope: 'Bundled S08 fonts' },
   { id: 'evidence', label: 'Statistical and research claims that need a source', method: 'heuristic', scope: 'Percentages in all languages; claim phrases in English only' },
@@ -61,6 +63,33 @@ const PLACEHOLDERS: [RegExp, string][] = [
 const MARKDOWN = /^(?:#{1,6}\s|[-*+]\s\S|>\s)|\*\*[^*\n]{1,80}\*\*|__[^_\n]{1,80}__/g;
 const CLAIM = /\d+(?:[.,]\d+)?\s?%|\b\d+(?:[.,]\d+)?\s?(?:percent|per cent)\b|\b(?:studies|research|surveys?|statistics|data|scientists|experts|doctors)\s+(?:show|shows|suggest|suggests|found|find|prove|proves|say|says|agree|indicate|indicates|confirm|confirms|has shown|have shown)\b|\baccording to\b|\b(?:clinically|scientifically)\s+proven\b|\bproven to\b/gi;
 const SENTENCE = /[^.!?।。！？\n]+[.!?।。！？]?/gu;
+
+/**
+ * A measurable claim: the subject it is about, the number and the unit.
+ * Two claims that share a subject and unit but report different numbers contradict each other.
+ */
+interface QuantityClaim { subject: string; value: number; unit: string; quote: string; chapterId: string; block: TextBlock; start: number }
+const MEASURE = /(\d+(?:[.,]\d+)?)\s*(%|percent|per cent|minutes?|hours?|days?|weeks?|months?|years?|grams?|kilograms?|g|kg|ml|litres?|liters?|l|calories?|kcal|pieces?|servings?|portions?)(?![a-z])/giu;
+const STOP_WORDS = new Set(['the', 'a', 'an', 'of', 'to', 'in', 'on', 'for', 'and', 'or', 'is', 'are', 'was', 'were', 'be', 'it', 'this', 'that', 'these', 'those', 'you', 'your', 'we', 'our', 'they', 'their', 'as', 'at', 'by', 'with', 'from', 'about', 'more', 'most', 'can', 'will', 'up', 'out', 'if', 'not', 'no', 'all', 'each', 'per', 'than', 'then', 'so', 'but']);
+/** Verbs and other non-nouns that must not be treated as the measured subject. */
+const NOT_SUBJECT = new Set(['takes', 'take', 'took', 'needs', 'need', 'lasts', 'last', 'lasted', 'costs', 'cost', 'makes', 'make', 'means', 'mean', 'serves', 'serve', 'helps', 'help', 'gives', 'give', 'requires', 'require', 'uses', 'use', 'adds', 'add', 'saves', 'save', 'works', 'work', 'runs', 'run', 'seems', 'seem', 'becomes', 'become', 'remains', 'remain']);
+/** Words that identify what a number is about. Unit words are excluded: they name the measure, not the subject. */
+const SUBJECT = new Set(['parents', 'families', 'children', 'people', 'users', 'customers', 'meals', 'portions', 'servings', 'calories', 'steps', 'recipes', 'containers', 'books', 'readers']);
+
+function subjectOf(sentence: string, numberIndex: number): string {
+  // The measured subject usually follows the number ("73% of parents"), so look there first.
+  const after = sentence.slice(numberIndex);
+  const afterWords = after.toLowerCase().match(/[\p{L}\p{M}]+/gu) ?? [];
+  const afterSubject = afterWords.filter(w => SUBJECT.has(w))[0];
+  if (afterSubject) return afterSubject;
+  const before = sentence.slice(0, numberIndex);
+  const beforeWords = before.toLowerCase().match(/[\p{L}\p{M}]+/gu) ?? [];
+  const beforeSubject = beforeWords.filter(w => SUBJECT.has(w)).pop();
+  if (beforeSubject) return beforeSubject;
+  // Fall back to the last noun before the number, skipping verbs and function words.
+  const content = beforeWords.filter(w => !STOP_WORDS.has(w) && !NOT_SUBJECT.has(w) && w.length > 2);
+  return content.slice(-1)[0] ?? 'unspecified';
+}
 
 export function runRuleChecks(input: CheckInput): { findings: FindingDraft[]; truncated: boolean } {
   const out: FindingDraft[] = [];
@@ -164,7 +193,132 @@ export function runRuleChecks(input: CheckInput): { findings: FindingDraft[]; tr
     };
     walk(chapter.content);
   }
+  // Cross-chapter contradictions: measured after every chapter is read, because the comparison spans chapters.
+  for (const conflict of findContradictions(input)) {
+    add({ ruleId: 'contradiction.value', category: 'contradiction', severity: 'warning', chapterId: conflict.chapterId, anchor: makeAnchor(conflict.chapterId, chapterOf(input, conflict.chapterId).version, conflict.block, conflict.start, conflict.start + conflict.quote.length), message: conflict.message, evidence: conflict.evidence });
+  }
+  for (const conflict of findDefinitionConflicts(input)) {
+    add({ ruleId: 'contradiction.definition', category: 'contradiction', severity: 'warning', chapterId: conflict.chapterId, anchor: conflict.anchor, message: conflict.message, evidence: conflict.evidence });
+  }
+  for (const gap of findSummaryGaps(input)) {
+    add({ ruleId: 'consistency.summary-gap', category: 'consistency', severity: 'info', chapterId: gap.chapterId, anchor: gap.anchor, message: gap.message, evidence: gap.evidence });
+  }
   return { findings: out.slice(0, MAX_FINDINGS), truncated: out.length > MAX_FINDINGS };
+}
+
+function chapterOf(input: CheckInput, chapterId: string): ChapterInput {
+  return input.chapters.find(c => c.id === chapterId)!;
+}
+
+/**
+ * Finds two measurements of the same subject in the same unit that report different values.
+ * Only clearly comparable claims are compared, so this flags a likely contradiction rather than proving one.
+ */
+function findContradictions(input: CheckInput) {
+  const claims: QuantityClaim[] = [];
+  for (const chapter of input.chapters) {
+    const blocks = textBlocks(chapter.content);
+    for (const block of blocks) {
+      if (block.type !== 'paragraph') continue;
+      for (const sentence of block.text.matchAll(SENTENCE)) {
+        const raw = sentence[0];
+        for (const m of raw.matchAll(MEASURE)) {
+          const value = Number.parseFloat(m[1].replace(',', '.'));
+          if (!Number.isFinite(value)) continue;
+          const unit = m[2].toLowerCase().replace(/^(percent|per cent)$/, '%');
+          const start = m.index ?? raw.indexOf(m[0]);
+          claims.push({ subject: subjectOf(raw, start), value, unit, quote: m[0], chapterId: chapter.id, block, start });
+        }
+      }
+    }
+  }
+  const conflicts: { chapterId: string; block: TextBlock; start: number; quote: string; message: string; evidence: string }[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < claims.length; i++) {
+    for (let j = i + 1; j < claims.length; j++) {
+      const a = claims[i], b = claims[j];
+      if (a.chapterId === b.chapterId) continue;              // within a chapter, wording may differ harmlessly
+      if (a.subject !== b.subject || a.unit !== b.unit) continue;
+      if (a.value === b.value) continue;
+      const key = [a.subject, a.unit, Math.min(a.value, b.value), Math.max(a.value, b.value)].join('|');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      // Report the later claim so the reader can see it against the earlier one.
+      conflicts.push({
+        chapterId: b.chapterId, block: b.block, start: b.start, quote: b.quote,
+        evidence: `“${a.quote}” (earlier) vs “${b.quote}” (later)`,
+        message: `The ${a.subject} is given as ${a.value} ${a.unit} in an earlier chapter and ${b.value} ${b.unit} here. These numbers disagree; check which is correct.`,
+      });
+    }
+  }
+  return conflicts;
+}
+
+/**
+ * Finds a term the author defined in the book context used with a different meaning in a chapter.
+ * The check is deliberately narrow: it only fires when the chapter states a competing definition for the same term.
+ */
+function findDefinitionConflicts(input: CheckInput) {
+  const conflicts: { chapterId: string; anchor: TextAnchor; message: string; evidence: string }[] = [];
+  for (const def of input.context.definitions ?? []) {
+    const pattern = new RegExp(`\\b${def.term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'iu');
+    for (const chapter of input.chapters) {
+      for (const block of textBlocks(chapter.content)) {
+        if (block.type !== 'paragraph') continue;
+        for (const sentence of block.text.matchAll(SENTENCE)) {
+          const raw = sentence[0];
+          const m = pattern.exec(raw);
+          if (!m) continue;
+          // Look for a competing definition: "X is ...", "X means ...", "X refers to ...".
+          const definition = new RegExp(`(?:${pattern.source})\\s+(?:is|means|refers\\s+to|denotes|stands\\s+for)\\s+(.{3,140})`, 'iu').exec(raw);
+          if (!definition) continue;
+          const stated = definition[1].trim().replace(/[.,;].*$/, '').toLowerCase();
+          if (!stated || stated === def.definition.trim().toLowerCase()) continue;
+          // Only report when the stated meaning shares no significant content with the agreed definition.
+          const agreed = new Set(def.definition.toLowerCase().match(/[\p{L}\p{M}]{4,}/gu) ?? []);
+          const overlap = (stated.match(/[\p{L}\p{M}]{4,}/gu) ?? []).filter(w => agreed.has(w)).length;
+          if (overlap >= 2) continue;
+          const start = raw.indexOf(definition[0]);
+          conflicts.push({
+            chapterId: chapter.id,
+            anchor: makeAnchor(chapter.id, chapter.version, block, start, start + definition[0].length),
+            message: `This chapter defines “${def.term}” differently from your book context. Check that both statements agree.`,
+            evidence: definition[0].trim(),
+          });
+        }
+      }
+    }
+  }
+  return conflicts;
+}
+
+/**
+ * The author's own summary of a chapter should be reflected in the chapter text.
+ * A summary whose key words never appear in the chapter is usually a summary that has drifted.
+ */
+function findSummaryGaps(input: CheckInput) {
+  const gaps: { chapterId: string; anchor: TextAnchor; message: string; evidence: string }[] = [];
+  for (const entry of input.context.chapterSummaries ?? []) {
+    const chapter = input.chapters.find(c => c.id === entry.chapterId);
+    if (!chapter) continue;
+    const blocks = textBlocks(chapter.content);
+    const body = blocks.map(b => b.text).join(' ').toLowerCase();
+    if (!body.trim()) continue;
+    const words = (entry.summary.toLowerCase().match(/[\p{L}\p{M}]{4,}/gu) ?? []).filter(w => !STOP_WORDS.has(w));
+    if (!words.length) continue;
+    const present = words.filter(w => body.includes(w)).length;
+    // Require most content words to appear; a summary of a chapter that has been rewritten will not.
+    if (present >= Math.max(1, Math.ceil(words.length * 0.6))) continue;
+    const first = blocks.find(b => b.type === 'paragraph');
+    if (!first) continue;
+    gaps.push({
+      chapterId: chapter.id,
+      anchor: makeAnchor(chapter.id, chapter.version, first, 0, Math.min(first.text.length, 60)),
+      message: 'Your summary of this chapter does not match its text. Either the chapter changed or the summary is out of date.',
+      evidence: entry.summary,
+    });
+  }
+  return gaps;
 }
 
 /** True when an image or other non-text node sits between two text blocks. */

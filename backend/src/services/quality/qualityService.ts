@@ -22,7 +22,7 @@ async function latestContext(bookId: string): Promise<{ version: number; data: B
   const row = await prisma.bookContext.findFirst({ where: { bookId }, orderBy: { version: 'desc' } });
   if (row) return { version: row.version, data: bookContextSchema.parse(row.data) };
   const brief = await getBrief(bookId);
-  return { version: 0, data: { voice: [brief.writingStyle, brief.pointOfView].filter(Boolean).join('. ').slice(0, 2000), terms: [] } };
+  return { version: 0, data: { voice: [brief.writingStyle, brief.pointOfView].filter(Boolean).join('. ').slice(0, 2000), terms: [], definitions: [], chapterSummaries: [] } };
 }
 export const contextService = {
   async get(userId: string, bookId: string) {

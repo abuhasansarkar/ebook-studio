@@ -1,0 +1,17 @@
+[41m[1m FAIL [22m[49m tests/covers.test.ts[2m > [22mcover studio and image generation[2m > [22mescapes overlays and exports reproducible high-resolution covers with bundled multilingual fonts
+[41m[1m FAIL [22m[49m tests/covers.test.ts[2m > [22mcover studio and image generation[2m > [22mrejects overflowing typography instead of silently clipping the download
+[41m[1m FAIL [22m[49m tests/design.test.ts[2m > [22mreader and print previews[2m > [22mrenders a real print sample with the saved trim and limits it to the first chapters
+[41m[1m FAIL [22m[49m tests/design.test.ts[2m > [22mdesign-aware exports[2m > [22mrenders the design captured at request time, not later edits
+[41m[1m FAIL [22m[49m tests/operations.test.ts[2m > [22menvironment and worker readiness[2m > [22mvalidates and downloads a file through the API that reads the worker storage
+[41m[1m FAIL [22m[49m tests/pdf.test.ts[2m > [22mPDF export language fixtures[2m > [22mrenders en with bundled fonts only
+[41m[1m FAIL [22m[49m tests/pdf.test.ts[2m > [22mPDF export language fixtures[2m > [22mrenders bn with bundled fonts only
+[41m[1m FAIL [22m[49m tests/pdf.test.ts[2m > [22mPDF export language fixtures[2m > [22mrenders ar with bundled fonts only
+[41m[1m FAIL [22m[49m tests/pdf.test.ts[2m > [22mPDF export language fixtures[2m > [22mrenders ur with bundled fonts only
+[41m[1m FAIL [22m[49m tests/pdf.test.ts[2m > [22mPDF export language fixtures[2m > [22mrenders hi with bundled fonts only
+[41m[1m FAIL [22m[49m tests/pdf.test.ts[2m > [22mPDF export language fixtures[2m > [22mrenders ta with bundled fonts only
+[41m[1m FAIL [22m[49m tests/pdf.test.ts[2m > [22mPDF export language fixtures[2m > [22mrenders zh with bundled fonts only
+[41m[1m FAIL [22m[49m tests/pdf.test.ts[2m > [22mPDF export language fixtures[2m > [22mrenders ja with bundled fonts only
+[41m[1m FAIL [22m[49m tests/pdf.test.ts[2m > [22mPDF export language fixtures[2m > [22mrenders ko with bundled fonts only
+[41m[1m FAIL [22m[49m tests/pdf.test.ts[2m > [22mPDF export language fixtures[2m > [22msplits a long table across pages without clipping wide cells
+[41m[1m FAIL [22m[49m tests/pdf.test.ts[2m > [22mPDF export language fixtures[2m > [22mapplies the saved trim size and reports glyphs that no approved font covers
+[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] backend@0.1.0 test: `vitest run`

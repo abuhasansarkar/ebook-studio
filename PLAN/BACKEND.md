@@ -179,17 +179,25 @@ Data: `QualityReport` with manuscript/design/assets fingerprint, checker/rules v
 
 Implementation:
 
-- [ ] Implement deterministic checks for missing/empty content, heading hierarchy, repeated passages, broken assets/links, metadata and alt text.
-- [ ] Add AI-assisted clarity, repetition, terminology and contradiction review behind a separate costed operation.
-- [ ] Require findings to point to actual anchors and supporting excerpts; discard malformed or unverifiable model references.
-- [ ] Flag facts/citations requiring evidence without claiming verified accuracy or originality.
-- [ ] Mark reports stale when relevant input versions change; maintain user review/dismissal notes with attribution.
-- [ ] Treat applying a fix as a normal version-aware editor change; never mutate the manuscript silently during analysis.
-- [ ] Measure false positives/negatives against curated flawed and clean fixtures before enabling aggregate scores.
+- [x] Implement deterministic checks for missing/empty content, heading hierarchy, repeated passages, broken assets/links, metadata and alt text.
+- [x] Add AI-assisted clarity, repetition, terminology and contradiction review behind a separate costed operation.
+- [x] Require findings to point to actual anchors and supporting excerpts; discard malformed or unverifiable model references.
+- [x] Flag facts/citations requiring evidence without claiming verified accuracy or originality.
+- [x] Mark reports stale when relevant input versions change; maintain user review/dismissal notes with attribution.
+- [x] Treat applying a fix as a normal version-aware editor change; never mutate the manuscript silently during analysis.
+- [x] Measure false positives/negatives against curated flawed and clean fixtures before enabling aggregate scores.
 
 Contracts: costed report creation, list/detail, finding review update and anchor lookup. Make any score methodology and incomplete coverage explicit.
 
 Tests/gate: injected defects are found and correctly located; clean content is evaluated for false positives; stale reports and human-review findings are visibly distinct.
+
+### S09 implementation checkpoint — 20 November 2026
+
+Core quality review is implemented. Versioned `book_contexts` now carry voice, terminology, agreed definitions and per-chapter summaries. Deterministic checks cover empty and short content, heading hierarchy, repeated passages, broken assets and links, metadata, alt text, script mismatch, unsupported glyphs, terminology variants, cross-chapter numeric contradictions, competing definitions and out-of-date chapter summaries. The costed AI review returns clarity, repetition, consistency, contradiction and evidence findings; each quoted reference is verified against the chapter and unverifiable model references are discarded and counted.
+
+Cross-chapter contradiction detection compares the same subject and unit measured in different chapters and reports the later claim against the earlier one; same-chapter and different-unit pairs are not compared. Definition conflicts fire only when a chapter states a competing definition for a term the book context defines, and summary gaps fire only when most content words of an author summary are absent from the chapter.
+
+No aggregate score is produced. Findings that need human review are marked as such and state that eBookStudio does not verify facts or sources. See [ACCEPTANCE.md](./ACCEPTANCE.md) for evidence and the limits that remain open.
 
 ## S10 — Validated PDF, EPUB and DOCX
 

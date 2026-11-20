@@ -12,7 +12,7 @@ import { aiReviewService, qualityService } from '../src/services/quality/quality
 import { runRuleChecks } from '../src/services/quality/checks.js';
 import { closeBrowser } from '../src/services/exports/pdfRenderer.js';
 import { markdownToTiptap } from '../src/services/editor/markdownToTiptap.js';
-import { EXPECTED, bengaliCleanInput, cleanInput, flawedInput } from './quality-fixtures.js';
+import { EXPECTED, bengaliCleanInput, cleanInput, contradictionInput, flawedInput, noContradictionInput } from './quality-fixtures.js';
 import { brief, createUser, ORIGIN } from './helpers.js';
 
 afterAll(async () => { await closeBrowser(); await closeQueues(); await prisma.$disconnect(); });
@@ -49,7 +49,7 @@ describe('deterministic checks against curated fixtures', () => {
 
   it('matches avoided terms as whole words, including scripts with combining marks', () => {
     const input = bengaliCleanInput();
-    input.context = { voice: '', terms: [{ preferred: 'ফ্রিজার', avoid: ['ফ্রিজ'], note: '' }, { preferred: 'use', avoid: ['utilise'], note: '' }] };
+    input.context = { voice: '', terms: [{ preferred: 'ফ্রিজার', avoid: ['ফ্রিজ'], note: '' }, { preferred: 'use', avoid: ['utilise'], note: '' }], definitions: [], chapterSummaries: [] };
     input.chapters[0].content = markdownToTiptap('ফ্রিজ পরিষ্কার রাখুন। ফ্রিজারে খাবার রাখুন। We utilise it; utilised forms are not listed.');
     const found = runRuleChecks(input).findings.filter(f => f.ruleId === 'consistency.term');
     expect(found.map(f => [f.anchor?.quote, f.anchor?.start])).toEqual([['ফ্রিজ', 0], ['utilise', 'ফ্রিজ পরিষ্কার রাখুন। ফ্রিজারে খাবার রাখুন। We '.length]]);
@@ -68,6 +68,7 @@ describe('deterministic checks against curated fixtures', () => {
     expect(locateAnchor(reordered, anchor)).toEqual({ status: 'moved', block: 0, start: 10, end: 19 });
     expect(locateAnchor(textBlocks(markdownToTiptap('The quick red fox jumps.')), anchor)).toEqual({ status: 'missing' });
   });
+
 });
 
 async function setup() {
@@ -138,6 +139,32 @@ describe('quality reports API', () => {
     const { reportId } = (await a.agent.post(`${a.base}/reports`).set('Origin', ORIGIN).send({}).expect(201)).body;
     const term = (await a.agent.get(`${a.base}/reports/${reportId}`)).body.findings.find((f: { ruleId: string }) => f.ruleId === 'consistency.term');
     expect(term).toMatchObject({ chapterId: a.ch2.id, evidence: 'utilise', suggestion: { replacement: 'use' }, location: { status: 'current' } });
+  });
+
+  it('stores definitions and chapter summaries, rejects duplicates and keeps older contexts readable', async () => {
+    const a = await setup();
+    const saved = (await a.agent.put(`${a.base}/context`).set('Origin', ORIGIN).send({
+      baseVersion: 0,
+      data: {
+        voice: 'Warm', terms: [],
+        definitions: [{ term: 'batch cooking', definition: 'cooking several meals at once', note: '' }],
+        chapterSummaries: [{ chapterId: a.ch1.id, summary: 'Why weekly prep saves time.' }],
+      },
+    }).expect(200)).body.context;
+    expect(saved.version).toBe(1);
+    expect(saved.data.definitions).toEqual([{ term: 'batch cooking', definition: 'cooking several meals at once', note: '' }]);
+    expect(saved.data.chapterSummaries).toEqual([{ chapterId: a.ch1.id, summary: 'Why weekly prep saves time.' }]);
+    // The same term cannot be defined twice.
+    await a.agent.put(`${a.base}/context`).set('Origin', ORIGIN).send({
+      baseVersion: 1,
+      data: { voice: 'Warm', terms: [], definitions: [{ term: 'batch cooking', definition: 'one meaning', note: '' }, { term: 'Batch Cooking', definition: 'another meaning', note: '' }], chapterSummaries: [] },
+    }).expect(400);
+    // A context stored before definitions existed still loads, with empty collections.
+    await prisma.bookContext.create({ data: { bookId: a.book.id, version: 2, data: { voice: 'Older', terms: [] } } });
+    const loaded = (await a.agent.get(`${a.base}/context`).expect(200)).body.context;
+    expect(loaded.version).toBe(2);
+    expect(loaded.data.definitions).toEqual([]);
+    expect(loaded.data.chapterSummaries).toEqual([]);
   });
 });
 

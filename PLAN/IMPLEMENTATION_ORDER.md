@@ -1,6 +1,6 @@
 # Ordered implementation work packages
 
-Use matching step IDs in [BACKEND.md](./BACKEND.md), [FRONTEND.md](./FRONTEND.md), and [ACCEPTANCE.md](./ACCEPTANCE.md). S01 foundation is implemented and verified. S02 edit protection and initial S14 destination checks are implemented; additional S02 resilience evidence and full S14 packaging remain pending. S03 generation recovery and S04 durable OTP delivery are implemented with evidence and cutover limits in ACCEPTANCE.md. S05 core library/planning is implemented and verified locally, with limits in ACCEPTANCE.md. S06 core private images are implemented with local verification. S07 core cover/illustration generation and editable typography are implemented with local verification. S08 core interior templates, multilingual typesetting and reader/print previews are implemented with local verification. S09–S13 and S15–S16 remain planned. See the evidence record in ACCEPTANCE.md for scope and limits.
+Use matching step IDs in [BACKEND.md](./BACKEND.md), [FRONTEND.md](./FRONTEND.md), and [ACCEPTANCE.md](./ACCEPTANCE.md). S01 foundation is implemented and verified. S02 edit protection and initial S14 destination checks are implemented; additional S02 resilience evidence and full S14 packaging remain pending. S03 generation recovery and S04 durable OTP delivery are implemented with evidence and cutover limits in ACCEPTANCE.md. S05 core library/planning is implemented and verified locally, with limits in ACCEPTANCE.md. S06 core private images are implemented with local verification. S07 core cover/illustration generation and editable typography are implemented with local verification. S08 core interior templates, multilingual typesetting and reader/print previews are implemented with local verification. S09 core quality review, including cross-chapter contradiction detection and agreed book definitions, is implemented and verified locally. S10–S13 and S15–S16 remain planned. See the evidence record in ACCEPTANCE.md for scope and limits.
 
 For each package: confirm contracts → write migration and service → integrate UI → run targeted failure tests → demonstrate the user journey → record evidence → enable the capability. Avoid replacing a working workflow with a placeholder during development.
 
@@ -102,6 +102,8 @@ Gate: saved design is reproducible; reflowable previews do not pretend to have f
 6. Evaluate against fixtures containing known defects and misleading claims.
 
 Gate: findings are actionable and correctly located; unverified facts and citations require human review.
+
+Status: core implementation complete and verified locally. Deterministic checks, the costed AI review, versioned book context with terminology and agreed definitions, cross-chapter contradiction detection, anchored editor navigation and attributed review notes are implemented. No aggregate score is produced. Remaining release work is the S16 gate, including curated-fixture review by a human editor and live-provider output review.
 
 ## S10 — Deliver validated files
 

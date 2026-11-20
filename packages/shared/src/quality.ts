@@ -7,7 +7,7 @@ import { z } from 'zod';
  * reported as missing rather than highlighting unrelated text.
  */
 export const QUALITY_RULES_VERSION = 1;
-export const QUALITY_CATEGORIES = ['metadata', 'content', 'structure', 'repetition', 'assets', 'accessibility', 'links', 'consistency', 'language', 'typesetting', 'evidence', 'clarity'] as const;
+export const QUALITY_CATEGORIES = ['metadata', 'content', 'structure', 'repetition', 'assets', 'accessibility', 'links', 'consistency', 'contradiction', 'language', 'typesetting', 'evidence', 'clarity'] as const;
 export type QualityCategory = typeof QUALITY_CATEGORIES[number];
 export const QUALITY_SEVERITIES = ['error', 'warning', 'info'] as const;
 export type QualitySeverity = typeof QUALITY_SEVERITIES[number];
@@ -19,7 +19,7 @@ export type ReviewStatus = typeof REVIEW_STATUSES[number];
 
 export const CATEGORY_LABELS: Record<QualityCategory, string> = {
   metadata: 'Book details', content: 'Content', structure: 'Headings', repetition: 'Repetition', assets: 'Images', accessibility: 'Accessibility',
-  links: 'Links', consistency: 'Terminology', language: 'Language', typesetting: 'Typesetting', evidence: 'Needs evidence', clarity: 'Clarity',
+  links: 'Links', consistency: 'Terminology', contradiction: 'Contradictions', language: 'Language', typesetting: 'Typesetting', evidence: 'Needs evidence', clarity: 'Clarity',
 };
 
 export const textAnchorSchema = z.object({
@@ -97,10 +97,19 @@ export function locateAnchor(blocks: TextBlock[], anchor: TextAnchor): AnchorLoc
 }
 
 const term = z.string().trim().min(1, 'Enter a term').max(80);
+/** A definition the author fixes for the book. Used to check that the manuscript keeps the same meaning. */
+const definition = z.object({
+  term: term,
+  definition: z.string().trim().min(1, 'Enter a definition').max(500),
+  note: z.string().trim().max(300),
+}).strict();
 /** Versioned book context used by terminology checks and AI review. */
 export const bookContextSchema = z.object({
   voice: z.string().trim().max(2000),
   terms: z.array(z.object({ preferred: term, avoid: z.array(term).max(10), note: z.string().trim().max(300) }).strict()).max(100),
+  definitions: z.array(definition).max(100).default([]),
+  /** One-line summaries of chapters the author has written, used for cross-chapter continuity checks. */
+  chapterSummaries: z.array(z.object({ chapterId: z.string().trim().min(1).max(100), summary: z.string().trim().min(1, 'Enter a summary').max(600) }).strict()).max(200).default([]),
 }).strict().superRefine((c, ctx) => {
   const seen = new Map<string, number>();
   c.terms.forEach((t, i) => {
@@ -110,6 +119,17 @@ export const bookContextSchema = z.object({
       seen.set(key, i);
     }
     if (t.avoid.some(a => a.toLocaleLowerCase() === t.preferred.toLocaleLowerCase())) ctx.addIssue({ code: 'custom', path: ['terms', i, 'avoid'], message: 'A variant to avoid cannot equal the preferred term' });
+  });
+  const defined = new Set<string>();
+  c.definitions.forEach((d, i) => {
+    const key = d.term.toLocaleLowerCase();
+    if (defined.has(key)) ctx.addIssue({ code: 'custom', path: ['definitions', i], message: `"${d.term}" has more than one definition` });
+    defined.add(key);
+  });
+  const chapters = new Set<string>();
+  c.chapterSummaries.forEach((s, i) => {
+    if (chapters.has(s.chapterId)) ctx.addIssue({ code: 'custom', path: ['chapterSummaries', i], message: 'This chapter already has a summary' });
+    chapters.add(s.chapterId);
   });
 });
 export type BookContext = z.infer<typeof bookContextSchema>;

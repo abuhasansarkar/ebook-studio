@@ -17,7 +17,7 @@ export const READY = 'asset_ready_1';
 export const flawedInput = (): CheckInput => ({
   title: 'Meal Prep for Busy Parents', subtitle: '', author: '', language: 'en', referencesEnabled: false,
   readyAssets: new Set([READY]), uncoveredCharacters: new Set([...THAI]),
-  context: { voice: 'Warm and practical.', terms: [{ preferred: 'use', avoid: ['utilise'], note: 'Plain English' }] },
+  context: { voice: 'Warm and practical.', terms: [{ preferred: 'use', avoid: ['utilise'], note: 'Plain English' }], definitions: [], chapterSummaries: [] },
   chapters: [
     chapter(0, 'Getting started', doc(
       h(3, 'Details first'),
@@ -68,7 +68,7 @@ export const EXPECTED: [string, string | null, string | null][] = [
 export const cleanInput = (): CheckInput => ({
   title: 'Meal Prep for Busy Parents', subtitle: 'A calm week', author: 'Rina Das', language: 'en', referencesEnabled: true,
   readyAssets: new Set([READY]), uncoveredCharacters: new Set(),
-  context: { voice: 'Warm and practical.', terms: [{ preferred: 'use', avoid: ['utilise'], note: '' }] },
+  context: { voice: 'Warm and practical.', terms: [{ preferred: 'use', avoid: ['utilise'], note: '' }], definitions: [], chapterSummaries: [] },
   chapters: [
     chapter(0, 'Getting started', markdownToTiptap(`## Why plan ahead\n\nA little time on Sunday makes the whole week easier. Families who plan meals tend to waste less food and argue less about dinner.\n\n### A simple routine\n\nPick three recipes, shop once and cook in two batches. Label every container with the date.\n\n- Choose recipes\n- Write the list\n- Cook and label\n\nRead the [storage guide](https://example.com/storage) for safe freezer times.`)),
     chapter(1, 'Planning the week', doc(h(2, 'Building the plan'), p('Use a whiteboard on the fridge so everyone can see what is coming.'), img(READY, 'A whiteboard with the weekly menu', 'Weekly menu'), p('Rotate favourite meals so nobody feels stuck with the same dish.'))),
@@ -76,6 +76,42 @@ export const cleanInput = (): CheckInput => ({
 });
 export const bengaliCleanInput = (): CheckInput => ({
   title: 'সহজ রান্না', subtitle: '', author: 'রিনা দাস', language: 'bn', referencesEnabled: false, readyAssets: new Set(), uncoveredCharacters: new Set(),
-  context: { voice: '', terms: [] },
+  context: { voice: '', terms: [], definitions: [], chapterSummaries: [] },
   chapters: [chapter(0, 'প্রথম অধ্যায়', markdownToTiptap('## কেন আগে থেকে রান্না করবেন\n\nরবিবারে একটু সময় দিলে পুরো সপ্তাহ সহজ হয়ে যায়। ক্ষুধার্ত শিশুদের জন্য দ্রুত খাবার তৈরি রাখা যায় এবং সন্ধ্যায় চাপ কমে।\n\n### শুরু করার উপায়\n\nতিনটি রান্না বেছে নিন, একবার বাজার করুন এবং দুই দফায় রান্না করুন। প্রতিটি পাত্রে তারিখ লিখে রাখুন।'))],
+});
+
+/**
+ * Two chapters state the same measured fact with different numbers, and a third chapter
+ * defines a term differently from the book context. Both must be reported, and each
+ * finding must point at text that is actually in the chapter.
+ */
+export const contradictionInput = (): CheckInput => ({
+  title: 'Meal Prep for Busy Parents', subtitle: '', author: 'Rina Das', language: 'en', referencesEnabled: false,
+  readyAssets: new Set(), uncoveredCharacters: new Set(),
+  context: {
+    voice: 'Warm and practical.', terms: [],
+    definitions: [{ term: 'batch cooking', definition: 'cooking several meals at once in one session', note: '' }],
+    chapterSummaries: [],
+  },
+  chapters: [
+    chapter(0, 'The research', doc(p('Studies show that 73% of parents skip breakfast on weekdays.'))),
+    chapter(1, 'What changes', doc(p('Later research found that 41% of parents skip breakfast on weekdays.'))),
+    chapter(2, 'The method', doc(p('Batch cooking means preparing every ingredient before you start cooking.'))),
+  ],
+});
+
+/** The same book without the conflicting numbers: the checks must stay silent. */
+export const noContradictionInput = (): CheckInput => ({
+  title: 'Meal Prep for Busy Parents', subtitle: '', author: 'Rina Das', language: 'en', referencesEnabled: false,
+  readyAssets: new Set(), uncoveredCharacters: new Set(),
+  context: {
+    voice: 'Warm and practical.', terms: [],
+    definitions: [{ term: 'batch cooking', definition: 'cooking several meals at once in one session', note: '' }],
+    chapterSummaries: [],
+  },
+  chapters: [
+    chapter(0, 'The research', doc(p('Studies show that 73% of parents skip breakfast on weekdays.'))),
+    chapter(1, 'What changes', doc(p('Later research found that 73% of parents skip breakfast on weekdays.'))),
+    chapter(2, 'The method', doc(p('Batch cooking means cooking several meals at once in one session.'))),
+  ],
 });

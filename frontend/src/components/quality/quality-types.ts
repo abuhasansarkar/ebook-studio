@@ -17,5 +17,14 @@ export type Finding = {
   message: string; evidence: string; suggestion: { replacement?: string; advice?: string } | null; needsHumanReview: boolean;
   status: ReviewStatus; reviewNote: string; reviewedByName: string | null; reviewedAt: string | null; createdAt: string;
 };
-export type ContextState = { version: number; data: { voice: string; terms: { preferred: string; avoid: string[]; note: string }[] }; briefTerminology: string };
+export type ContextState = {
+  version: number;
+  data: {
+    voice: string;
+    terms: { preferred: string; avoid: string[]; note: string }[];
+    definitions: { term: string; definition: string; note: string }[];
+    chapterSummaries: { chapterId: string; summary: string }[];
+  };
+  briefTerminology: string;
+};
 export type QualityConfig = { creditsPerChapter: number; model: string; mock: boolean; enabled: boolean };

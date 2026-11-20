@@ -8,7 +8,7 @@ export const aiFindingSchema = z.object({
   findings: z.array(z.object({
     paragraph: z.number().int(),
     quote: z.string(),
-    category: z.enum(['clarity', 'repetition', 'consistency', 'evidence']),
+    category: z.enum(['clarity', 'repetition', 'consistency', 'contradiction', 'evidence']),
     severity: z.enum(['warning', 'info']),
     message: z.string(),
     suggestion: z.string(),
@@ -20,6 +20,8 @@ export interface ReviewInput { language: string; bookTitle: string; chapterTitle
 const MAX_CHARS = 60_000;
 export function reviewPrompt(i: ReviewInput) {
   const glossary = i.context.terms.map(t => `- Use "${t.preferred}"${t.avoid.length ? `, not ${t.avoid.map(a => `"${a}"`).join(', ')}` : ''}${t.note ? ` (${t.note})` : ''}`).join('\n') || '(none)';
+  const definitions = i.context.definitions.map(d => `- "${d.term}": ${d.definition}${d.note ? ` (${d.note})` : ''}`).join('\n') || '(none)';
+  const summaries = i.context.chapterSummaries.map(s => `- ${s.summary}`).join('\n') || '(none)';
   let used = 0;
   const numbered = i.blocks.filter(b => b.text.trim()).map(b => `[${b.index}] ${b.text}`).filter(line => (used += line.length) <= MAX_CHARS).join('\n');
   return {
@@ -28,12 +30,13 @@ Report only concrete problems in these categories:
 - clarity: sentences that are confusing, ambiguous or hard to follow;
 - repetition: ideas or phrasing repeated within the chapter;
 - consistency: terminology that conflicts with the glossary, or statements that contradict each other;
+- contradiction: a statement that contradicts the author's stated definitions or contradicts an earlier chapter summary. Only report it when the contradiction is explicit in the text;
 - evidence: factual, statistical, medical, legal or historical claims that need a source. Do NOT judge whether they are true; say they need verification.
 Rules:
 - "paragraph" is the number in square brackets. "quote" must be copied exactly, character for character, from that paragraph (at most 200 characters, no ellipses).
 - Write "message" and "suggestion" in English. Keep quotes in the original language. Use an empty suggestion when you have none.
 - Report at most 12 findings and none at all if the chapter is fine. Do not report spelling of names, style preferences or formatting.`,
-    user: `Book: ${i.bookTitle}\nChapter: ${i.chapterTitle}\nAuthor's voice: ${i.context.voice || '(not specified)'}\nGlossary:\n${glossary}\n\nNumbered paragraphs:\n${numbered}`,
+    user: `Book: ${i.bookTitle}\nChapter: ${i.chapterTitle}\nAuthor's voice: ${i.context.voice || '(not specified)'}\nGlossary:\n${glossary}\nAgreed definitions:\n${definitions}\nChapter summaries so far:\n${summaries}\n\nNumbered paragraphs:\n${numbered}`,
     truncated: used > MAX_CHARS,
   };
 }

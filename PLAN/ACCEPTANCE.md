@@ -336,4 +336,36 @@ Release boundaries:
 - The editor screen still loads Google Fonts for editing. Only previews and exports use the bundled fonts.
 - Scripts outside the bundled families, including emoji, are flagged as missing glyphs and may render with system fonts in Docker. CJK serif is not bundled, so CJK uses sans for both settings.
 - EPUB/DOCX adapters, immutable manuscript snapshots and validators belong to S10. Production Docker builds must fetch CJK fonts over the network at build time. Protocol 5 requires a coordinated drain and cutover (see RUNTIME.md).
-- No Gmail delivery, paid AI call, remote push or production deployment was performed. S09 quality reports is next.
+- No Gmail delivery, paid AI call, remote push or production deployment was performed. S09 quality reports was completed in the iteration recorded below.
+
+## S09 quality review — 20 November 2026
+
+Status: core implementation complete and verified locally. This is not a production rollout, a marketplace certification, or a claim of factual accuracy. S10 remains the next ordered package.
+
+Implemented:
+
+- Versioned `book_contexts` carry voice notes, terminology with variants to avoid, agreed definitions and per-chapter summaries. New fields default to empty so contexts stored before this iteration still load.
+- Deterministic checks cover empty and short content, heading hierarchy, repeated passages, broken assets and links, metadata, missing alt text, script mismatch, unsupported glyphs, terminology variants, cross-chapter numeric contradictions, competing definitions and out-of-date chapter summaries.
+- Cross-chapter contradiction detection compares the same subject measured in the same unit across different chapters and reports the later claim against the earlier one. Same-chapter pairs and different units are not compared, so ordinary prose variation is not flagged.
+- Definition conflicts fire only when a chapter states a competing definition for a term the book context defines, and only when the two meanings share no significant content. Summary gaps fire only when most content words of an author-written summary are absent from the chapter.
+- The costed AI review returns clarity, repetition, consistency, contradiction and evidence findings. Definitions and chapter summaries are supplied to the review. Every quoted reference is verified against the chapter; unverifiable model references are discarded and counted in the report summary.
+- Each finding points at a real text anchor. Findings that need human review are marked as such and state that eBookStudio does not verify facts or sources. No aggregate quality score is produced.
+- The workspace is at My eBooks → a book → Quality. It shows the input version, the rules version, the checks that ran and the checks that did not, and the credit estimate before a costed review. Filters cover severity, category and chapter; opening a finding highlights the passage in the editor, and a suggested replacement is applied as an ordinary versioned edit.
+- Stale reports, moved text and removed chapters are explained rather than highlighted as if current. Review and dismissal notes are kept with the finding and attributed to the reviewer.
+
+Verification:
+
+- **8 database-free deterministic-check tests passed** (`backend/tests/pure-quality-checks.test.ts`, run with `backend/vitest.pure.config.ts`): conflicting numbers are found and anchored to the later claim and the anchor resolves against the real chapter text; a competing definition is found and anchored; the same book stays silent when the numbers agree and the definition matches; a drifted chapter summary is flagged; same-chapter pairs and different units are not compared; the measured subject is the noun before the number rather than the unit word; a context stored before definitions existed does not fail the run.
+- A new database-backed test covers storing definitions and chapter summaries, rejecting a duplicate definition term and loading a context saved before the fields existed. **This test was not executed here** — see the blocker below.
+- Workspace TypeScript, frontend lint, backend build, frontend release build and the e2e TypeScript check passed.
+- The Puppeteer journey was extended to add a definition, seed a contradicting paragraph and assert a Contradictions finding. **This journey was not executed here** — see the blocker below.
+
+Blocker on this iteration: the machine used for this iteration has no PostgreSQL, no Redis and no Docker daemon (`docker` reports the engine pipe is missing; ports 5432 and 6379 refuse connections). The normal `pnpm --filter backend test` command therefore cannot run here, because `backend/tests/global-setup.ts` requires PostgreSQL to create the test database and apply migrations. The database-backed quality tests, the full backend suite and the browser journey remain unverified on this revision and must be run on an environment with the standard test stack before this evidence record is treated as complete.
+
+Remaining boundaries:
+
+- Contradiction detection is deliberately narrow. It compares a shared subject noun and unit, so numbers whose subject is described differently across chapters are not compared, and it cannot prove a contradiction. It flags a likely conflict for the author to resolve.
+- Definition and summary checks rely on the author's own context. A book with no definitions or summaries gets no contradiction, definition-conflict or summary-gap findings from these rules.
+- No aggregate score, accuracy measure or originality certificate is produced. Findings that need human review say so; the review cannot verify facts, sources or claims.
+- The AI review depends on provider output quality. It was exercised only in mock mode; no paid provider call, live latency or billing check was performed.
+- The browser journey, the database-backed tests and the full backend suite must be re-run on a machine with the test stack before release. The evidence above does not establish them.

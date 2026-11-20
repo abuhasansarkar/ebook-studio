@@ -180,10 +180,17 @@ function ContextEditor({ bookId, onSaved }: { bookId: string; onSaved: () => voi
 function ContextForm({ bookId, initial, onSaved }: { bookId: string; initial: ContextState; onSaved: () => void }) {
   const [voice, setVoice] = useState(initial.data.voice);
   const [terms, setTerms] = useState(initial.data.terms.map(t => ({ preferred: t.preferred, avoid: t.avoid.join(', '), note: t.note })));
+  const [definitions, setDefinitions] = useState(initial.data.definitions.map(d => ({ term: d.term, definition: d.definition, note: d.note })));
   const [state, setState] = useState({ busy: false, error: '', notice: '' });
-  const data = { voice, terms: terms.map(t => ({ preferred: t.preferred.trim(), avoid: t.avoid.split(',').map(a => a.trim()).filter(Boolean), note: t.note.trim() })) };
+  const data = {
+    voice,
+    terms: terms.map(t => ({ preferred: t.preferred.trim(), avoid: t.avoid.split(',').map(a => a.trim()).filter(Boolean), note: t.note.trim() })),
+    definitions: definitions.map(d => ({ term: d.term.trim(), definition: d.definition.trim(), note: d.note.trim() })),
+    chapterSummaries: initial.data.chapterSummaries,
+  };
   const parsed = bookContextSchema.safeParse(data);
   const update = (i: number, patch: Partial<typeof terms[number]>) => setTerms(terms.map((t, j) => j === i ? { ...t, ...patch } : t));
+  const updateDefinition = (i: number, patch: Partial<typeof definitions[number]>) => setDefinitions(definitions.map((d, j) => j === i ? { ...d, ...patch } : d));
   async function save() {
     setState({ busy: true, error: '', notice: '' });
     try { await api.put(`/books/${bookId}/quality/context`, { baseVersion: initial.version, data: parsed.success ? parsed.data : data }); setState({ busy: false, error: '', notice: '' }); onSaved(); }
@@ -192,7 +199,7 @@ function ContextForm({ bookId, initial, onSaved }: { bookId: string; initial: Co
   return <details className="rounded-2xl border border-border bg-surface p-4">
     <summary className="cursor-pointer text-sm font-semibold">Voice and terminology (version {initial.version})</summary>
     <div className="mt-3 space-y-4 text-sm">
-      <p className="text-muted-foreground">Terms you list here are checked in every chapter, and the AI review uses your voice notes. Edits are versioned; a report made with an older version is marked out of date.</p>
+      <p className="text-muted-foreground">Terms you list here are checked in every chapter, and the AI review uses your voice notes and definitions. Edits are versioned; a report made with an older version is marked out of date.</p>
       <div><Label htmlFor="ctx-voice">Voice and style notes</Label><Textarea id="ctx-voice" maxLength={2000} value={voice} onChange={e => setVoice(e.target.value)} placeholder="Warm, practical, second person, short paragraphs…" /></div>
       {initial.briefTerminology && <p className="text-xs text-muted-foreground">From your brief: “{initial.briefTerminology}”. Add the terms below so they can be checked.</p>}
       <div className="space-y-2">
@@ -203,6 +210,16 @@ function ContextForm({ bookId, initial, onSaved }: { bookId: string; initial: Co
           <Button size="sm" variant="ghost" className="self-end" aria-label={`Remove term ${t.preferred || i + 1}`} onClick={() => setTerms(terms.filter((_, j) => j !== i))}>Remove</Button>
         </div>)}
         <Button size="sm" variant="secondary" disabled={terms.length >= 100} onClick={() => setTerms([...terms, { preferred: '', avoid: '', note: '' }])}>Add term</Button>
+      </div>
+      <div className="space-y-2 border-t border-border pt-3">
+        <p className="text-xs text-muted-foreground">Definitions you agree for this book. If a chapter defines the same term differently, the review flags it as a possible contradiction. The AI review also uses these definitions.</p>
+        {definitions.map((d, i) => <div key={i} className="grid gap-2 rounded-xl border border-border p-3 sm:grid-cols-[1fr_2fr_1fr_auto]">
+          <div><Label htmlFor={`d-term-${i}`} className="text-xs">Term</Label><Input id={`d-term-${i}`} className="h-9" maxLength={80} value={d.term} onChange={e => updateDefinition(i, { term: e.target.value })} /></div>
+          <div><Label htmlFor={`d-def-${i}`} className="text-xs">Definition</Label><Input id={`d-def-${i}`} className="h-9" maxLength={500} value={d.definition} onChange={e => updateDefinition(i, { definition: e.target.value })} /></div>
+          <div><Label htmlFor={`d-note-${i}`} className="text-xs">Note</Label><Input id={`d-note-${i}`} className="h-9" maxLength={300} value={d.note} onChange={e => updateDefinition(i, { note: e.target.value })} /></div>
+          <Button size="sm" variant="ghost" className="self-end" aria-label={`Remove definition ${d.term || i + 1}`} onClick={() => setDefinitions(definitions.filter((_, j) => j !== i))}>Remove</Button>
+        </div>)}
+        <Button size="sm" variant="secondary" disabled={definitions.length >= 100} onClick={() => setDefinitions([...definitions, { term: '', definition: '', note: '' }])}>Add definition</Button>
       </div>
       {!parsed.success && <p role="alert" className="text-xs text-danger">{parsed.error.issues.map(i => i.message).join('. ')}</p>}
       {state.error && <Alert tone="danger">{state.error}</Alert>}

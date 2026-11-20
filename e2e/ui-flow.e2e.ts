@@ -475,6 +475,22 @@ try {
   if (termCards !== 1) throw new Error(`Expected one whole-word terminology finding, found ${termCards}`);
   await page.goto(`${BASE}${await cardLink('instead of “ফ্রিজ”')}`, { waitUntil: 'networkidle0' });
   await clickButton(page, 'Replace with “ফ্রিজার”'); await waitText(page, 'Replacement applied');
+  // A definition the chapter contradicts must be reported under Contradictions.
+  await page.goto(`${BASE}/app/books/${currentBookId}/quality`, { waitUntil: 'networkidle0' });
+  await clickSummary('Voice and terminology');
+  await clickButton(page, 'Add definition');
+  await page.type('#d-term-0', 'batch cooking'); await page.type('#d-def-0', 'cooking several meals at once');
+  await clickButton(page, 'Save voice and terminology');
+  await waitText(page, 'Voice and terminology (version 2)');
+  await page.evaluate(async id => {
+    const c = (await (await fetch(`/api/v1/chapters/${id}`)).json()).chapter;
+    c.contentJson.content.push({ type: 'paragraph', content: [{ type: 'text', text: 'Batch cooking means preparing every ingredient before you begin.' }] });
+    const r = await fetch(`/api/v1/chapters/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: c.version, contentJson: c.contentJson }) });
+    if (!r.ok) throw new Error(`Seeding the contradiction fixture failed: ${r.status}`);
+  }, seededChapter);
+  await clickButton(page, 'Run checks again'); await waitText(page, 'Checks finished.');
+  await page.select('#f-category', 'contradiction'); await waitText(page, 'differently from your book context');
+  await shot(page, 'quality-contradiction');
   await page.waitForFunction(async id => { const c = (await (await fetch(`/api/v1/chapters/${id}`)).json()).chapter; return JSON.stringify(c.contentJson).includes('ফ্রিজার পরিষ্কার রাখুন'); }, { timeout: 30000, polling: 1000 }, seededChapter);
   // Dismissal needs a note and keeps attribution.
   await page.goto(`${BASE}/app/books/${currentBookId}/quality`, { waitUntil: 'networkidle0' });

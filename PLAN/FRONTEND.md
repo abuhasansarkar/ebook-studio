@@ -163,15 +163,21 @@ Routes/components: `/app/quality?bookId=...`, report overview, finding filters, 
 
 Tasks:
 
-- [ ] Show review scope, input version, cost where applicable, progress and category results.
-- [ ] Separate deterministic defects, AI suggestions and factual/citation concerns needing human review.
-- [ ] Filter findings by severity/category/chapter and navigate to stable content anchors with a visible highlight.
-- [ ] Keep evidence excerpts and review status attached to findings; require an explicit user action for any fix.
-- [ ] Explain stale/missing anchors after edits and offer rerun/review rather than highlighting unrelated text.
-- [ ] Add voice/terminology preferences and consistency context editing where supported.
-- [ ] Avoid presenting scores as certification; disclose incomplete checks and unresolved human-review issues.
+- [x] Show review scope, input version, cost where applicable, progress and category results.
+- [x] Separate deterministic defects, AI suggestions and factual/citation concerns needing human review.
+- [x] Filter findings by severity/category/chapter and navigate to stable content anchors with a visible highlight.
+- [x] Keep evidence excerpts and review status attached to findings; require an explicit user action for any fix.
+- [x] Explain stale/missing anchors after edits and offer rerun/review rather than highlighting unrelated text.
+- [x] Add voice/terminology preferences and consistency context editing where supported.
+- [x] Avoid presenting scores as certification; disclose incomplete checks and unresolved human-review issues.
 
 Gate: users find and address known defects, can distinguish stale reports, and never lose manuscript edits while switching between report and editor.
+
+### S09 implementation checkpoint — 20 November 2026
+
+The review workspace is at **My eBooks → a book → Quality**. It shows the report scope, the input version, the rules version, the checks that were and were not run, and the credit estimate before a costed AI review. Findings are separated into rule checks, pattern matches that may be false alarms and AI suggestions, and each finding states whether it needs human review. Filters cover severity, category and chapter; opening a finding highlights the quoted passage in the editor, and a suggested replacement is applied as an ordinary edit with normal version history and optimistic-concurrency control. Stale reports, moved text and removed chapters are explained rather than highlighted as if current. The context editor manages voice notes, terminology and agreed definitions, each in a versioned context.
+
+No quality score is shown, and the workspace states that eBookStudio does not verify facts, originality or marketplace acceptance. See [ACCEPTANCE.md](./ACCEPTANCE.md) for evidence and the limits that remain open.
 
 ## S10 — Export options, validation and history
 
