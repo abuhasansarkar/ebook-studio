@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { use, useState } from "react";
 import { toast } from "sonner";
-import { ArrowLeft, Check, ClipboardCheck, FileDown, Library, ListTree, Megaphone, Package, Palette, PenLine, Trash2, Wand2 } from "lucide-react";
+import { ArrowLeft, Check, ClipboardCheck, FileDown, Library, ListTree, Megaphone, Package, Palette, PenLine, Receipt, Trash2, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { errorMessage } from "@/lib/api";
@@ -34,6 +34,7 @@ export function BookHeader({ params }: { params: Promise<{ bookId: string }> }) 
     { href: "cover", label: "Cover", icon: Wand2, done: false, enabled: true },
     { href: "export", label: "Export", icon: FileDown, done: false, enabled: writtenCount > 0 },
     { href: "distribution", label: "Distribute", icon: Package, done: false, enabled: writtenCount > 0 },
+    { href: "listing", label: "Listing", icon: Receipt, done: false, enabled: writtenCount > 0 },
     { href: "marketing", label: "Marketing", icon: Megaphone, done: false, enabled: writtenCount > 0 },
   ];
   const lang = book ? getLanguage(book.language) : null;

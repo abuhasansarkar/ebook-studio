@@ -7,7 +7,7 @@
  *
  *   BASE_URL=http://localhost:3100 MAILPIT_URL=http://localhost:8025 pnpm e2e:citations
  */
-import puppeteer, { type Page } from "puppeteer";
+import puppeteer, { type ElementHandle, type Page } from "puppeteer";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -125,7 +125,7 @@ try {
   await page.type("#source-title", "Kitchen notes");
   await page.type("#source-provenance", "My own notes, 2024");
   await page.type("#source-license", "Yours to use");
-  const fileInput = await page.$("#source-file");
+  const fileInput = await page.$("#source-file") as ElementHandle<HTMLInputElement> | null;
   await fileInput!.uploadFile(notesPath);
   await clickButton(page, "Import source");
   await waitText(page, 'Imported "Kitchen notes".');
@@ -172,7 +172,7 @@ try {
   // The report opens once the checks have finished.
   await page.waitForSelector("#report-select", { timeout: 90_000 });
   await page.waitForFunction(
-    () => document.querySelector("#report-select")?.options.length > 0,
+    () => (document.querySelector("#report-select") as HTMLSelectElement | null)?.options.length ?? 0 > 0,
     { timeout: 90_000 },
   );
   const cleanReport = await page.evaluate(() => document.body.innerText);

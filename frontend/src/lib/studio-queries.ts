@@ -4,11 +4,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   DistributionDestination,
   DistributionMetadata,
+  ListingCopy,
   MarketingGraphicTemplate,
   MarketingOutputType,
   MarketingSample,
   MarketingTone,
   PublishingState,
+  RoyaltyEstimate,
 } from "@ebook/shared";
 import { api } from "./api";
 import type {
@@ -18,6 +20,7 @@ import type {
   BackupManifest,
   DestinationProfile,
   Incident,
+  ListingDestinationProfile,
   MarketingOutput,
   OpsBook,
   OpsJob,
@@ -58,6 +61,9 @@ export const studioQk = {
   marketingDrafts: (bookId: string) => ["marketing-drafts", bookId] as const,
   marketingGraphics: (bookId: string) => ["marketing-graphics", bookId] as const,
   marketingSamples: (bookId: string) => ["marketing-samples", bookId] as const,
+  listingDestinations: ["listing-destinations"] as const,
+  listings: (bookId: string) => ["listings", bookId] as const,
+  listing: (listingId: string) => ["listing", listingId] as const,
 };
 
 // ---------- S13 administration ----------
@@ -498,5 +504,101 @@ export function useCreateMarketingSample(bookId: string) {
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: studioQk.marketingSamples(bookId) });
     },
+  });
+}
+
+// ---------- Marketplace listing copy ----------
+
+/** The listing fields each destination asks for, and its published rate. */
+export function useListingDestinations() {
+  return useQuery({
+    queryKey: studioQk.listingDestinations,
+    queryFn: () =>
+      api
+        .get<{ destinations: ListingDestinationProfile[] }>("/listings/destinations")
+        .then((r) => r.destinations),
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** The listings prepared for a book. */
+export function useListings(bookId: string | null) {
+  return useQuery({
+    queryKey: studioQk.listings(bookId ?? ""),
+    queryFn: () => api.get<{ listings: ListingCopy[] }>(`/listings/books/${bookId}`).then((r) => r.listings),
+    enabled: Boolean(bookId),
+  });
+}
+
+/** One listing, with the fields it is still missing and whether it is stale. */
+export function useListing(listingId: string | null) {
+  return useQuery({
+    queryKey: studioQk.listing(listingId ?? ""),
+    queryFn: () => api.get<{ listing: ListingCopy }>(`/listings/${listingId}`).then((r) => r.listing),
+    enabled: Boolean(listingId),
+  });
+}
+
+/**
+ * Prepares a listing for a destination.
+ *
+ * The listing is drafted from the manuscript and is not submitted anywhere.
+ */
+export function usePrepareListing(bookId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { destination: DistributionDestination; priceInMinorUnits: number }) =>
+      api.post<{ listing: ListingCopy }>(`/listings/books/${bookId}`, input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: studioQk.listings(bookId) });
+    },
+  });
+}
+
+/**
+ * Saves an edited listing.
+ *
+ * The version is sent with the save, so a lost edit is refused rather than
+ * overwriting a newer one.
+ */
+export function useUpdateListing() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      listingId: string;
+      baseVersion: number;
+      priceInMinorUnits?: number;
+      fields?: Record<string, string>;
+      confirmed?: Record<string, boolean>;
+    }) =>
+      api.patch<{ listing: ListingCopy }>(`/listings/${input.listingId}`, {
+        baseVersion: input.baseVersion,
+        priceInMinorUnits: input.priceInMinorUnits,
+        fields: input.fields,
+        confirmed: input.confirmed,
+      }),
+    onSuccess: (result, input) => {
+      void qc.invalidateQueries({ queryKey: studioQk.listing(input.listingId) });
+      void qc.invalidateQueries({ queryKey: studioQk.listings(result.listing.bookId) });
+    },
+  });
+}
+
+/**
+ * The royalty estimate for a price.
+ *
+ * A pure calculation on the server, so it costs nothing and the author can
+ * move a price around freely.
+ */
+export function useRoyaltyQuote(destination: DistributionDestination | null, priceInMinorUnits: number) {
+  return useQuery({
+    queryKey: ["royalty-quote", destination, priceInMinorUnits] as const,
+    queryFn: () =>
+      api
+        .post<{ quote: RoyaltyEstimate }>("/listings/royalty-quote", { destination, priceInMinorUnits })
+        .then((r) => r.quote),
+    enabled: Boolean(destination),
+    // The answer only changes when the price or the destination does.
+    staleTime: 60_000,
   });
 }

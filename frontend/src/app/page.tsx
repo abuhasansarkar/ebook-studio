@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 const steps = [
   { icon: Sparkles, title: "Describe your idea", text: "One sentence is enough. Add your audience, tone and language if you like — sensible defaults handle the rest." },
   { icon: ListTree, title: "Shape the outline", text: "Review the AI's chapter plan, rename, reorder or add chapters, then approve it before a single page is written." },
-  { icon: PenLine, title: "Write, edit, export", text: "Chapters are written one section at a time with live progress. Polish them in the editor and export a print-ready PDF." },
+  { icon: PenLine, title: "Write, edit, export", text: "Chapters are written one section at a time with live progress. Polish them in the editor, then export a typeset PDF, EPUB or Word document — each one checked before you download it." },
 ];
 
 const features = [
@@ -34,8 +34,41 @@ async function CopyrightYear() {
 }
 
 export default function LandingPage() {
+  // The structured data describes what the product actually is. It names the
+  // real capabilities and does not claim a store approval or a factual
+  // guarantee, because the product makes neither.
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "eBookStudio",
+    applicationCategory: "BusinessApplication",
+    operatingSystem: "Web",
+    description:
+      "An AI-assisted writing studio that plans, writes, typesets, reviews and packages eBooks, then prepares the files for Amazon KDP, Etsy and Gumroad.",
+    offers: {
+      "@type": "Offer",
+      price: "0",
+      priceCurrency: "USD",
+      description: "Free to start. 100 credits are included when you sign up.",
+    },
+    featureList: [
+      "AI outline and chapter generation",
+      "Rich-text editor with autosave and revision history",
+      "Interior design templates and multilingual typesetting",
+      "Cover and illustration studio with editable typography",
+      "Quality review with anchored findings",
+      "Private source imports and source-grounded research",
+      "Validated PDF, EPUB and Word exports",
+      "Distribution packages for KDP, Etsy, Gumroad and direct sales",
+    ],
+  };
+
   return (
     <div className="flex min-h-screen flex-col">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
       <header className="sticky top-0 z-30 border-b border-border/70 bg-background/85 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
           <Logo />

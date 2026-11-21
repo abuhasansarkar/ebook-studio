@@ -1,0 +1,255 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # A throwaway secret. CI runs against isolated services and never touches a
+  # live provider, so this value only has to be unpredictable within the run.
+  BETTER_AUTH_SECRET: ci-only-secret-not-used-in-production-0000000000
+
+jobs:
+  verify:
+    name: Typecheck, lint and unit tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: ebook
+          POSTGRES_PASSWORD: ebook
+          POSTGRES_DB: ebook_studio
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ebook -d ebook_studio"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.13.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply migrations
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://ebook:ebook@localhost:5432/ebook_studio
+        run: pnpm exec prisma migrate deploy
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Backend tests
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://ebook:ebook@localhost:5432/ebook_studio
+          REDIS_URL: redis://localhost:6379
+          QUEUE_NAMESPACE: ci
+          AI_MOCK: "1"
+          NODE_ENV: test
+          SMTP_HOST: localhost
+          SMTP_PORT: 1025
+        run: pnpm test
+
+      - name: Pure unit tests
+        working-directory: backend
+        run: pnpm exec vitest run --config vitest.pure.config.ts
+
+  build:
+    name: Production builds
+    runs-on: ubuntu-latest
+    needs: verify
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.13.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Backend build
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://ebook:ebook@localhost:5432/ebook_studio
+        run: pnpm build
+
+      - name: Frontend build
+        working-directory: frontend
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: pnpm build
+
+  e2e:
+    name: Browser journeys
+    runs-on: ubuntu-latest
+    needs: verify
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: ebook
+          POSTGRES_PASSWORD: ebook
+          POSTGRES_DB: ebook_studio_e2e
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ebook -d ebook_studio_e2e"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+      mailpit:
+        image: axllent/mailpit:latest
+        ports: ["1025:1025", "8025:8025"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.13.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install the browser Puppeteer drives
+        working-directory: e2e
+        run: pnpm exec puppeteer browsers install chrome
+
+      - name: Fetch the bundled fonts
+        working-directory: backend
+        run: pnpm fonts:fetch
+
+      - name: Apply migrations
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://ebook:ebook@localhost:5432/ebook_studio_e2e
+        run: pnpm exec prisma migrate deploy
+
+      - name: Start the API and the worker
+        run: |
+          set -euo pipefail
+          mkdir -p .tmp-logs
+          cd backend
+          DATABASE_URL=postgresql://ebook:ebook@localhost:5432/ebook_studio_e2e \
+          REDIS_URL=redis://localhost:6379 \
+          QUEUE_NAMESPACE=ci-e2e \
+          AI_MOCK=1 \
+          BETTER_AUTH_SECRET="$BETTER_AUTH_SECRET" \
+          APP_URL=http://localhost:3100 \
+          BETTER_AUTH_URL=http://localhost:3100 \
+          PORT=4100 \
+          SMTP_HOST=localhost SMTP_PORT=1025 \
+          STORAGE_DIR="$GITHUB_WORKSPACE/backend/storage-e2e" \
+            pnpm exec tsx src/server.ts > ../.tmp-logs/api.log 2>&1 &
+          DATABASE_URL=postgresql://ebook:ebook@localhost:5432/ebook_studio_e2e \
+          REDIS_URL=redis://localhost:6379 \
+          QUEUE_NAMESPACE=ci-e2e \
+          AI_MOCK=1 \
+          BETTER_AUTH_SECRET="$BETTER_AUTH_SECRET" \
+          APP_URL=http://localhost:3100 \
+          BETTER_AUTH_URL=http://localhost:3100 \
+          STORAGE_DIR="$GITHUB_WORKSPACE/backend/storage-e2e" \
+            pnpm exec tsx src/worker.ts > ../.tmp-logs/worker.log 2>&1 &
+
+      - name: Start the frontend
+        working-directory: frontend
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+          BACKEND_INTERNAL_URL: http://localhost:4100
+        run: |
+          set -euo pipefail
+          # The release build is what the journeys are meant to exercise, so the
+          # build runs here rather than being taken from the build job's output.
+          pnpm exec next build > ../.tmp-logs/frontend-build.log 2>&1
+          pnpm exec next start -p 3100 > ../.tmp-logs/frontend.log 2>&1 &
+
+      - name: Wait for the stack to answer
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:4100/api/v1/health > /dev/null 2>&1 \
+               && curl -fsS http://localhost:3100/login > /dev/null 2>&1; then
+              echo "stack ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "the stack did not become ready"
+          cat .tmp-logs/api.log .tmp-logs/worker.log .tmp-logs/frontend.log .tmp-logs/frontend-build.log || true
+          exit 1
+
+      - name: Run the browser journeys
+        working-directory: e2e
+        env:
+          BASE_URL: http://localhost:3100
+          MAILPIT_URL: http://localhost:8025
+        run: |
+          set -euo pipefail
+          pnpm run e2e
+          pnpm run e2e:sources
+          pnpm run e2e:citations
+          pnpm run e2e:studio
+          pnpm run e2e:listing
+
+      - name: Upload the run logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-logs
+          path: |
+            .tmp-logs/
+            e2e-shots/
+          if-no-files-found: ignore
+          retention-days: 7

@@ -118,7 +118,7 @@ async function typeInto(frame: Frame, name: string, value: string): Promise<void
   const selector = `input[name="${name}"]`;
   const field = await frame.waitForSelector(selector, { timeout: 20_000 });
   if (!field) throw new Error(`Stripe's ${name} field was never shown`);
-  await field.click({ clickCount: 3 });
+  await field.click();
   await field.type(value, { delay: 20 });
 }
 
@@ -126,7 +126,7 @@ async function typeInto(frame: Frame, name: string, value: string): Promise<void
 async function fill(scope: Page, selector: string, value: string): Promise<void> {
   const element = await scope.$(selector);
   if (!element) return;
-  await element.click({ clickCount: 3 }).catch(() => undefined);
+  await element.click().catch(() => undefined);
   await element.type(value, { delay: 20 });
 }
 

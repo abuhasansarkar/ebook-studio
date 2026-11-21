@@ -4,6 +4,7 @@ import type {
   DistributionDestination,
   DistributionMetadata,
   DistributionPackage,
+  ListingFieldSpec,
   MarketingDraft,
   MarketingGraphic,
   MarketingGraphicTemplate,
@@ -27,6 +28,7 @@ export type {
   DistributionDestination,
   DistributionMetadata,
   DistributionPackage,
+  ListingFieldSpec,
   MarketingDraft,
   MarketingGraphic,
   MarketingGraphicTemplate,
@@ -36,6 +38,16 @@ export type {
   PackageFile,
   PublishingState,
 };
+
+/** The listing profile one destination publishes, as the API returns it. */
+export interface ListingDestinationProfile {
+  destination: DistributionDestination;
+  fields: ListingFieldSpec[];
+  royaltyRate: number;
+  royaltyNote: string;
+  source: string;
+  taxHandling: "excluded" | "included" | "varies";
+}
 
 export type MarketingFlag = import("@ebook/shared").MarketingFlag;
 export type MarketingDraftStatus = import("@ebook/shared").MarketingDraftStatus;

@@ -8,7 +8,10 @@
     "e2e:citations": "tsx citation-impact-flow.e2e.ts",
     "e2e:billing": "tsx billing-flow.e2e.ts",
     "e2e:studio": "tsx studio-flow.e2e.ts",
-    "e2e:stripe": "tsx stripe-live.e2e.ts"
+    "e2e:listing": "tsx listing-flow.e2e.ts",
+    "e2e:stripe": "tsx stripe-live.e2e.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit"
   },
   "devDependencies": {
     "puppeteer": "^25.18.1",

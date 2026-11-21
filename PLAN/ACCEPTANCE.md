@@ -709,23 +709,25 @@ Status: **the release gate is not met.** The build is verified; the release is n
 
 | Check | Result |
 | --- | --- |
-| Backend test suite | **440 tests, 33 files, all passing** (388/30 before the accessibility, load and price-list files were added) |
+| Backend test suite | **471 tests, 35 files, all passing** (440/33 before the listing studio was added) |
 | Backend type check | passes |
 | Backend build | Prisma client generation and `tsup` build succeed |
 | Shared package type check | passes |
 | Frontend type check | passes |
 | Frontend lint | passes |
 | Frontend production build | Next.js 16.4.6, **33 routes** |
-| Migrations applied to the isolated database | 17 migrations, all applied |
+| Migrations applied to the isolated database | 18 migrations, all applied |
 | Backend health against the isolated stack | HTTP 200, database and Redis healthy |
 | Frontend `/login` against the isolated stack | HTTP 200 |
-| Browser journeys | UI, sources, citation impact, studio, local billing and Stripe sandbox — all six pass. The billing journey runs against the local provider (`.env.e2e.local`); the Stripe journey runs against Stripe's own sandbox (`.env.e2e`, Stripe CLI listener) |
+| Browser journeys | UI, sources, citation impact, studio, listing, local billing and Stripe sandbox — all seven pass. The billing journey runs against the local provider (`.env.e2e.local`); the Stripe journey runs against Stripe's own sandbox (`.env.e2e`, Stripe CLI listener) |
 
 ### The release gate
 
 > the complete workflow meets [ACCEPTANCE.md](./ACCEPTANCE.md); failed critical checks block release
 
-The gate is **closed**. The build compiles and the matrix is exercised, but the items below are required for release and are not done:
+- The gate is **closed**. The build compiles and the matrix is exercised, but the items below are required for release and are not done:
+
+- ~~There is no listing-copy studio, so an author has no prepared listing text for a store's own form.~~ **Closed.** The listing studio prepares the text a destination's form asks for, drafts it from the author's own manuscript, estimates the royalty from the store's published rate, and refuses a lost edit rather than overwriting a newer save. The screen states that it does not submit to a store and that no store has approved anything. Covered by 20 pure checks, 11 integration tests and a 14-step browser journey. See "S16 listing studio".
 
 - ~~No live processor is validated.~~ **Closed.** The Stripe provider has been run against Stripe's own sandbox through the Stripe CLI listener: a real Checkout Session is paid on Stripe's hosted page, the signed event grants the credits and capabilities, a forged callback is refused with HTTP 400, and a repeated event grants nothing further. The `whsec_` listener secret is in the working environment and every delivery is answered with HTTP 200.
 - **The sandbox is not a live processor.** The keys are test-mode, so no money can be taken. A production key, a production webhook endpoint and a live-card path have not been exercised.
@@ -994,3 +996,81 @@ The current-book queue result was one job and zero failures. **The 15-minute que
 - **The memory figure is the Node process heap in a test runner.** It is not the server's resident set, and it says nothing about what a long-lived server accumulates over days.
 - **No load was applied to the AI provider.** Every generation was mocked, so no provider rate limit, provider latency or provider cost under concurrency was observed.
 - **The global dashboard at the time showed 68 active jobs, 15 failed jobs, and 68 jobs older than the limit.** Those are the shared environment's jobs, not this run's, and the run's own queue was clean.
+
+## S16 listing studio — the marketplace listing copy and royalty estimate — 27 November 2026
+
+Status: the listing studio is implemented and verified at the unit, integration and browser level. eBookStudio prepares the copy a store's own form asks for and estimates the royalty; **it does not submit to a store and it does not guarantee approval.**
+
+### What was built
+
+- **The destination decides the form.** Six destinations are supported — Amazon KDP eBook, Amazon KDP paperback, Apple Books for Authors, Etsy, Gumroad, and the author's own site — and each has its own field list, its own character limits and its own published revenue share. The rules live in `packages/shared/src/listing.ts` and carry the date they were read (`LISTING_RULES_RETRIEVED`) and a ruleset version, so a rate that changes at the store is visible as a version change rather than a silent edit.
+- **The draft is written from the author's own manuscript.** The model is given the chapter titles and summaries and nothing else. The title, subtitle and author name are copied from the book rather than generated, so those fields are exactly what the author wrote. A field the model cannot fill truthfully is left empty rather than invented.
+- **Every field is editable and every field can be confirmed.** A required field with no value blocks the listing, because the store's own form will not accept it. A value over the store's limit is reported, never truncated, because a silently cut description reads as a finished listing.
+- **The royalty estimate is a calculation, not a claim.** The store's published share is applied to the price the author chose. For KDP eBooks the rate is a function of the price: 70% between $2.99 and $9.99 inclusive, 50% at the $9.99 list price, and 35% outside the band. The comparison is made in cents, because $9.99 is not exactly representable as a float and an equality test on the float lands in the wrong band. The estimate names the rate it applied, where the rate came from, and what it excludes.
+- **A lost edit is refused.** Each listing carries a version, the save sends the version it read, and a save against a version that has moved on is refused with **409** and the code `STALE_VERSION` rather than overwriting the newer save. The author's own edits are preserved: only the fields the request names change.
+- **A stale listing is visible.** A listing records the chapter versions it was written from. When the manuscript moves on, the listing is marked stale and the stale inputs are named.
+- **The backend, the API and the persistence.** `Listing` is a Prisma model with `User` and `Book` relations; the migration is `backend/prisma/migrations/20261127090000_listing_copy/migration.sql`. The service is `backend/src/services/publishing/listingService.ts` and the routes are `backend/src/routes/listing.ts`.
+- **The studio.** The canonical route is **`/app/listing?bookId=...`**, with a per-book route at **`/app/books/[bookId]/listing`** and a **Listing** tab in the book header, enabled once the book has written chapters.
+
+### The boundaries the screen states
+
+The screen states its boundaries in words rather than implying them, and the browser journey asserts each of them:
+
+- "eBookStudio drafts the listing text and works out the royalty. **It does not submit anything to a store** — you paste the text into the store's own form and publish there yourself."
+- "**No store has approved anything.**"
+- The estimate is labelled "**of a $5.99 price, before any store fees, payment processing, tax or advertising**", and the rate's source is linked back to the store's own terms.
+
+The boundary is stated on the prepare screen, on the saved listing and after a reload, so it cannot be lost by scrolling or by returning to the page later.
+
+### Verification
+
+| Check | Result |
+| --- | --- |
+| Pure listing checks | **20/20 passed** — `backend/tests/pure-listing-checks.test.ts` |
+| Listing integration suite | **11/11 passed** — `backend/tests/listing.test.ts` |
+| Full backend regression | **471/471 passed across 35/35 files** |
+| Shared, backend and frontend type checks | all pass |
+| Frontend lint | passes |
+| Backend production build | passes |
+| Frontend production build | passes, and registers `/app/listing` and `/app/books/[bookId]/listing` |
+| Listing browser journey | **all 14 steps passed** — `e2e/listing-flow.e2e.ts` |
+| Every other browser journey, re-run on the same stack | UI, sources, citation impact, studio and local billing — **all five pass** |
+
+The browser journey ran against a live stack — API on port 4100, worker, and a frontend on port 3100 proxying `/api` to the API — with `AI_MOCK=1`, against the isolated `ebook_studio_e2e` database with the listing migration applied. It signs up, verifies the OTP through Mailpit, creates a book, approves the outline, writes the chapters, and then:
+
+1. asserts the screen says it does not submit anything to a store and that no store has approved anything;
+2. asserts the estimate shows **$4.19 of a $5.99** price and names what it excludes;
+3. moves the price to **$12.00** and asserts the estimate follows it to **$4.20** and warns that a price above $9.99 pays 35% rather than 70%;
+4. prepares a listing and asserts the seven fields the KDP eBook form asks for are all present and editable;
+5. asserts the drafted description came from the manuscript rather than from a generic template;
+6. asserts the listing shows its version and the store's own `/4000` character limit;
+7. edits the description, saves it, and asserts the version advanced from **v1** to **v2**;
+8. reloads and asserts the author's edit survived;
+9. asserts the boundary is still stated after the reload;
+10. asserts a stale save is refused with **409** and that the owner can still read their own listing.
+
+Screenshots are in `e2e-shots/listing/`.
+
+The e2e package now has a `tsconfig.json` and a `typecheck` script, so `pnpm typecheck` covers the browser journeys. Adding it surfaced five pre-existing type errors in `citation-impact-flow.e2e.ts`, `sources-flow.e2e.ts` and `stripe-live.e2e.ts`, which were fixed in the same pass.
+
+### A defect in the local journey harness, and its fix
+
+Running the journeys surfaced a fault in how the local stack was being started, not in the product. `tsx --env-file` **does not override an environment variable that is already set in the parent shell**, so an inherited `DATABASE_URL` silently won over `.env.e2e.local` and the API served a journey run against the shared `ebook_studio` database instead of the isolated `ebook_studio_e2e` one. The failure was quiet: the sign-up returned 200, the health check reported the database healthy, and only the missing OTP row in the expected database gave it away.
+
+Two things follow from this, and both are recorded here rather than left in the terminal:
+
+- The CI workflow is not affected. It sets `DATABASE_URL` explicitly for each step rather than relying on an env file to override an inherited value, so it always points at the database it created.
+- A local journey run must clear the inherited variables first. The reliable form on this machine is to remove `DATABASE_URL`, `REDIS_URL`, `NODE_ENV` and `QUEUE_NAMESPACE` from the session before starting the API and the worker, and to start the frontend with `BACKEND_INTERNAL_URL` set **inside the child process**, because the frontend proxies `/api` to `BACKEND_INTERNAL_URL` and defaults to port 4000. A stale `next dev` that already holds port 3100 will keep the old target and silently send the journey to the wrong API.
+
+Every browser journey was then re-run on the corrected stack — UI, sources, citation impact, studio, billing and listing — and all six pass.
+
+### The boundaries that remain
+
+- **The rates are a transcription.** The API does not publish the stores' rates, so these were read from the stores' own published pages on 21 November 2026 and carry that date. If a rate changes at the store, this file is wrong until it is re-read. The screen links to the source for every rate.
+- **The estimate excludes real costs.** It models the store's revenue share only. It does not model currency conversion, withholding tax, payment processing fees, refunds, advertising spend, or the KDP print costs deducted for manufacturing and shipping. Etsy has no revenue share at all, so its figure is the price before the listing fee and the transaction fee, both of which depend on the seller's location and plan.
+- **Nothing here has been tested against a real store.** No store API is called from anywhere in this feature. Whether a store would accept a listing, or accept the copy in it, has not been observed and cannot be.
+- **The draft was produced by the fake AI provider.** The listing's AI path has not been run against a live model, so neither the quality of the copy nor its cost has been measured. The deterministic fields — title, subtitle, author — are copied and carry no model risk.
+- **One destination was exercised in the browser.** The journey covers KDP eBook. The other five destinations share the same code path and the same field machinery, and the per-destination field lists and rates are covered by the pure checks, but the other five have not been driven in a browser.
+- **The stale-listing path was not exercised in the browser.** It is covered by the integration suite; the journey does not edit the manuscript afterwards to make a listing stale.
+- **The e2e environment is not a deployment.** The evidence was produced locally against the fake AI provider, a local PostgreSQL and Redis, and isolated frontend and backend processes on ports 4100 and 3100. No deployment or remote push was performed, and the CI workflow and the nginx Content-Security-Policy have not yet been exercised in their own Docker environments.
+- **The Stripe sandbox journey was not re-run in this pass.** It needs the Stripe CLI listener and the `.env.e2e` credentials, and it was not part of this change. The five journeys that do not need Stripe were all re-run on the corrected stack.

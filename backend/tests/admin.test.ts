@@ -304,8 +304,15 @@ describe("S13 administration", () => {
       const after = await prisma.creditWallet.findUnique({ where: { userId: customer.user.id } });
       expect(after?.balance).toBe(before + 120);
 
-      const ledger = await prisma.creditTransaction.findMany({ where: { userId: customer.user.id } });
-      const last = ledger[ledger.length - 1];
+      // The ledger is ordered so the newest entry is the one under test. The
+      // order is explicit because the database makes no promise about the
+      // order of an unordered select, and the ledger holds more than one row
+      // for an account that has also spent credits.
+      const ledger = await prisma.creditTransaction.findMany({
+        where: { userId: customer.user.id },
+        orderBy: { createdAt: "desc" },
+      });
+      const last = ledger[0];
       expect(last.amount).toBe(120);
       expect(last.balanceAfter).toBe(after?.balance);
     });

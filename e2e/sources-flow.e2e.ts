@@ -6,7 +6,7 @@
  *
  *   BASE_URL=http://localhost:3100 MAILPIT_URL=http://localhost:8025 pnpm e2e:sources
  */
-import puppeteer, { type Page } from "puppeteer";
+import puppeteer, { type ElementHandle, type Page } from "puppeteer";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -146,7 +146,7 @@ try {
   await page.type("#source-title", "Kitchen notes");
   await page.type("#source-provenance", "My own notes, 2024");
   await page.type("#source-license", "Yours to use");
-  const fileInput = await page.$("#source-file");
+  const fileInput = await page.$("#source-file") as ElementHandle<HTMLInputElement> | null;
   await fileInput!.uploadFile(notesPath);
   await clickButton(page, "Import source");
   await waitText(page, "Imported \"Kitchen notes\".");

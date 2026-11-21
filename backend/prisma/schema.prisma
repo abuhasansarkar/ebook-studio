@@ -47,6 +47,8 @@ model User {
   marketingDrafts   MarketingDraft[]
   marketingGraphics MarketingGraphic[]
   marketingSamples  MarketingSample[]
+  // S14 listing copy
+  listings          Listing[]
 
   @@map("user")
 }
@@ -149,6 +151,8 @@ model Book {
   marketingDrafts   MarketingDraft[]
   marketingGraphics MarketingGraphic[]
   marketingSamples  MarketingSample[]
+  // S14 listing copy
+  listings          Listing[]
   createdAt         DateTime              @default(now())
   updatedAt         DateTime              @updatedAt
   archivedAt        DateTime?
@@ -1096,4 +1100,38 @@ model MarketingSample {
 
   @@index([userId, bookId, createdAt])
   @@map("marketing_samples")
+}
+
+/// S14 — the listing copy an author submits to a store themselves.
+///
+/// A listing holds the fields the store's own form asks for, the price the
+/// author chose, and the chapter versions the drafts were written from. The
+/// product never submits a listing to a store; it prepares the text and
+/// calculates what the author would keep.
+model Listing {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookId          String
+  book            Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  /// The destination this listing is prepared for.
+  destination     String
+  /// The price the author chose, in the smallest currency unit.
+  priceInMinorUnits Int    @default(0)
+  /// The listing fields, keyed by the destination's field key.
+  fields          Json     @default("{}")
+  /// The fields the author has confirmed.
+  confirmed       Json     @default("{}")
+  /// The chapter versions the drafts were written from.
+  chapterVersions Json
+  /// The rules version the listing was produced under.
+  rulesVersion    String   @default("")
+  /// The version, used to refuse a lost edit.
+  version         Int      @default(1)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId, bookId, destination])
+  @@index([bookId, createdAt])
+  @@map("listings")
 }
