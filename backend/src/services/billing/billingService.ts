@@ -167,7 +167,13 @@ export const billingService = {
     if (!CURRENCY_MINOR_UNITS[plan.currency as PaymentCurrency]) throw badRequest("That plan has an unsupported currency.");
 
     const provider = getProvider();
-    const idempotencyKey = `checkout:${userId}:${plan.id}`;
+    // One key per purchase attempt. A repeated click while the checkout is
+    // still pending reuses the key (and so the same checkout); once that
+    // checkout has settled, failed or been refunded, the next purchase of the
+    // same plan is a new attempt with a new key. A key fixed per user and plan
+    // would make every later purchase collide with the first one.
+    const finishedAttempts = await prisma.payment.count({ where: { userId, planId: plan.id, status: { not: "pending" } } });
+    const idempotencyKey = `checkout:${userId}:${plan.id}:${finishedAttempts + 1}`;
     // The provider names the checkout and the payment before any money moves,
     // so the settlement event can be matched to the record it belongs to.
     const checkout = await provider.createCheckout({
@@ -662,14 +668,24 @@ export const billingService = {
       orderBy: { createdAt: "desc" },
     });
     if (!subscription) throw notFound("Subscription");
-    const updated = await prisma.subscription.update({
-      where: { id: subscription.id },
-      data: { status: "canceled", canceledAt: new Date() },
+    if (subscription.canceledAt) return subscription;
+    const now = new Date();
+    const sourceId = `subscription:${subscription.id}`;
+
+    // The author has paid for the current period, so cancelling stops the
+    // renewal and the plan runs until the period ends: the capabilities are
+    // kept and set to expire then. Without a known period end there is
+    // nothing left to run, so it ends now.
+    if (subscription.currentPeriodEnd && subscription.currentPeriodEnd > now) {
+      return prisma.$transaction(async (tx) => {
+        await tx.entitlement.updateMany({ where: { userId, source: "subscription", sourceId }, data: { expiresAt: subscription.currentPeriodEnd } });
+        return tx.subscription.update({ where: { id: subscription.id }, data: { canceledAt: now } });
+      });
+    }
+    return prisma.$transaction(async (tx) => {
+      await tx.entitlement.deleteMany({ where: { userId, source: "subscription", sourceId } });
+      return tx.subscription.update({ where: { id: subscription.id }, data: { status: "canceled", canceledAt: now } });
     });
-    // The capabilities go with the cancellation; the period still runs, but the
-    // paid capabilities do not.
-    await prisma.entitlement.deleteMany({ where: { userId, source: "subscription", sourceId: `subscription:${subscription.id}` } });
-    return updated;
   },
 
   /** The author's billing state. */
@@ -678,7 +694,8 @@ export const billingService = {
     const [plans, subscription, entitlements, payments] = await Promise.all([
       this.plans(),
       prisma.subscription.findFirst({
-        where: { userId, status: { in: ACTIVE_STATUSES } },
+        // A cancelled subscription is shown until its paid period ends.
+        where: { userId, status: { in: ACTIVE_STATUSES }, OR: [{ canceledAt: null }, { currentPeriodEnd: { gt: new Date() } }] },
         orderBy: { createdAt: "desc" },
         include: { plan: true },
       }),

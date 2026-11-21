@@ -2,6 +2,7 @@ import { Router } from "express";
 import { distributionPackageSchema, publishingStatusSchema } from "@ebook/shared";
 import { userId } from "../middleware/requireAuth.js";
 import { validateBody } from "../middleware/validate.js";
+import { aiLimiter } from "../middleware/rateLimits.js";
 import {
   destinationProfiles,
   getPackage,
@@ -40,7 +41,7 @@ distributionRouter.get("/distribution/books/:bookId/packages", async (req, res) 
  * A package that cannot satisfy the destination's rules is recorded as
  * blocked and refused, rather than assembled and downloaded.
  */
-distributionRouter.post("/distribution/books/:bookId/packages", validateBody(distributionPackageSchema), async (req, res) => {
+distributionRouter.post("/distribution/books/:bookId/packages", aiLimiter, validateBody(distributionPackageSchema), async (req, res) => {
   const id = userId(req);
   const result = await preparePackage(id, String(req.params.bookId), req.body);
   res.status(result.status === "blocked" ? 422 : 201).json({ package: result });

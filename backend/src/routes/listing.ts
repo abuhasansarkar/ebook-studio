@@ -8,6 +8,7 @@ import {
 } from "@ebook/shared";
 import { userId } from "../middleware/requireAuth.js";
 import { validateBody } from "../middleware/validate.js";
+import { aiLimiter } from "../middleware/rateLimits.js";
 import {
   getListing,
   listListings,
@@ -62,7 +63,7 @@ listingRouter.get("/listings/books/:bookId", async (req, res) => {
  * The listing is drafted from the author's own manuscript. It is not
  * submitted anywhere.
  */
-listingRouter.post("/listings/books/:bookId", validateBody(prepareListingSchema), async (req, res) => {
+listingRouter.post("/listings/books/:bookId", aiLimiter, validateBody(prepareListingSchema), async (req, res) => {
   const result = await prepareListing(userId(req), String(req.params.bookId), req.body);
   res.status(201).json({ listing: result });
 });

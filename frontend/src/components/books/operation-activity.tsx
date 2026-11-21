@@ -14,7 +14,7 @@ const labels: Record<Operation["state"], string> = {
   submitting: "Submitting", queued: "Waiting to start", running: "In progress", cancel_requested: "Stopping",
   completed: "Completed", failed: "Failed", cancelled: "Cancelled", needs_review: "Needs attention",
 };
-const kinds: Record<string, string> = { create_book: "Create book and outline", outline: "Generate outline", chapters: "Write chapters", export: "Export PDF" };
+const kinds: Record<string, string> = { create_book: "Create book and outline", outline: "Generate outline", chapters: "Write chapters", export: "Export file" };
 
 export function OperationActivity({ bookId }: { bookId: string }) {
   const [copiedId, setCopiedId] = useState<string | null>(null);

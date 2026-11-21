@@ -58,6 +58,7 @@ export function FindingFocus({ editor, findingId, bookId, editable }: { editor: 
     <p className="font-semibold">Quality finding: {f.message}</p>
     {located === 'missing' && <p className="mt-1">The quoted text is no longer in this chapter, so nothing is highlighted. It may already be fixed. Run the checks again to confirm.</p>}
     {located === 'found' && <p className="mt-1">The passage is highlighted and selected. Edit it as usual; your changes save with normal version history.</p>}
+    {!f.anchor && <p className="mt-1">This finding is about the chapter as a whole, so no single passage is highlighted.</p>}
     {f.suggestion?.advice && <p className="mt-1">Suggestion: {f.suggestion.advice}</p>}
     {state.error && <p role="alert" className="mt-1 text-danger">{state.error}</p>}
     {state.done && <p className="mt-1">{state.done}</p>}

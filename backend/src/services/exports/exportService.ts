@@ -12,7 +12,7 @@ import {
 } from '@ebook/shared';
 import { prisma } from '../../database/prisma.js';
 import { enqueueExport } from '../../queues/index.js';
-import { conflict, notFound } from '../../utils/errors.js';
+import { AppError, conflict, notFound } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 import { requireEntitlement } from '../billing/entitlements.js';
 import { getOwnedBook } from '../books/bookService.js';
@@ -105,6 +105,41 @@ async function assertRuntimeAvailable() {
   if (!available.size) throw conflict('This server has no book fonts installed, so it cannot produce an export. Ask the operator to install the approved fonts (pnpm --filter backend fonts:fetch).', { code: 'FONT_UNAVAILABLE' });
 }
 
+const SNAPSHOT_UNAVAILABLE = 'A chapter was changed or removed after this export was requested, and the text it was requested with is no longer available. Request the export again.';
+
+/**
+ * The book as it was when the export was requested.
+ *
+ * The worker may run after the author has kept editing. A chapter whose
+ * version still matches is used as it is; one that has moved on is read back
+ * from its saved version history. The result is checked against the content
+ * hash recorded at request time, so the file is exactly what was asked for or
+ * the export fails; it never quietly mixes in later edits.
+ */
+async function pinToSnapshot(doc: BookDocument, snapshot: ExportSnapshot | null): Promise<BookDocument> {
+  if (!snapshot?.chapters?.length || !snapshot.contentHash) return doc;
+  const live = new Map(doc.chapters.map((chapter) => [chapter.id, chapter]));
+  const chapters: BookDocument['chapters'] = [];
+  for (const wanted of snapshot.chapters) {
+    const current = live.get(wanted.id);
+    if (current && current.version === wanted.version) {
+      chapters.push(current);
+      continue;
+    }
+    const saved = await prisma.documentVersion.findUnique({ where: { chapterId_version: { chapterId: wanted.id, version: wanted.version } } });
+    if (!saved) throw new AppError(409, 'EXPORT_SNAPSHOT_UNAVAILABLE', SNAPSHOT_UNAVAILABLE);
+    chapters.push({ id: wanted.id, position: wanted.position, version: wanted.version, title: saved.title, content: saved.contentJson });
+  }
+  if (contentHash(chapters.map((c) => ({ id: c.id, version: c.version, content: c.content }))) !== snapshot.contentHash) {
+    throw new AppError(409, 'EXPORT_SNAPSHOT_UNAVAILABLE', SNAPSHOT_UNAVAILABLE);
+  }
+  return {
+    ...doc,
+    book: { ...doc.book, title: snapshot.book.title, subtitle: snapshot.book.subtitle },
+    chapters,
+  };
+}
+
 export const exportService = {
   /**
    * Requests an export.
@@ -152,7 +187,7 @@ export const exportService = {
       schema: 1,
       format,
       options,
-      book: { id: book.id, title: brief.title, subtitle: brief.subtitle, author: '', language: brief.language, dir: getLanguage(brief.language).dir },
+      book: { id: book.id, title: brief.title, subtitle: brief.subtitle, author: doc.book.author, language: brief.language, dir: getLanguage(brief.language).dir },
       design: { version: design.version },
       chapters: doc.chapters.map((c) => ({ id: c.id, position: c.position, version: c.version, title: c.title })),
       contentHash: contentHash(doc.chapters.map((c) => ({ id: c.id, version: c.version, content: c.content }))),
@@ -193,7 +228,14 @@ export const exportService = {
     });
     if (!exp) throw notFound('Export');
     if (exp.status !== 'ready' || !exp.storageKey) throw conflict('This export is not ready yet.');
-    const { stream, size } = await storage.getStream(exp.storageKey);
+    // A file that has gone missing from storage is the customer's to fix by
+    // exporting again, not a server fault to hide behind a generic error.
+    const opened = await storage.getStream(exp.storageKey).catch((err: unknown) => {
+      logger.error({ err, exportId }, 'Export file missing from storage');
+      return null;
+    });
+    if (!opened) throw new AppError(410, 'EXPORT_FILE_MISSING', 'This file is no longer available. Export the book again to get a fresh copy.');
+    const { stream, size } = opened;
     const format = (exp.format as ExportFormat) in EXPORT_CONTENT_TYPES ? (exp.format as ExportFormat) : 'pdf';
     return {
       stream, size,
@@ -218,10 +260,10 @@ export const exportService = {
       const design = exp.designSnapshot
         ? { version: exp.designVersion ?? 0, data: exp.designSnapshot as unknown as BookDesign }
         : await designService.get(exp.userId, exp.bookId);
-      const doc = await buildBookDocument(exp.userId, exp.bookId, design);
+      const snapshot = exp.snapshot as unknown as ExportSnapshot | null;
+      const doc = await pinToSnapshot(await buildBookDocument(exp.userId, exp.bookId, design), snapshot);
       const support = await assertRenderable(doc);
       const checks = await documentDiagnostics(doc);
-      const snapshot = exp.snapshot as unknown as ExportSnapshot | null;
       const options = snapshot?.options ?? parseExportOptions(format, undefined);
 
       // The pinned image bytes are read from storage so the file carries exactly the verified bytes.

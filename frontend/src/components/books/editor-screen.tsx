@@ -54,7 +54,9 @@ export function EditorScreen({ params }: { params: Promise<{ bookId: string }> }
     if (openStatus && openStatus !== "done" && selectedMeta?.status === "done") void refetchChapter();
   }, [openStatus, selectedMeta?.status, refetchChapter]);
 
-  if (book.isLoading || chapters.isLoading) return <PageLoader />;
+  // isPending, not isLoading: the book query waits for the session, and a
+  // waiting query is pending without loading (see generate-screen).
+  if ((book.isPending && !book.error) || (chapters.isPending && !chapters.error)) return <PageLoader />;
   if (book.error || chapters.error) return <div className="mx-auto max-w-4xl px-4 py-8"><ErrorState message={errorMessage(book.error ?? chapters.error)} onRetry={() => { void book.refetch(); void chapters.refetch(); }} /></div>;
   if (!chapters.data?.length) {
     return (

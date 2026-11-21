@@ -115,7 +115,7 @@ function CoverWorkspace({ bookId, ownerId, initial }: { bookId: string; ownerId:
     setBusy(true); setError('');
     try {
       const response = await fetch(`/api/v1/books/${bookId}/cover/render?version=${saved.version}`, { credentials: 'include' });
-      if (!response.ok) throw new Error((await response.json()).error?.message ?? 'Cover rendering failed');
+      if (!response.ok) { const body = await response.json().catch(() => null) as { error?: { message?: string } } | null; throw new Error(body?.error?.message ?? `Cover rendering failed (${response.status}). Try again in a moment.`); }
       const url = URL.createObjectURL(await response.blob()); const a = document.createElement('a'); a.href = url; a.download = `cover-v${saved.version}.jpg`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
       setNotice('Downloaded the saved 1600 × 2560 cover.');
     } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
@@ -229,7 +229,10 @@ function ImageGenerator({ bookId, disabled, selectArtwork }: { bookId: string; d
   const [cursor, setCursor] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [error, setError] = useState('');
   const config = useQuery({ queryKey: ['image-config'], queryFn: () => api.get<{ credits: number; model: string; mock: boolean; enabled: boolean }>('/image-config') });
   const history = useQuery({ queryKey: ['image-jobs', bookId, cursor], queryFn: () => api.get<{ jobs: ImageJob[]; nextCursor: string | null }>(`/books/${bookId}/images${cursor ? `?cursor=${cursor}` : ''}`), refetchInterval: q => q.state.data?.jobs.some(j => ['queued', 'running'].includes(j.status)) ? 1500 : false });
-  useEffect(() => { void qc.invalidateQueries({ queryKey: qk.credits }); void qc.invalidateQueries({ queryKey: ['assets'] }); }, [history.data, qc]);
+  // Credits and the image library change only when a job settles, so they are
+  // refreshed then, not on every 1.5 s poll of a running job.
+  const settled = history.data?.jobs.filter(j => !['queued', 'running'].includes(j.status)).map(j => `${j.id}:${j.status}`).join(',') ?? '';
+  useEffect(() => { if (!settled) return; void qc.invalidateQueries({ queryKey: qk.credits }); void qc.invalidateQueries({ queryKey: ['assets'] }); }, [settled, qc]);
   const active = history.data?.jobs.some(j => ['queued', 'running'].includes(j.status));
   return <section className="space-y-4 border-t border-border pt-6"><h2 className="text-xl font-semibold">Generate artwork</h2>
     <p className="text-sm">{config.data ? `${config.data.credits} credits per image. ${config.data.mock ? 'Mock mode: produces a test image.' : `Model: ${config.data.model}.`}` : 'Loading image pricing…'} Credits are reserved when queued and charged only for a saved result. Save cover changes before generating.</p>
@@ -256,7 +259,9 @@ function ImageGenerator({ bookId, disabled, selectArtwork }: { bookId: string; d
       {job.status === 'completed' && job.assetId && <>
       {/* Authenticated media bypasses the public image optimizer. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={imageUrl(job.assetId)} alt="Generated artwork concept" className="h-48 w-full object-contain" /><Button variant="secondary" disabled={disabled} onClick={() => selectArtwork(job.assetId!)}>Use as cover artwork</Button><p className="text-xs">Also available in the editor’s image library. Add descriptive alt text before inserting.</p></>}
+      <img src={imageUrl(job.assetId)} alt="Generated artwork concept" className="h-48 w-full object-contain" />{job.input.request.purpose === 'cover'
+        ? <><Button variant="secondary" disabled={disabled} onClick={() => selectArtwork(job.assetId!)}>Use as cover artwork</Button><p className="text-xs">Also available in the editor’s image library. Add descriptive alt text before inserting.</p></>
+        : <p className="text-xs">Saved to your image library. Insert it from the editor, and add descriptive alt text first.</p>}</>}
       {['queued', 'running'].includes(job.status) && <Button variant="secondary" disabled={job.cancelRequested || busy} onClick={async () => { setBusy(true); setError(''); try { await api.post(`/books/${bookId}/images/${job.id}/cancel`); await history.refetch(); } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); } }}>Cancel image</Button>}
       {job.error && <p className="text-sm" role="alert">{job.error}</p>}<p className="text-xs">{job.creditsCharged} credits charged · Reference {job.id}</p>
     </article>)}</div>

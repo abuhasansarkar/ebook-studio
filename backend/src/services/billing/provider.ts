@@ -1,4 +1,4 @@
-import { createHmac, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import {
   WEBHOOK_SIGNATURE_HEADER,
   signWebhook,
@@ -129,10 +129,13 @@ export class LocalProvider implements PaymentProvider {
   async createCheckout(request: CheckoutRequest): Promise<CheckoutResult> {
     // The checkout id is derived from the idempotency key, so a repeated
     // request returns the same checkout instead of creating a second one.
-    const providerCheckoutId = `local_cs_${request.idempotencyKey.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40)}`;
+    // A digest rather than a truncation: cutting the key short drops its tail
+    // (the plan and attempt), so two different checkouts would share an id.
+    const digest = createHash("sha256").update(request.idempotencyKey).digest("hex").slice(0, 32);
+    const providerCheckoutId = `local_cs_${digest}`;
     // The payment id is derived the same way, so the settlement event names
     // the payment the checkout created.
-    const providerPaymentId = `local_pay_${request.idempotencyKey.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40)}`;
+    const providerPaymentId = `local_pay_${digest}`;
     const url = `${env.APP_URL}/app/credits/checkout?session=${providerCheckoutId}`;
     return { providerCheckoutId, providerPaymentId, customerReference: request.customerReference, url };
   }

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { marketingDraftSchema, marketingGraphicSchema, marketingSaveSchema, sampleChapterSchema } from "@ebook/shared";
 import { userId } from "../middleware/requireAuth.js";
 import { validateBody } from "../middleware/validate.js";
+import { aiLimiter } from "../middleware/rateLimits.js";
 import {
   createDraft,
   getDraft,
@@ -48,7 +49,7 @@ marketingRouter.get("/marketing/books/:bookId/drafts", async (req, res) => {
  * The credit cost is shown before the request is made, so the author knows
  * what a draft costs before they spend it.
  */
-marketingRouter.post("/marketing/books/:bookId/drafts", validateBody(marketingDraftSchema), async (req, res) => {
+marketingRouter.post("/marketing/books/:bookId/drafts", aiLimiter, validateBody(marketingDraftSchema), async (req, res) => {
   const id = userId(req);
   const draft = await createDraft(id, String(req.params.bookId), req.body);
   res.status(201).json({ draft });
@@ -72,7 +73,7 @@ marketingRouter.patch("/marketing/drafts/:draftId", validateBody(marketingSaveSc
  *
  * The existing draft is kept, so a manual edit is never overwritten.
  */
-marketingRouter.post("/marketing/drafts/:draftId/regenerate", async (req, res) => {
+marketingRouter.post("/marketing/drafts/:draftId/regenerate", aiLimiter, async (req, res) => {
   const id = userId(req);
   const draft = await regenerateDraft(id, String(req.params.draftId));
   res.status(201).json({ draft });
@@ -90,7 +91,7 @@ marketingRouter.get("/marketing/books/:bookId/graphics", async (req, res) => {
  * The image is rendered locally and stored privately. The graphic is a file
  * the author downloads; nothing is posted or published anywhere.
  */
-marketingRouter.post("/marketing/books/:bookId/graphics", validateBody(marketingGraphicSchema), async (req, res) => {
+marketingRouter.post("/marketing/books/:bookId/graphics", aiLimiter, validateBody(marketingGraphicSchema), async (req, res) => {
   const id = userId(req);
   const graphic = await composeGraphic(id, String(req.params.bookId), req.body);
   res.status(201).json({ graphic });
@@ -143,7 +144,7 @@ marketingRouter.get("/marketing/books/:bookId/samples", async (req, res) => {
  * rendered and validated before it is offered, so a sample that would not
  * open is refused rather than offered as a download.
  */
-marketingRouter.post("/marketing/books/:bookId/samples", validateBody(sampleChapterSchema), async (req, res) => {
+marketingRouter.post("/marketing/books/:bookId/samples", aiLimiter, validateBody(sampleChapterSchema), async (req, res) => {
   const id = userId(req);
   const sample = await assembleSample(id, String(req.params.bookId), req.body);
   res.status(201).json({ sample });

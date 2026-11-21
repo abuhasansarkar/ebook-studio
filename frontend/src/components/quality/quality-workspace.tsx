@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CATEGORY_LABELS, QUALITY_CATEGORIES, bookContextSchema, getLanguage, type QualityCategory } from '@ebook/shared';
 import { api, errorMessage } from '@/lib/api';
+import { toast } from 'sonner';
 import { operationRequest } from '@/lib/operation-request';
 import { qk, useBook } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
@@ -46,7 +47,9 @@ export function QualityWorkspace({ bookId }: { bookId: string }) {
     } catch (e) { setError(errorMessage(e)); } finally { setRunning(false); }
   }
 
-  if (book.isLoading || reports.isLoading) return <PageLoader label="Loading quality review…" />;
+  // isPending, not isLoading: the book query waits for the session, and a
+  // waiting query is pending without loading (see generate-screen).
+  if ((book.isPending && !book.error) || reports.isLoading) return <PageLoader label="Loading quality review…" />;
   if (book.error || reports.error || !book.data) return <div className="mx-auto max-w-4xl px-4 py-8"><ErrorState message={errorMessage(book.error ?? reports.error)} onRetry={() => { void book.refetch(); void reports.refetch(); }} /></div>;
   const lang = getLanguage(book.data.language);
   return <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-8">
@@ -130,7 +133,7 @@ function ReportView({ bookId, report, findings, lang, dir, chapters, onChanged, 
       </div>
       {report.stale && <Alert tone="warning">The book has changed since this report. Findings may already be fixed or may no longer point at the right text.{report.kind === 'rules' && <Button size="sm" variant="link" className="ms-1 h-auto" disabled={rerunning} onClick={onRerun}>Run checks again</Button>}</Alert>}
       {job && active(report) && <div className="space-y-2"><Progress value={job.total ? (job.progress / job.total) * 100 : 0} /><p className="text-sm">{job.cancelRequested ? 'Cancelling…' : `Reviewed ${job.progress} of ${job.total} chapters.`} {job.creditsReserved} credits reserved.</p>
-        <Button size="sm" variant="secondary" disabled={cancelling || job.cancelRequested} onClick={async () => { setCancelling(true); try { await api.post(`/books/${bookId}/quality/ai-reviews/${report.jobId}/cancel`); onChanged(); } finally { setCancelling(false); } }}>Cancel review</Button></div>}
+        <Button size="sm" variant="secondary" disabled={cancelling || job.cancelRequested} onClick={async () => { setCancelling(true); try { await api.post(`/books/${bookId}/quality/ai-reviews/${report.jobId}/cancel`); onChanged(); } catch (e) { toast.error(errorMessage(e)); onChanged(); } finally { setCancelling(false); } }}>Cancel review</Button></div>}
       {job && !active(report) && <p className="text-xs text-muted-foreground">{job.creditsCharged} credits charged{job.error ? ` · ${job.error}` : ''}.{s.discarded ? ` ${s.discarded} AI suggestion${s.discarded === 1 ? ' was' : 's were'} discarded because ${s.discarded === 1 ? 'its quote was' : 'their quotes were'} not found in the chapter.` : ''}</p>}
       {!!s.skipped?.length && <Alert tone="info">{s.skipped.length} chapter{s.skipped.length === 1 ? ' was' : 's were'} not reviewed: {s.skipped.map(k => `${chapters.find(c => c.id === k.id)?.title ?? 'removed chapter'} (${k.reason})`).join('; ')}</Alert>}
       {s.counts && <div className="flex flex-wrap gap-2 text-sm" aria-label="Findings by severity">

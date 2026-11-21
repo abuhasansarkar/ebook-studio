@@ -20,7 +20,7 @@ import { userId } from "../middleware/requireAuth.js";
 import { badRequest } from "../utils/errors.js";
 import { z } from "zod";
 import { Router } from "express";
-import { assistSchema, createBookSchema, outlineSchema, updateChapterSchema } from "@ebook/shared";
+import { assistSchema, bookBriefSchema, createBookSchema, outlineSchema, updateChapterSchema } from "@ebook/shared";
 import { accountController, createProjectSchema } from "../controllers/accountController.js";
 import { bookController } from "../controllers/bookController.js";
 import { chapterController } from "../controllers/chapterController.js";
@@ -94,7 +94,7 @@ apiRouter.post('/books/:bookId/duplicate', validateBody(z.object({ includeManusc
 apiRouter.post("/books", aiLimiter, validateBody(createBookSchema), bookController.create);
 apiRouter.get("/books/:bookId", bookController.get);
 apiRouter.delete("/books/:bookId", bookController.remove);
-apiRouter.put("/books/:bookId/brief", bookController.updateBrief);
+apiRouter.put("/books/:bookId/brief", validateBody(bookBriefSchema), bookController.updateBrief);
 
 apiRouter.get('/books/:bookId/outlines', async (req, res) => {
   const before = z.coerce.number().int().positive().optional().safeParse(req.query.before);

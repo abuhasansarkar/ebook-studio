@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { prisma } from '../../database/prisma.js';
 import { dispatchPending, persistDispatch } from '../../queues/index.js';
 import { hasEntitlement } from '../billing/entitlements.js';
-import { conflict, notFound } from '../../utils/errors.js';
+import { conflict, customerJobError, notFound } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 import { aiService } from '../ai/aiService.js';
 import { getOwnedBook } from '../books/bookService.js';
@@ -179,10 +179,14 @@ export const generationService = {
     return publicJob;
   },
 
-  async cancel(userId: string, bookId: string) {
+  /**
+   * Cancels the book's active generation, or exactly `jobId` when given (an
+   * operator acts on one job and must never cancel a different one).
+   */
+  async cancel(userId: string, bookId: string, jobId?: string) {
     await getOwnedBook(userId, bookId);
     return prisma.$transaction(async tx => {
-      const job = await tx.generationJob.findFirst({ where: { bookId, status: { in: ['queued', 'running'] } }, orderBy: { createdAt: 'desc' } });
+      const job = await tx.generationJob.findFirst({ where: { bookId, ...(jobId ? { id: jobId } : {}), status: { in: ['queued', 'running'] } }, orderBy: { createdAt: 'desc' } });
       if (!job) throw conflict('There is no running generation to cancel.');
       const queued = await tx.generationJob.updateMany({ where: { id: job.id, status: 'queued' }, data: { cancelRequested: true } });
       if (queued.count) return finishJob(tx, job.id, 'cancelled');
@@ -260,7 +264,7 @@ export const generationService = {
       if (error instanceof LeaseLost) return;
       const cancelled = error instanceof GenerationCancelled;
       if (!cancelled) logger.error({ err: error, jobId }, 'Chapter generation failed');
-      try { await finishOwned(jobId, token, cancelled ? 'cancelled' : 'failed', cancelled ? undefined : (error instanceof Error ? error.message : 'Generation failed')); }
+      try { await finishOwned(jobId, token, cancelled ? 'cancelled' : 'failed', cancelled ? undefined : customerJobError(error, 'The AI writer did not return a usable response. Retry to continue; finished chapters are kept.')); }
       catch (finishError) { if (!(finishError instanceof LeaseLost)) throw finishError; }
     } finally { stop(); }
   },

@@ -25,3 +25,14 @@ export const aiLimiter = rateLimit({
   skip: () => isTest,
   message: json("Too many AI requests. Please wait a minute and try again."),
 });
+
+/** Support requests: generous for a person, a wall for a script filling the queue. */
+export const supportLimiter = rateLimit({
+  windowMs: 60 * 60_000,
+  limit: 10,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  keyGenerator: keyByUser,
+  skip: () => isTest,
+  message: json("You've sent several support requests recently. Please wait a while before sending another."),
+});

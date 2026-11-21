@@ -359,7 +359,10 @@ try {
 
   // The author's own publishing status.
   await page.select('[data-testid="publishing-state-kdp_ebook"]', "in_progress");
+  await page.type("#publishing-kdp_ebook-ref", "https://www.amazon.com/dp/B000TEST00");
+  await page.click('[data-testid="publishing-save-kdp_ebook"]');
   await waitText(page, "Publishing status recorded", 30_000);
+  await waitText(page, "Open the store listing", 30_000);
   await shot(page, "publishing-status");
   log("the author recorded their own publishing status for a destination");
 

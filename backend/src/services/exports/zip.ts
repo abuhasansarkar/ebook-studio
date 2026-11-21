@@ -136,7 +136,27 @@ export class ZipError extends Error {}
  * Reads a ZIP archive. Throws `ZipError` for anything outside the supported
  * subset so a validator reports a missing or damaged file instead of guessing.
  */
-export function readZip(buffer: Buffer): ZipEntry[] {
+export interface ReadZipOptions {
+  /** Largest uncompressed size accepted for one entry. */
+  maxEntryBytes?: number;
+  /** Largest uncompressed size accepted across every entry read. */
+  maxTotalBytes?: number;
+  /** Most entries an archive may list. */
+  maxEntries?: number;
+  /** Reads only the entries this accepts; the rest are skipped, never inflated. */
+  only?: (name: string) => boolean;
+}
+
+const MiB = 1024 * 1024;
+
+export function readZip(buffer: Buffer, options: ReadZipOptions = {}): ZipEntry[] {
+  // A small archive can declare, or inflate to, gigabytes (a "zip bomb"). Every
+  // limit is checked against the declared size before inflating, and the
+  // inflater is capped at that size, so a lie in the header cannot get past it.
+  const maxEntryBytes = options.maxEntryBytes ?? 256 * MiB;
+  const maxTotalBytes = options.maxTotalBytes ?? 512 * MiB;
+  const maxEntries = options.maxEntries ?? 10_000;
+  let totalBytes = 0;
   if (buffer.length < EOCD_SIZE) throw new ZipError('File is too small to be a ZIP archive');
   // The end-of-central-directory record is at the end, but a comment may follow it.
   let eocdAt = -1;
@@ -148,6 +168,7 @@ export function readZip(buffer: Buffer): ZipEntry[] {
   if (eocdAt >= 20 && buffer.readUInt32LE(eocdAt - 20) === ZIP64_EOCD_LOCATOR) throw new ZipError('ZIP64 archives are not supported');
 
   const count = buffer.readUInt16LE(eocdAt + 10);
+  if (count > maxEntries) throw new ZipError(`ZIP archive lists ${count} entries; at most ${maxEntries} are accepted`);
   const directorySize = buffer.readUInt32LE(eocdAt + 12);
   const directoryAt = buffer.readUInt32LE(eocdAt + 16);
   if (directoryAt + directorySize > buffer.length) throw new ZipError('ZIP central directory is truncated');
@@ -175,12 +196,16 @@ export function readZip(buffer: Buffer): ZipEntry[] {
     const dataAt = localAt + 30 + localNameLength + localExtraLength;
     if (dataAt + compressedSize > buffer.length) throw new ZipError(`Truncated ZIP entry "${name}"`);
     const payload = buffer.subarray(dataAt, dataAt + compressedSize);
+    if (options.only && !options.only(name)) continue;
+    if (rawSize > maxEntryBytes) throw new ZipError(`ZIP entry "${name}" is too large to open`);
+    totalBytes += rawSize;
+    if (totalBytes > maxTotalBytes) throw new ZipError('ZIP archive is too large to open');
 
     let data: Buffer;
     if (method === 0) data = Buffer.from(payload);
     else if (method === 8) {
       try {
-        data = inflateRawSync(payload);
+        data = inflateRawSync(payload, { maxOutputLength: Math.max(rawSize, 1) });
       } catch {
         // A damaged deflate stream must be reported as a ZIP error, not a raw zlib error.
         throw new ZipError(`Corrupt compressed data in ZIP entry "${name}"`);

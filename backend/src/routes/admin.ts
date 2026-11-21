@@ -37,6 +37,7 @@ import {
 } from "../services/admin/operationsService.js";
 import { billingService } from "../services/billing/billingService.js";
 import {
+  BACKUP_NAME,
   createBackup,
   deleteBackup,
   getBackup,
@@ -237,7 +238,7 @@ adminRouter.post("/admin/credits/adjust", validateBody(creditAdjustmentSchema), 
       userId: req.body.userId,
       credits: req.body.credits,
       reason: req.body.reason,
-      requestId: req.get("x-request-id") ?? undefined,
+      requestId: String(req.id),
     }),
   );
 });
@@ -275,7 +276,7 @@ adminRouter.post("/admin/payments/refund", validateBody(refundSchema), async (re
     targetId: payment.id,
     reason: req.body.reason,
     details: { outcome },
-    requestId: req.get("x-request-id") ?? undefined,
+    requestId: String(req.id),
   });
 
   res.json({ ...outcome, refundedBy: id });
@@ -299,7 +300,7 @@ adminRouter.post("/admin/jobs/intervene", validateBody(jobInterventionSchema), a
 
   const { generationService } = await import("../services/generation/generationService.js");
   if (req.body.action === "cancel") {
-    await generationService.cancel(job.userId, job.bookId);
+    await generationService.cancel(job.userId, job.bookId, job.id);
   } else {
     // A retry re-queues the same job. The dispatcher owns the lease, so the
     // job is released here and picked up again by the queue.
@@ -316,7 +317,7 @@ adminRouter.post("/admin/jobs/intervene", validateBody(jobInterventionSchema), a
     targetId: job.id,
     reason: req.body.reason,
     details: { action: req.body.action, previousStatus: job.status },
-    requestId: req.get("x-request-id") ?? undefined,
+    requestId: String(req.id),
   });
 
   res.json({ ok: true });
@@ -332,13 +333,13 @@ adminRouter.get("/admin/roles", async (req, res) => {
 
 adminRouter.post("/admin/roles/grant", validateBody(roleChangeSchema), async (req, res) => {
   const id = await withPermission(req, "roles.manage");
-  await grantRole(id, req.body.userId, req.body.role, req.body.reason, req.get("x-request-id") ?? undefined);
+  await grantRole(id, req.body.userId, req.body.role, req.body.reason, String(req.id));
   res.status(201).json({ ok: true });
 });
 
 adminRouter.post("/admin/roles/revoke", validateBody(roleChangeSchema), async (req, res) => {
   const id = await withPermission(req, "roles.manage");
-  await revokeRole(id, req.body.userId, req.body.role, req.body.reason, req.get("x-request-id") ?? undefined);
+  await revokeRole(id, req.body.userId, req.body.role, req.body.reason, String(req.id));
   res.json({ ok: true });
 });
 
@@ -371,7 +372,7 @@ adminRouter.get("/admin/backups/:name", async (req, res) => {
   res.json({ backup: await getBackup(String(req.params.name)) });
 });
 
-adminRouter.post("/admin/backups", async (req, res) => {
+adminRouter.post("/admin/backups", validateBody(z.object({ name: z.string().regex(BACKUP_NAME).optional(), reason: z.string().trim().max(1000).optional() })), async (req, res) => {
   const id = await withPermission(req, "backup.manage");
   const backup = await createBackup({ name: req.body?.name, actorId: id });
   await recordAudit({
@@ -381,7 +382,7 @@ adminRouter.post("/admin/backups", async (req, res) => {
     targetId: backup.name,
     reason: req.body?.reason ?? "Took a backup.",
     details: { bytes: backup.bytes, databaseSha256: backup.databaseSha256 },
-    requestId: req.get("x-request-id") ?? undefined,
+    requestId: String(req.id),
   });
   res.status(201).json({ backup });
 });
@@ -408,7 +409,7 @@ adminRouter.post(
       targetId: result.name,
       reason: req.body?.reason ?? "Rehearsed a restore.",
       details: { targetDatabase: result.targetDatabase, verified: result.verified },
-      requestId: req.get("x-request-id") ?? undefined,
+      requestId: String(req.id),
     });
     res.json({ restore: result });
   },
@@ -423,7 +424,7 @@ adminRouter.delete("/admin/backups/:name", async (req, res) => {
     targetType: "backup",
     targetId: String(req.params.name),
     reason: req.body?.reason ?? "Removed a backup.",
-    requestId: req.get("x-request-id") ?? undefined,
+    requestId: String(req.id),
   });
   res.json({ ok: true });
 });
@@ -447,7 +448,7 @@ adminRouter.post("/admin/support/:requestId/reply", validateBody(supportReplySch
     actorId: id,
     requestId: String(req.params.requestId),
     response: req.body.response,
-    requestIdHeader: req.get("x-request-id") ?? undefined,
+    requestIdHeader: String(req.id),
   });
   res.json({ ok: true });
 });

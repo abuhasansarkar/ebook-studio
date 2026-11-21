@@ -74,7 +74,35 @@ const envSchema = z.object({
   /** The container that holds PostgreSQL, used when the client tools are not
    *  on the host. */
   PG_CONTAINER: z.string().optional().default(""),
+  /** Lets a production build use the local test processor. Only for a private
+   *  test stack: the local processor grants credits without taking payment. */
+  ALLOW_LOCAL_PAYMENTS: bool,
 });
+
+type Env = z.infer<typeof envSchema>;
+
+const PLACEHOLDER_SECRET = /change-me|replace-with|example|placeholder/i;
+
+/**
+ * Settings that are valid but unsafe to run in production.
+ *
+ * Each one would start the service in a state that loses money or weakens
+ * authentication without any visible error, so production refuses to start
+ * instead.
+ */
+export function unsafeProductionSettings(e: Pick<Env, "NODE_ENV" | "PAYMENT_PROVIDER" | "ALLOW_LOCAL_PAYMENTS" | "STRIPE_SECRET_KEY" | "STRIPE_WEBHOOK_SECRET" | "BETTER_AUTH_SECRET" | "PAYMENT_WEBHOOK_SECRET">): string[] {
+  if (e.NODE_ENV !== "production") return [];
+  const problems: string[] = [];
+  if (e.PAYMENT_PROVIDER === "local" && !e.ALLOW_LOCAL_PAYMENTS) {
+    problems.push("PAYMENT_PROVIDER=local grants credits without taking payment. Set PAYMENT_PROVIDER=stripe, or ALLOW_LOCAL_PAYMENTS=true for a private test stack.");
+  }
+  if (e.PAYMENT_PROVIDER === "stripe" && (!e.STRIPE_SECRET_KEY || !e.STRIPE_WEBHOOK_SECRET)) {
+    problems.push("PAYMENT_PROVIDER=stripe needs STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET.");
+  }
+  if (PLACEHOLDER_SECRET.test(e.BETTER_AUTH_SECRET)) problems.push("BETTER_AUTH_SECRET is still the placeholder from .env.example.");
+  if (PLACEHOLDER_SECRET.test(e.PAYMENT_WEBHOOK_SECRET)) problems.push("PAYMENT_WEBHOOK_SECRET is still the placeholder from .env.example.");
+  return problems;
+}
 
 const parsed = envSchema.safeParse(process.env);
 if (!parsed.success) {
@@ -83,6 +111,13 @@ if (!parsed.success) {
   // The variables are documented in .env.example. Naming the file here saves
   // the reader from searching the repository for where the value belongs.
   console.error("Copy the missing values from .env.example and set them in .env (or the environment the process is started with).");
+  process.exit(1);
+}
+
+const unsafe = unsafeProductionSettings(parsed.data);
+if (unsafe.length) {
+  console.error("Refusing to start in production:");
+  for (const problem of unsafe) console.error(`  ${problem}`);
   process.exit(1);
 }
 

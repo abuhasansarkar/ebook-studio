@@ -28,6 +28,22 @@ import { logger } from "../../utils/logger.js";
 
 const BACKUP_DIR = path.resolve(env.BACKUP_DIR || path.join(process.cwd(), "backups"));
 
+/** A backup name is one plain path segment: no separators, no `..`. */
+export const BACKUP_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+
+/**
+ * The directory a backup lives in, refusing any name that would resolve
+ * outside the backup directory. Creation writes there and deletion removes it
+ * recursively, so an unchecked name would let either reach any path the
+ * process can write.
+ */
+function backupDirectory(name: string): string {
+  if (!BACKUP_NAME.test(name) || name.includes("..")) throw badRequest("A backup name may only use letters, numbers, dots, dashes and underscores.");
+  const directory = path.resolve(BACKUP_DIR, name);
+  if (path.dirname(directory) !== BACKUP_DIR) throw badRequest("That backup name is not allowed.");
+  return directory;
+}
+
 /**
  * Where the backup files live inside the PostgreSQL container.
  *
@@ -261,7 +277,7 @@ async function captureCounts() {
  */
 export async function createBackup(input: { name?: string; actorId?: string } = {}) {
   const name = input.name ?? `backup-${new Date().toISOString().replace(/[:.]/g, "-")}`;
-  const directory = path.join(BACKUP_DIR, name);
+  const directory = backupDirectory(name);
   await mkdir(directory, { recursive: true });
 
   const databaseFile = path.join(directory, "database.sql");
@@ -456,6 +472,6 @@ export async function rehearseRestore(
 export async function deleteBackup(name: string): Promise<void> {
   const manifest = await prisma.backupManifest.findUnique({ where: { name } });
   if (!manifest) throw notFound("Backup");
-  await rm(path.join(BACKUP_DIR, name), { recursive: true, force: true });
+  await rm(backupDirectory(name), { recursive: true, force: true });
   await prisma.backupManifest.delete({ where: { name } });
 }

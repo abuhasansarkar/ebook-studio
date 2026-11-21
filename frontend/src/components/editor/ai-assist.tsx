@@ -10,7 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/form";
 import { Alert, Spinner } from "@/components/ui/misc";
-import { api, errorMessage } from "@/lib/api";
+import { errorMessage } from "@/lib/api";
+import { operationRequest } from "@/lib/operation-request";
 import { qk } from "@/lib/queries";
 
 const PRIMARY: AssistAction[] = ["rewrite", "expand", "shorten", "proofread"];
@@ -44,10 +45,11 @@ export function AiAssist({ editor, bookId, dir }: { editor: Editor; bookId: stri
     setError(null);
     setResult(null);
     try {
-      const res = await api.post<{ text: string; content: JSONContent[] }>(
+      // One request identity across uncertain retries: if the first attempt
+      // reached the server but the answer was lost, the retry is not charged again.
+      const res = await operationRequest<{ text: string; content: JSONContent[] }>(
         "/ai/assist",
         { bookId, action: r.action, text: r.text, instruction: r.instruction },
-        { "Idempotency-Key": crypto.randomUUID() },
       );
       if (sequence === requestSequence.current) setResult(res);
     } catch (err) {

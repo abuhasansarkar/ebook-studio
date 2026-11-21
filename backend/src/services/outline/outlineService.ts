@@ -2,7 +2,7 @@ import { assertRuntimeAvailable } from "../runtime/readiness.js";
 import { CREDIT_COSTS, bookBriefSchema, outlineSchema, type Outline } from "@ebook/shared";
 import { prisma } from "../../database/prisma.js";
 import { dispatchPending, persistDispatch } from "../../queues/index.js";
-import { conflict, notFound } from "../../utils/errors.js";
+import { conflict, customerJobError, notFound } from "../../utils/errors.js";
 import { logger } from "../../utils/logger.js";
 import { aiService } from "../ai/aiService.js";
 import { assertChapterQuota, hasEntitlement } from "../billing/entitlements.js";
@@ -59,7 +59,7 @@ export const outlineService = {
       if (err instanceof LeaseLost) return;
       const cancelled = err instanceof GenerationCancelled;
       if (!cancelled) logger.error({ err, jobId: generationJobId }, 'Outline generation failed');
-      try { await finishOwned(generationJobId, token, cancelled ? 'cancelled' : 'failed', cancelled ? undefined : (err instanceof Error ? err.message : 'Outline generation failed')); }
+      try { await finishOwned(generationJobId, token, cancelled ? 'cancelled' : 'failed', cancelled ? undefined : customerJobError(err, 'The AI planner did not return a usable outline. Try generating it again.')); }
       catch (finishError) { if (!(finishError instanceof LeaseLost)) throw finishError; }
     } finally { stop(); }
   },

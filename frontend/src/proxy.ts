@@ -8,7 +8,8 @@ import { getSessionCookie } from "better-auth/cookies";
 export function proxy(request: NextRequest) {
   if (!getSessionCookie(request)) {
     const login = new URL("/login", request.url);
-    login.searchParams.set("next", request.nextUrl.pathname);
+    // Keep the query too, so a filtered list or ?bookId= screen reopens as it was.
+    login.searchParams.set("next", `${request.nextUrl.pathname}${request.nextUrl.search}`);
     return NextResponse.redirect(login);
   }
   return NextResponse.next();

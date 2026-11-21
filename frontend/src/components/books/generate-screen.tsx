@@ -108,7 +108,7 @@ export function GenerateScreen({ params }: { params: Promise<{ bookId: string }>
                 {job.progress} of {job.total} chapters done · {job.savedSections ?? 0} sections saved. You can leave this page — writing continues in the background.
               </p>
             </div>
-            <Button variant="secondary" onClick={() => actions.cancelGeneration.mutate()} loading={actions.cancelGeneration.isPending} disabled={job.cancelRequested}>
+            <Button variant="secondary" onClick={() => actions.cancelGeneration.mutate(undefined, { onSuccess: () => toast("Stopping after the current section…"), onError: (err) => toast.error(errorMessage(err)) })} loading={actions.cancelGeneration.isPending} disabled={job.cancelRequested}>
               <Square className="h-3.5 w-3.5" /> Stop
             </Button>
           </div>

@@ -47,7 +47,21 @@ export function GoogleButton({ next }: { next: string }) {
   );
 }
 
-/** Only allow same-site relative redirects. */
+/**
+ * Only allow same-site relative redirects.
+ *
+ * A prefix check is not enough: browsers treat `\` as `/`, so `/\evil.com`
+ * resolves to `//evil.com`, another site. The path is resolved against this
+ * origin and accepted only if it stays here.
+ */
 export function safeNext(next: string | null): string {
-  return next && next.startsWith("/") && !next.startsWith("//") ? next : "/app/dashboard";
+  const fallback = "/app/dashboard";
+  if (!next || !next.startsWith("/") || /[\\\u0000-\u001f]/.test(next)) return fallback;
+  try {
+    const base = "https://same-origin.invalid";
+    const url = new URL(next, base);
+    return url.origin === base ? `${url.pathname}${url.search}${url.hash}` : fallback;
+  } catch {
+    return fallback;
+  }
 }

@@ -13,7 +13,7 @@ import {
 } from "@ebook/shared";
 import { prisma } from "../../database/prisma.js";
 import { getOwnedBook, getBrief } from "../books/bookService.js";
-import { creditService } from "../credits/creditService.js";
+import { creditService, settleInTransaction } from "../credits/creditService.js";
 import { openaiProvider } from "../ai/openaiClient.js";
 import { env } from "../../config/env.js";
 import { badRequest, conflict, notFound } from "../../utils/errors.js";
@@ -311,10 +311,14 @@ export async function createDraft(
     throw err;
   }
 
-  await creditService.settle(userId, cost, cost, reference);
-
+  // The charge and the draft are written together: a draft that fails to save
+  // must not leave the author charged for text they never received.
   const flags = marketingFlags(content);
-  const row = await prisma.marketingDraft.create({
+  let row;
+  try {
+    row = await prisma.$transaction(async (tx) => {
+      await settleInTransaction(tx, userId, cost, cost, reference);
+      return tx.marketingDraft.create({
     data: {
       userId,
       bookId,
@@ -329,7 +333,12 @@ export async function createDraft(
       flags: flags as unknown as object,
       creditsCharged: cost,
     },
-  });
+      });
+    });
+  } catch (err) {
+    await creditService.settle(userId, cost, 0, reference).catch(() => undefined);
+    throw err;
+  }
 
   logger.info({ bookId, outputType: input.outputType, credits: cost }, "Marketing draft created");
   return toDraft(row);

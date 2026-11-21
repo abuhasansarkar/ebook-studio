@@ -98,6 +98,8 @@ function SidebarFooter() {
           type="button"
           aria-label="Log out"
           title="Log out"
+          // Lets the editor's unsaved-changes guard stop a logout like any other way out.
+          data-editor-navigation
           className="cursor-pointer rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
           onClick={async () => {
             await signOut();
@@ -119,7 +121,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   // Client-side guard (the proxy only checks cookie presence; the API enforces auth).
   useEffect(() => {
-    if (!isPending && !session) router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+    // window is read inside the effect, so this stays client-only.
+    if (!isPending && !session) router.replace(`/login?next=${encodeURIComponent(`${pathname}${window.location.search}`)}`);
   }, [isPending, session, router, pathname]);
 
   // The proxy already blocks requests without a session cookie, so render the page

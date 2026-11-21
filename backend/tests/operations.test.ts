@@ -80,7 +80,9 @@ describe("durable operation identity", () => {
     const result = await agent.post("/api/v1/books").set("Origin", ORIGIN).set("Idempotency-Key", key).send(brief()).expect(201);
     await prisma.operation.update({ where: { id: result.body.operationId }, data: { state: "needs_review", responseBody: Prisma.DbNull, responseStatus: null } });
     const replay = await agent.post("/api/v1/books").set("Origin", ORIGIN).set("Idempotency-Key", key).send(brief()).expect(409);
-    expect(replay.body.error.code).toBe("OPERATION_PENDING");
+    // The replay is told the attempt needs review rather than to keep waiting,
+    // and it is still not executed a second time.
+    expect(replay.body.error.code).toBe("OPERATION_NEEDS_REVIEW");
     expect(replay.body.error.details.operationId).toBe(result.body.operationId);
     expect(await prisma.book.count({ where: { userId: user.id } })).toBe(1);
     expect((await agent.get(`/api/v1/operations/${result.body.operationId}`).expect(200)).body.operation.state).toBe("needs_review");

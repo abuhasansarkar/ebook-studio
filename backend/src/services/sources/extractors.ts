@@ -204,7 +204,8 @@ export function extractDocx(buffer: Buffer): ExtractionResult {
   const warnings: ExtractionWarning[] = [];
   let entries;
   try {
-    entries = readZip(buffer);
+    // Only the main part is read, so nothing else in the package is inflated.
+    entries = readZip(buffer, { only: (name) => name === 'word/document.xml', maxEntryBytes: 64 * 1024 * 1024, maxTotalBytes: 64 * 1024 * 1024 });
   } catch (err) {
     const message = err instanceof ZipError
       ? 'The Word document could not be opened: it is damaged or not a real .docx file.'

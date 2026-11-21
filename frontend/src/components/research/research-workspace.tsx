@@ -84,7 +84,9 @@ export function ResearchWorkspace({ params }: { params: Promise<{ bookId: string
   const [openPassage, setOpenPassage] = useState<{ sourceId: string; locator: string } | null>(null);
   const selected = sources.data?.find((s) => s.id === selectedId) ?? sources.data?.[0] ?? null;
 
-  if (book.isLoading || sources.isLoading) return <PageLoader label="Loading your research sources…" />;
+  // isPending, not isLoading: the book query waits for the session, and a
+  // waiting query is pending without loading (see generate-screen).
+  if ((book.isPending && !book.error) || sources.isLoading) return <PageLoader label="Loading your research sources…" />;
   if (sources.error) {
     return (
       <div className="mx-auto max-w-4xl px-4 py-8 sm:px-8">
@@ -191,7 +193,11 @@ function ImportPanel({ bookId, onImported }: { bookId: string; onImported: (id: 
         provenance: provenance.trim(),
         license: license.trim(),
       });
-      toast.success(`Imported "${result.source.title}".`);
+      const outcome = result.source.status;
+      if (outcome === "ready") toast.success(`Imported "${result.source.title}".`);
+      else if (outcome === "scanned") toast.warning(`"${result.source.title}" looks like a scanned document with no readable text. Upload a text-based version to use it for research.`);
+      else if (outcome === "empty") toast.warning(`"${result.source.title}" has no text to research.`);
+      else toast.error(`"${result.source.title}" couldn't be read. See the source details for why.`);
       setTitle("");
       setProvenance("");
       setLicense("");

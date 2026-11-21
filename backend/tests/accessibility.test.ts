@@ -168,12 +168,19 @@ describe("keyboard-operable ARIA widgets", () => {
     // Any remaining hand-rolled radiogroup would not have arrow keys.
     const files = [
       "components/design/design-preview.tsx",
-      "app/app/create/page.tsx",
+      // The book-type grid used by the create wizard and the brief editor.
+      "components/books/book-type-picker.tsx",
     ];
     for (const file of files) {
       const source = read(file);
       expect(source, `${file} declares a raw radiogroup`).not.toMatch(/role="radiogroup"/);
       expect(source, `${file} does not use the shared RadioGroup`).toMatch(/RadioGroup/);
+    }
+    // The screens that offer a book type use the shared picker, not their own grid.
+    for (const file of ["app/app/create/page.tsx", "components/books/brief-screen.tsx"]) {
+      const source = read(file);
+      expect(source, `${file} declares a raw radiogroup`).not.toMatch(/role="radiogroup"/);
+      expect(source, `${file} does not use the shared BookTypePicker`).toMatch(/BookTypePicker/);
     }
   });
 

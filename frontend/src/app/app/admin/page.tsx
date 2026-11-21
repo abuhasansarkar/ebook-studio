@@ -356,9 +356,17 @@ function JobsPanel() {
   const jobs = useOpsJobs();
   const intervene = useJobIntervention();
   const [problem, setProblem] = useState<string | null>(null);
+  const [pending, setPending] = useState<{ jobId: string; action: "retry" | "cancel"; label: string } | null>(null);
+  const [reason, setReason] = useState("");
 
   if (jobs.isLoading) return <PageLoader />;
   if (jobs.error) return <ErrorState message={errorMessage(jobs.error)} onRetry={() => void jobs.refetch()} />;
+
+  const ask = (jobId: string, action: "retry" | "cancel", label: string) => {
+    setProblem(null);
+    setReason("");
+    setPending({ jobId, action, label });
+  };
 
   return (
     <div className="space-y-4">
@@ -379,7 +387,7 @@ function JobsPanel() {
             <div className="flex items-center gap-2">
               <Badge
                 tone={
-                  job.status === "failed" ? "danger" : job.status === "done" ? "success" : job.status === "running" ? "primary" : "neutral"
+                  job.status === "failed" ? "danger" : job.status === "completed" ? "success" : job.status === "running" ? "primary" : "neutral"
                 }
               >
                 {job.status}
@@ -389,17 +397,8 @@ function JobsPanel() {
                   <Button
                     variant="secondary"
                     size="sm"
-                    loading={intervene.isPending}
-                    onClick={() => {
-                      setProblem(null);
-                      intervene.mutate(
-                        { jobId: job.id, action: "retry", reason: "Retried from the operations console." },
-                        {
-                          onSuccess: () => void jobs.refetch(),
-                          onError: (err) => setProblem(errorMessage(err)),
-                        },
-                      );
-                    }}
+                    disabled={intervene.isPending}
+                    onClick={() => ask(job.id, "retry", `${job.type} · ${job.bookTitle ?? job.bookId}`)}
                     data-testid="retry-job"
                   >
                     Retry
@@ -407,17 +406,9 @@ function JobsPanel() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    loading={intervene.isPending}
-                    onClick={() => {
-                      setProblem(null);
-                      intervene.mutate(
-                        { jobId: job.id, action: "cancel", reason: "Cancelled from the operations console." },
-                        {
-                          onSuccess: () => void jobs.refetch(),
-                          onError: (err) => setProblem(errorMessage(err)),
-                        },
-                      );
-                    }}
+                    className="text-danger hover:bg-danger-soft"
+                    disabled={intervene.isPending}
+                    onClick={() => ask(job.id, "cancel", `${job.type} · ${job.bookTitle ?? job.bookId}`)}
                     data-testid="cancel-job"
                   >
                     Cancel
@@ -431,6 +422,36 @@ function JobsPanel() {
           <p className="px-5 py-6 text-center text-sm text-muted-foreground">No jobs have run yet.</p>
         )}
       </Card>
+
+      <ConfirmDialog
+        open={pending !== null}
+        onClose={() => setPending(null)}
+        title={pending?.action === "cancel" ? "Cancel this job?" : "Retry this job?"}
+        description={
+          pending?.action === "cancel"
+            ? `${pending.label}. The customer keeps finished work and is only charged for it.`
+            : `${pending?.label ?? ""}. The job is released and picked up again by the queue within a minute.`
+        }
+        confirmLabel={pending?.action === "cancel" ? "Cancel job" : "Retry job"}
+        cancelLabel="Back"
+        tone="primary"
+        busy={intervene.isPending}
+        confirmDisabled={reason.trim().length < 10}
+        onConfirm={() => {
+          if (!pending) return;
+          intervene.mutate(
+            { jobId: pending.jobId, action: pending.action, reason: reason.trim() },
+            {
+              onSuccess: () => { setPending(null); void jobs.refetch(); },
+              onError: (err) => { setPending(null); setProblem(errorMessage(err)); },
+            },
+          );
+        }}
+      >
+        <Field label="Reason (recorded in the audit trail)" htmlFor="job-reason" hint={`At least ten characters · ${reason.trim().length}/10`}>
+          <Textarea id="job-reason" className="min-h-[72px] bg-background" value={reason} onChange={(event) => setReason(event.target.value)} />
+        </Field>
+      </ConfirmDialog>
     </div>
   );
 }

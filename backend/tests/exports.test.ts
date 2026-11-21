@@ -80,6 +80,40 @@ describe('export snapshots', () => {
     expect(Math.round(pdf.getPage(0).getWidth())).toBe(6 * 72);
   });
 
+  it('renders the chapter text captured at request time, not later edits', async () => {
+    const a = await setup();
+    const exp = await exportService.request(a.user.id, a.book.id, 'docx');
+    // The author keeps editing while the export waits in the queue.
+    const chapter = await prisma.chapter.findFirstOrThrow({ where: { bookId: a.book.id, position: 0 } });
+    await a.agent.patch(`/api/v1/chapters/${chapter.id}`).set('Origin', ORIGIN)
+      .send({ version: chapter.version, title: 'Renamed later', contentJson: markdownToTiptap('Text written after the export was requested.') })
+      .expect(200);
+
+    await exportService.process(exp.id);
+    const done = await prisma.export.findUniqueOrThrow({ where: { id: exp.id } });
+    expect(done.status).toBe('ready');
+    const { body } = await download(a.agent, exp.id);
+    const xml = zipEntry(readZip(body), 'word/document.xml')!.data.toString('utf8');
+    expect(xml).toContain('Chapter 1 talks about batch cooking.');
+    expect(xml).not.toContain('Text written after the export was requested.');
+    expect(xml).not.toContain('Renamed later');
+  });
+
+  it('fails clearly when the requested text is no longer available', async () => {
+    const a = await setup();
+    const exp = await exportService.request(a.user.id, a.book.id, 'docx');
+    const chapter = await prisma.chapter.findFirstOrThrow({ where: { bookId: a.book.id, position: 0 } });
+    await a.agent.patch(`/api/v1/chapters/${chapter.id}`).set('Origin', ORIGIN)
+      .send({ version: chapter.version, contentJson: markdownToTiptap('Edited later.') }).expect(200);
+    // The history row for the requested version is gone.
+    await prisma.documentVersion.deleteMany({ where: { chapterId: chapter.id } });
+
+    await exportService.process(exp.id);
+    const failed = await prisma.export.findUniqueOrThrow({ where: { id: exp.id } });
+    expect(failed.status).toBe('failed');
+    expect(failed.error).toMatch(/Request the export again/);
+  });
+
   it('refuses a second export while one is in progress', async () => {
     const a = await setup();
     await exportService.request(a.user.id, a.book.id, 'pdf');

@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
+import { ZodError } from "zod";
 import { AppError } from "../utils/errors.js";
 import { logger } from "../utils/logger.js";
 
@@ -14,6 +15,12 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
   }
   if (err && typeof err === 'object' && 'type' in err && err.type === 'entity.too.large') {
     res.status(413).json({ error: { code: 'PAYLOAD_TOO_LARGE', message: 'Upload exceeds the size limit.', requestId: String(req.id) } });
+    return;
+  }
+  // A schema parsed inside a controller rather than by `validateBody` is still
+  // the caller's mistake, not a server fault.
+  if (err instanceof ZodError) {
+    res.status(400).json({ error: { code: "BAD_REQUEST", message: "Validation failed", details: err.issues.map((i) => ({ path: i.path.join("."), message: i.message })), requestId: String(req.id) } });
     return;
   }
   // Malformed JSON body

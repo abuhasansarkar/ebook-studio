@@ -11,6 +11,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader } from "@/components/ui/misc";
 import { Input, Select } from "@/components/ui/form";
 import { errorMessage } from "@/lib/api";
+import { downloadFile } from "@/lib/download";
 import { useBook, useCreateExport, useExports, useExportFormats } from "@/lib/queries";
 import { formatBytes, formatNumber, timeAgo } from "@/lib/utils";
 import type { ExportRecord } from "@/lib/types";
@@ -73,7 +74,9 @@ export function ExportScreen({ params }: { params: Promise<{ bookId: string }> }
   const [format, setFormat] = useState<ExportFormat>("pdf");
   const [options, setOptions] = useState<Record<string, unknown>>({});
 
-  if (book.isLoading) return <PageLoader />;
+  // isPending, not isLoading: the book query waits for the session, and a
+  // waiting query is pending without loading (see generate-screen).
+  if (book.isPending && !book.error) return <PageLoader />;
   if (book.error || !book.data) return <div className="mx-auto max-w-4xl px-4 py-8"><ErrorState message={errorMessage(book.error)} onRetry={() => void book.refetch()} /></div>;
 
   const b = book.data;
@@ -95,7 +98,8 @@ export function ExportScreen({ params }: { params: Promise<{ bookId: string }> }
 
   const request = () =>
     createExport.mutate(
-      { format, options },
+      // A cleared number box means "use the default", so it is left out.
+      { format, options: Object.fromEntries(Object.entries(options).filter(([, v]) => v !== "")) },
       {
         onSuccess: () => toast.success(`Building your ${spec.label}…`),
         onError: (err) => toast.error(errorMessage(err)),
@@ -183,11 +187,14 @@ export function ExportScreen({ params }: { params: Promise<{ bookId: string }> }
                         type="number"
                         data-option={option.key}
                         className="h-9 w-24 py-0"
-                        value={Number(value)}
+                        value={value === "" ? "" : Number(value)}
                         step={option.step}
                         min={option.min}
                         max={option.max}
-                        onChange={(e) => setOptions((o) => ({ ...o, [option.key]: Number(e.target.value) }))}
+                        // An emptied box is kept empty while typing and falls back to the
+                        // default when left, instead of sending 0.
+                        onChange={(e) => setOptions((o) => ({ ...o, [option.key]: e.target.value === "" ? "" : Number(e.target.value) }))}
+                        onBlur={(e) => { if (e.target.value === "") setOptions((o) => { const next = { ...o }; delete next[option.key]; return next; }); }}
                       />
                     )}
                   </label>
@@ -265,9 +272,13 @@ export function ExportScreen({ params }: { params: Promise<{ bookId: string }> }
                 {e.status === "ready" && <ExportFindings e={e} />}
               </div>
               {e.status === "ready" && (
-                <a href={`/api/v1/exports/${e.id}/download`} className={buttonVariants({ variant: "secondary", size: "sm" })} download>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => downloadFile(`/api/v1/exports/${e.id}/download`, `book.${e.format}`).catch((err) => toast.error(errorMessage(err)))}
+                >
                   <Download className="h-3.5 w-3.5" /> Download
-                </a>
+                </Button>
               )}
             </div>
           ))}

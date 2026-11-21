@@ -570,6 +570,36 @@ describe('the local provider takes the money, not the browser', () => {
     expect(after.balance).toBe((before?.balance ?? 0) + PLAN.credits);
   });
 
+  it('lets a customer buy the same plan again after the first purchase settled', async () => {
+    const user = await createUser('local-provider-repeat');
+    const first = await user.agent.post('/api/v1/billing/checkout').set('Origin', ORIGIN).send({ planId: PLAN.id }).expect(201);
+    // A double click while the first checkout is pending returns the same checkout.
+    const again = await user.agent.post('/api/v1/billing/checkout').set('Origin', ORIGIN).send({ planId: PLAN.id }).expect(201);
+    expect(again.body.checkout.id).toBe(first.body.checkout.id);
+
+    const session = new URL(first.body.checkout.url).searchParams.get('session')!;
+    await getAgent().post(`/api/v1/local-provider/pay/${session}`).expect(200);
+    const afterFirst = await prisma.creditWallet.findUniqueOrThrow({ where: { userId: user.user.id } });
+
+    // Once settled, buying the plan again is a new checkout, paid and credited on its own.
+    const second = await user.agent.post('/api/v1/billing/checkout').set('Origin', ORIGIN).send({ planId: PLAN.id }).expect(201);
+    expect(second.body.checkout.id).not.toBe(first.body.checkout.id);
+    const secondSession = new URL(second.body.checkout.url).searchParams.get('session')!;
+    expect(secondSession).not.toBe(session);
+    await getAgent().post(`/api/v1/local-provider/pay/${secondSession}`).expect(200);
+    const afterSecond = await prisma.creditWallet.findUniqueOrThrow({ where: { userId: user.user.id } });
+    expect(afterSecond.balance).toBe(afterFirst.balance + PLAN.credits);
+  });
+
+  it('gives different plans different checkouts', async () => {
+    await createPlan('second-plan', true);
+    const user = await createUser('local-provider-two-plans');
+    const a = await user.agent.post('/api/v1/billing/checkout').set('Origin', ORIGIN).send({ planId: PLAN.id }).expect(201);
+    const b = await user.agent.post('/api/v1/billing/checkout').set('Origin', ORIGIN).send({ planId: 'second-plan' }).expect(201);
+    expect(b.body.checkout.id).not.toBe(a.body.checkout.id);
+    expect(b.body.checkout.planId).toBe('second-plan');
+  });
+
   it('does not grant anything twice when the customer pays twice', async () => {
     const user = await createUser('local-provider-twice');
     const checkout = await user.agent.post('/api/v1/billing/checkout').set('Origin', ORIGIN).send({ planId: PLAN.id }).expect(201);
@@ -617,7 +647,7 @@ describe('a recurring plan starts a subscription', () => {
     expect(res.body.entitlements.maxBooks).toBe(5);
   });
 
-  it('withdraws the capabilities when the subscription is cancelled', async () => {
+  it('keeps a cancelled subscription until its paid period ends, then withdraws it', async () => {
     const user = await createUser('recurring-cancel');
     const checkout = await user.agent.post('/api/v1/billing/checkout').set('Origin', ORIGIN).send({ planId: RECURRING.id }).expect(201);
     await sendWebhook(eventBody({
@@ -631,12 +661,27 @@ describe('a recurring plan starts a subscription', () => {
     expect(await prisma.entitlement.count({ where: { userId: user.user.id } })).toBeGreaterThan(0);
 
     await user.agent.post('/api/v1/billing/cancel').set('Origin', ORIGIN).expect(200);
-    // The capabilities go with the cancellation.
-    expect(await prisma.entitlement.count({ where: { userId: user.user.id } })).toBe(0);
 
-    const res = await user.agent.get('/api/v1/billing').set('Origin', ORIGIN).expect(200);
-    expect(res.body.subscription).toBeNull();
-    expect(res.body.entitlements.maxBooks).toBeUndefined();
+    // The period is paid for, so the plan keeps running: it is shown as
+    // cancelled and its capabilities expire when the period ends.
+    const during = await user.agent.get('/api/v1/billing').set('Origin', ORIGIN).expect(200);
+    expect(during.body.subscription).not.toBeNull();
+    expect(during.body.subscription.canceledAt).toBeTruthy();
+    expect(during.body.entitlements.maxBooks).toBe(5);
+    const subscription = await prisma.subscription.findFirstOrThrow({ where: { userId: user.user.id } });
+    const rows = await prisma.entitlement.findMany({ where: { userId: user.user.id, source: 'subscription' } });
+    expect(rows.every((row) => row.expiresAt?.getTime() === subscription.currentPeriodEnd?.getTime())).toBe(true);
+
+    // Cancelling twice changes nothing.
+    await user.agent.post('/api/v1/billing/cancel').set('Origin', ORIGIN).expect(200);
+
+    // Once the period has ended, the plan and its capabilities are gone.
+    const past = new Date(Date.now() - 60_000);
+    await prisma.subscription.update({ where: { id: subscription.id }, data: { currentPeriodEnd: past } });
+    await prisma.entitlement.updateMany({ where: { userId: user.user.id, source: 'subscription' }, data: { expiresAt: past } });
+    const after = await user.agent.get('/api/v1/billing').set('Origin', ORIGIN).expect(200);
+    expect(after.body.subscription).toBeNull();
+    expect(after.body.entitlements.maxBooks).toBeUndefined();
   });
 });
 

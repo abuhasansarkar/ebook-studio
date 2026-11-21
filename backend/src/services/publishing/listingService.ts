@@ -11,7 +11,7 @@ import {
 } from "@ebook/shared";
 import { prisma } from "../../database/prisma.js";
 import { getOwnedBook, getBrief } from "../books/bookService.js";
-import { creditService } from "../credits/creditService.js";
+import { creditService, settleInTransaction } from "../credits/creditService.js";
 import { openaiProvider } from "../ai/openaiClient.js";
 import { env } from "../../config/env.js";
 import { badRequest, conflict, notFound } from "../../utils/errors.js";
@@ -331,20 +331,29 @@ export async function prepareListing(
     throw err;
   }
 
-  await creditService.settle(userId, LISTING_COST, LISTING_COST, reference);
-
-  const row = await prisma.listing.create({
-    data: {
-      userId,
-      bookId,
-      destination: input.destination,
-      priceInMinorUnits: input.priceInMinorUnits,
-      fields: drafted as unknown as object,
-      confirmed: {} as unknown as object,
-      chapterVersions: chapterVersions as unknown as object,
-      rulesVersion: LISTING_RULES_VERSION,
-    },
-  });
+  // The charge and the listing are written together, so a listing that fails
+  // to save never leaves the author charged for it.
+  let row;
+  try {
+    row = await prisma.$transaction(async (tx) => {
+      await settleInTransaction(tx, userId, LISTING_COST, LISTING_COST, reference);
+      return tx.listing.create({
+        data: {
+          userId,
+          bookId,
+          destination: input.destination,
+          priceInMinorUnits: input.priceInMinorUnits,
+          fields: drafted as unknown as object,
+          confirmed: {} as unknown as object,
+          chapterVersions: chapterVersions as unknown as object,
+          rulesVersion: LISTING_RULES_VERSION,
+        },
+      });
+    });
+  } catch (err) {
+    await creditService.settle(userId, LISTING_COST, 0, reference).catch(() => undefined);
+    throw err;
+  }
 
   logger.info(
     { listingId: row.id, destination: input.destination, bookId },

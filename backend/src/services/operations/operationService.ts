@@ -15,6 +15,9 @@ export function canonicalJson(value: unknown): string {
 
 interface Result { status: number; body: Record<string, unknown> }
 
+/** A submission still marked in flight after this long is treated as abandoned. */
+const STALE_SUBMISSION_MS = 120_000;
+
 export async function submitOperation(req: Request, res: Response, userId: string, kind: string, bookId: string | null, run: () => Promise<Result>) {
   const idempotencyKey = req.get("Idempotency-Key") ?? randomUUID();
   if (!/^[A-Za-z0-9_-]{1,100}$/.test(idempotencyKey)) throw badRequest("Idempotency-Key must contain 1–100 letters, numbers, underscores or hyphens.");
@@ -35,6 +38,14 @@ export async function submitOperation(req: Request, res: Response, userId: strin
       const error = body.error as Record<string, unknown> | undefined;
       res.status(existing.responseStatus).json({ ...body, ...(error ? { error: { ...error, requestId: String(req.id) } } : {}), operationId: existing.id, replayed: true });
       return;
+    }
+    // The earlier attempt either crashed or was abandoned mid-flight. It is
+    // never re-run automatically, because it may have partly taken effect, but
+    // the key is released: the caller is told to check, and their next attempt
+    // is a new request rather than an endless wait on this one.
+    const abandoned = existing.state === "submitting" && Date.now() - existing.updatedAt.getTime() > STALE_SUBMISSION_MS;
+    if (existing.state === "needs_review" || abandoned) {
+      throw new AppError(409, "OPERATION_NEEDS_REVIEW", "Your earlier attempt didn't finish because of a server error. Check whether it took effect before trying again; the next attempt starts fresh.", { operationId: existing.id });
     }
     throw new AppError(409, "OPERATION_PENDING", "The earlier request is still being checked. Retry with the same request key; do not start a duplicate.", { operationId: existing.id });
   }
@@ -66,7 +77,7 @@ async function project(record: Operation): Promise<OperationView> {
   let progress = 0;
   let total = 0;
   let updatedAt = record.updatedAt;
-  if (record.state === "submitting" && Date.now() - record.updatedAt.getTime() > 120_000) state = "needs_review";
+  if (record.state === "submitting" && Date.now() - record.updatedAt.getTime() > STALE_SUBMISSION_MS) state = "needs_review";
   if (record.kind === "create_book" && (record.responseBody as { outlineError?: unknown } | null)?.outlineError) state = "failed";
   if (record.resourceId && record.state === "submitted") {
     if (record.kind === "export") {

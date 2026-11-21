@@ -467,9 +467,10 @@ export function Distribution({ bookId }: { bookId: string }) {
               key={item.destination}
               destination={item.destination}
               current={statusFor(item.destination)}
-              onChange={(state) =>
+              saving={setStatus.isPending && setStatus.variables?.destination === item.destination}
+              onSave={(input) =>
                 setStatus.mutate(
-                  { destination: item.destination, state },
+                  { destination: item.destination, ...input },
                   {
                     onSuccess: () => {
                       setNotice("Publishing status recorded.");
@@ -484,63 +485,113 @@ export function Distribution({ bookId }: { bookId: string }) {
         </Card>
       </Section>
 
-      <div className="mt-8 flex justify-end">
-        <Button variant="ghost" onClick={() => setNotice(null)}>
-          <Send className="h-4 w-4" />
-          Nothing is sent anywhere
-        </Button>
-      </div>
+      <p className="mt-8 flex items-center justify-end gap-2 text-sm text-muted-foreground">
+        <Send className="h-4 w-4" aria-hidden />
+        Nothing is sent to any store. You upload the package yourself.
+      </p>
     </div>
   );
 }
 
 /**
- * One destination's publishing status.
+ * One destination's publishing status, as the author records it.
  *
- * The state is kept locally so the control responds immediately, and the
- * server's answer replaces it once the record is saved.
+ * The form starts from the saved record and is reset whenever a newer record
+ * arrives, so the control never disagrees with the badge beside it.
  */
 function PublishingStatusRow({
   destination,
   current,
-  onChange,
+  saving,
+  onSave,
 }: {
   destination: DistributionDestination;
-  current: { state: PublishingState; note?: string | null; updatedAt?: string } | null;
-  onChange: (state: PublishingState) => void;
+  current: { state: PublishingState; externalReference?: string | null; note?: string | null; updatedAt?: string } | null;
+  saving: boolean;
+  onSave: (input: { state: PublishingState; externalReference?: string; note?: string }) => void;
 }) {
-  const [state, setState] = useState<PublishingState>(current?.state ?? "not_prepared");
+  const saved = {
+    state: current?.state ?? "not_prepared",
+    externalReference: current?.externalReference ?? "",
+    note: current?.note ?? "",
+  };
+  const [draft, setDraft] = useState(saved);
+  const [syncedAt, setSyncedAt] = useState(current?.updatedAt);
+  // A newer saved record replaces the form (adjusting state during render).
+  if (current?.updatedAt !== syncedAt) {
+    setSyncedAt(current?.updatedAt);
+    setDraft(saved);
+  }
+  const dirty = draft.state !== saved.state || draft.externalReference !== saved.externalReference || draft.note !== saved.note;
+  const id = `publishing-${destination}`;
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5">
-      <div className="min-w-0">
+    <div className="space-y-3 px-5 py-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-medium">{DEST_LABELS[destination]}</p>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          {current?.note ?? "No note"} {current?.updatedAt ? `· updated ${timeAgo(current.updatedAt)}` : ""}
-        </p>
+        <div className="flex items-center gap-2">
+          <Badge tone={STATE_TONE[saved.state]}>{STATE_LABEL[saved.state]}</Badge>
+          {current?.updatedAt && <span className="text-xs text-muted-foreground">updated {timeAgo(current.updatedAt)}</span>}
+        </div>
       </div>
-      <div className="flex items-center gap-2">
-        <Badge tone={STATE_TONE[current?.state ?? "not_prepared"]}>
-          {STATE_LABEL[current?.state ?? "not_prepared"]}
-        </Badge>
-        <Select
-          className="h-9 w-auto py-0 text-xs"
-          value={state}
-          aria-label={`Publishing status for ${DEST_LABELS[destination]}`}
-          onChange={(event) => {
-            const next = event.target.value as PublishingState;
-            setState(next);
-            onChange(next);
-          }}
-          data-testid={`publishing-state-${destination}`}
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+        <Field label="Status" htmlFor={`${id}-state`}>
+          <Select
+            id={`${id}-state`}
+            className="h-9 py-0 text-sm"
+            value={draft.state}
+            onChange={(event) => setDraft({ ...draft, state: event.target.value as PublishingState })}
+            data-testid={`publishing-state-${destination}`}
+          >
+            {(Object.keys(STATE_LABEL) as PublishingState[]).map((value) => (
+              <option key={value} value={value}>
+                {STATE_LABEL[value]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Store reference (optional)" htmlFor={`${id}-ref`}>
+          <Input
+            id={`${id}-ref`}
+            className="h-9"
+            maxLength={200}
+            placeholder="ASIN, product ID or listing URL"
+            value={draft.externalReference}
+            onChange={(event) => setDraft({ ...draft, externalReference: event.target.value })}
+          />
+        </Field>
+        <Field label="Note (optional)" htmlFor={`${id}-note`}>
+          <Input
+            id={`${id}-note`}
+            className="h-9"
+            maxLength={1000}
+            placeholder="e.g. In review since Monday"
+            value={draft.note}
+            onChange={(event) => setDraft({ ...draft, note: event.target.value })}
+          />
+        </Field>
+        <Button
+          size="sm"
+          className="h-9"
+          disabled={!dirty}
+          loading={saving}
+          onClick={() =>
+            onSave({
+              state: draft.state,
+              externalReference: draft.externalReference.trim() || undefined,
+              note: draft.note.trim() || undefined,
+            })
+          }
+          data-testid={`publishing-save-${destination}`}
         >
-          {(Object.keys(STATE_LABEL) as PublishingState[]).map((value) => (
-            <option key={value} value={value}>
-              {STATE_LABEL[value]}
-            </option>
-          ))}
-        </Select>
+          Save
+        </Button>
       </div>
+      {saved.externalReference && /^https?:\/\//.test(saved.externalReference) && (
+        <a href={saved.externalReference} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-primary hover:underline">
+          Open the store listing
+        </a>
+      )}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { FREE_TIER_ENTITLEMENTS, type EntitlementKey, type Plan, type Subscripti
 import { PageHeader } from "@/components/app/app-shell";
 import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader, Section } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { errorMessage } from "@/lib/api";
 import { useBilling, useCancelSubscription, usePayments, usePlans, useStartCheckout } from "@/lib/queries";
 import { formatNumber, timeAgo } from "@/lib/utils";
@@ -107,6 +108,7 @@ export default function BillingPage() {
 
   const [notice, setNotice] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState(false);
 
   const state = billingQuery.data;
   const catalog = plansQuery.data;
@@ -183,14 +185,17 @@ export default function BillingPage() {
                   <p className="font-semibold">{subscription.planName}</p>
                   <p className="mt-1 text-sm text-muted-foreground">
                     Started {timeAgo(subscription.createdAt)}
-                    {subscription.currentPeriodEnd ? ` · renews ${new Date(subscription.currentPeriodEnd).toLocaleDateString()}` : ""}
+                    {subscription.currentPeriodEnd ? ` · ${subscription.canceledAt ? "ends" : "renews"} ${new Date(subscription.currentPeriodEnd).toLocaleDateString()}` : ""}
                   </p>
                 </div>
                 <Badge tone={SUBSCRIPTION_TONE[subscription.status]}>{subscription.status.replace(/_/g, " ")}</Badge>
               </div>
               {subscription.canceledAt && (
                 <p className="mt-3 text-sm text-muted-foreground">
-                  Cancelled {timeAgo(subscription.canceledAt)}. It stays active until the period ends.
+                  Cancelled {timeAgo(subscription.canceledAt)}.{" "}
+                  {subscription.currentPeriodEnd
+                    ? `Your plan and its benefits stay active until ${new Date(subscription.currentPeriodEnd).toLocaleDateString()}.`
+                    : "It has ended."}
                 </p>
               )}
               <Button
@@ -198,18 +203,30 @@ export default function BillingPage() {
                 className="mt-5"
                 loading={cancel.isPending}
                 disabled={subscription.canceledAt !== null}
-                onClick={() => {
-                  setProblem(null);
-                  setNotice(null);
-                  cancel.mutate(undefined, {
-                    onSuccess: () => setNotice("Subscription cancelled. It stays active until the period ends."),
-                    onError: (err) => setProblem(errorMessage(err)),
-                  });
-                }}
+                onClick={() => setConfirmCancel(true)}
                 data-testid="cancel-subscription"
               >
                 {subscription.canceledAt ? "Cancelled" : "Cancel subscription"}
               </Button>
+              <ConfirmDialog
+                open={confirmCancel}
+                onClose={() => setConfirmCancel(false)}
+                title="Cancel your subscription?"
+                description={subscription.currentPeriodEnd ? `It won't renew. You keep the plan and its benefits until ${new Date(subscription.currentPeriodEnd).toLocaleDateString()}.` : "It ends now."}
+                confirmLabel="Cancel subscription"
+                cancelLabel="Keep it"
+                busy={cancel.isPending}
+                onConfirm={() => {
+                  setProblem(null);
+                  setNotice(null);
+                  cancel.mutate(undefined, {
+                    onSuccess: () => { setConfirmCancel(false); setNotice("Subscription cancelled. It won't renew."); },
+                    onError: (err) => { setConfirmCancel(false); setProblem(errorMessage(err)); },
+                  });
+                }}
+              >
+                Credits you already have are not affected.
+              </ConfirmDialog>
             </Card>
             ) : (
               <EmptyState icon={<Sparkles className="h-6 w-6" />} title="No subscription" description="Buying a plan starts a subscription." />

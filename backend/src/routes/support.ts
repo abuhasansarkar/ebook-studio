@@ -2,6 +2,7 @@ import { Router } from "express";
 import { supportRequestSchema } from "@ebook/shared";
 import { userId } from "../middleware/requireAuth.js";
 import { validateBody } from "../middleware/validate.js";
+import { supportLimiter } from "../middleware/rateLimits.js";
 import { submitSupportRequest } from "../services/admin/operationsService.js";
 import { prisma } from "../database/prisma.js";
 
@@ -13,7 +14,7 @@ export const supportRouter = Router();
  * A customer submits a request and gets back the correlation id, so they can
  * quote it when they follow up and support can find the matching logs.
  */
-supportRouter.post("/support/requests", validateBody(supportRequestSchema), async (req, res) => {
+supportRouter.post("/support/requests", supportLimiter, validateBody(supportRequestSchema), async (req, res) => {
   const id = userId(req);
   const correlationId = req.body.correlationId ?? `sup-${Date.now().toString(36)}`;
   const result = await submitSupportRequest({
