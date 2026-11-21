@@ -80,6 +80,9 @@ const parsed = envSchema.safeParse(process.env);
 if (!parsed.success) {
   console.error("Invalid environment configuration:");
   for (const issue of parsed.error.issues) console.error(`  ${issue.path.join(".")}: ${issue.message}`);
+  // The variables are documented in .env.example. Naming the file here saves
+  // the reader from searching the repository for where the value belongs.
+  console.error("Copy the missing values from .env.example and set them in .env (or the environment the process is started with).");
   process.exit(1);
 }
 

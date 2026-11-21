@@ -1074,3 +1074,74 @@ Every browser journey was then re-run on the corrected stack — UI, sources, ci
 - **The stale-listing path was not exercised in the browser.** It is covered by the integration suite; the journey does not edit the manuscript afterwards to make a listing stale.
 - **The e2e environment is not a deployment.** The evidence was produced locally against the fake AI provider, a local PostgreSQL and Redis, and isolated frontend and backend processes on ports 4100 and 3100. No deployment or remote push was performed, and the CI workflow and the nginx Content-Security-Policy have not yet been exercised in their own Docker environments.
 - **The Stripe sandbox journey was not re-run in this pass.** It needs the Stripe CLI listener and the `.env.e2e` credentials, and it was not part of this change. The five journeys that do not need Stripe were all re-run on the corrected stack.
+
+## Google sign-in — the button was missing because the API could not start — 27 November 2026
+
+Status: the Google sign-in button now renders on `/login` and `/signup`, and the OAuth redirect reaches Google. The cause was not the Google wiring — it was a missing environment variable that stopped the whole API from booting.
+
+### The defect
+
+`PAYMENT_WEBHOOK_SECRET` is **required** by the backend's environment schema, and the schema refuses to start the process without it:
+
+```
+PAYMENT_WEBHOOK_SECRET: Required — "PAYMENT_WEBHOOK_SECRET must be at least 16 chars"
+```
+
+It was present in `.env.e2e` and `.env.e2e.local`, but **absent from `.env`** — the file the normal local dev path reads — and **absent from `.env.example`**, so there was nothing to copy from. The API therefore exited at startup.
+
+The failure was invisible from the browser. The login page rendered normally, the form worked, and the Google button was simply **not there**. The chain is:
+
+```mermaid
+flowchart TD
+  Missing["PAYMENT_WEBHOOK_SECRET absent from .env"] --> Boot["API exits at startup"]
+  Boot --> Proxy["GET /api/v1/config returns 500"]
+  Proxy --> Query["usePublicConfig has no data"]
+  Query --> Hide["GoogleButton returns null"]
+  Hide --> NoButton["No Google button on /login and /signup"]
+```
+
+The Google credentials themselves were present and well-formed the whole time (a valid `*.apps.googleusercontent.com` client ID and a `GOCSPX-` secret), and the backend reports `{"auth":{"google":true}}` correctly as soon as it can start.
+
+### The fixes
+
+- **`.env`** — `PAYMENT_WEBHOOK_SECRET` added, reusing the value already configured in the e2e files so the local and e2e stacks agree.
+- **`.env.example`** — a **Payments** section added, documenting `PAYMENT_PROVIDER`, `PAYMENT_WEBHOOK_SECRET`, `PAYMENT_WEBHOOK_TOLERANCE_SECONDS` and the three Stripe variables. The file previously had no payments section at all, which is why the required variable could not be discovered by copying the template.
+- **`docker-compose.yml`** — the container had the same gap: it passed no payment variables, so the containerised API would also have refused to start. `PAYMENT_WEBHOOK_SECRET` is now passed through, with `:?` so `docker compose up` fails with a clear message rather than a crash loop.
+- **`backend/src/config/env.ts`** — the startup error now names `.env.example` as the source of the missing values, instead of only listing the field that is absent.
+- **`backend/tests/public-config.test.ts`** — a new test file, 6 checks, that pins the behaviour so this cannot regress silently.
+
+### Verification
+
+| Check | Result |
+| --- | --- |
+| `GET /api/v1/config` | `200` with `{"auth":{"google":true}}` |
+| `GET /api/v1/config` through the frontend proxy | `200` with `{"auth":{"google":true}}` |
+| Google button rendered on `/login` | **yes**, with the Google logo and the "or" divider |
+| Google button rendered on `/signup` | **yes** |
+| Clicking the button | redirects to `accounts.google.com`, carrying `client_id` and `redirect_uri` |
+| Browser page errors | none |
+| OAuth authorization URL | `response_type=code`, `scope=email profile openid`, PKCE `code_challenge_method=S256` |
+| New public-config tests | **6/6 passed** |
+| Full backend suite | **477/477 passed across 36/36 files** (up from 471/35) |
+| Workspace typecheck and lint | all four packages pass |
+| Backend and frontend production builds | both pass |
+| `docker compose config` | valid |
+
+A Google account already existed in the local database with `emailVerified: true`, confirming the sign-in path had worked before the environment was broken.
+
+### The redirect URI to register in the Google Cloud console
+
+The API generates the callback from `APP_URL`, so for the local stack it is:
+
+```
+http://localhost:3000/api/v1/auth/callback/google
+```
+
+`APP_URL` and `BETTER_AUTH_URL` must match the port the frontend is actually served on, and that same origin must be registered as an **Authorized redirect URI** in the Google Cloud console. Changing the frontend port means changing both.
+
+### The boundaries that remain
+
+- **The Google callback was not exercised end to end.** The redirect to Google was observed and the request was correct, but the journey back was not completed, because that needs a real interaction with Google's own sign-in screen and a live account. Whether the callback creates a session, links to an existing email/password account, or handles a first-time Google user is therefore **not** covered by an automated check.
+- **Account linking is unverified.** A person who already has a password account with the same email and then signs in with Google may be offered a link, refused, or given a second account. Better Auth's behaviour decides this, and it has not been observed here.
+- **The button is gated on configuration, not on the user's environment.** When `GOOGLE_CLIENT_ID` or `GOOGLE_CLIENT_SECRET` is absent, the button is hidden and no explanation is shown. That is deliberate — a button that cannot work is worse than no button — but it means a misconfigured deployment looks the same as an unconfigured one.
+- **The frontend cannot tell a missing provider from a broken API.** The button disappears in both cases. The new test covers the endpoint, not the button, so the browser-level symptom of this defect is still only caught by opening the page.
