@@ -1,5 +1,6 @@
 import { prisma } from "../../database/prisma.js";
 import { logger } from "../../utils/logger.js";
+import { notFound } from "../../utils/errors.js";
 import { recordAudit } from "./adminService.js";
 
 /**
@@ -344,10 +345,7 @@ export async function adjustCredits(input: {
 }): Promise<{ balance: number; transactionId: string }> {
   const { creditService } = await import("../credits/creditService.js");
   const target = await prisma.user.findUnique({ where: { id: input.userId } });
-  if (!target) {
-    const { notFound } = await import("../../utils/errors.js");
-    throw notFound("User");
-  }
+  if (!target) throw notFound("User");
 
   const result = await creditService.adjust(
     input.userId,
@@ -428,6 +426,15 @@ export async function replySupportRequest(input: {
   response: string;
   requestIdHeader?: string;
 }): Promise<void> {
+  // The request is looked up first. Updating a row that is not there is an
+  // internal fault in the database, not a missing request, so it is turned
+  // into the not-found the caller actually means.
+  const existing = await prisma.supportRequest.findUnique({
+    where: { id: input.requestId },
+    select: { id: true, category: true },
+  });
+  if (!existing) throw notFound("Support request");
+
   const row = await prisma.supportRequest.update({
     where: { id: input.requestId },
     data: {

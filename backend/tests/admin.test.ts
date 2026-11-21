@@ -375,6 +375,20 @@ describe("S13 administration", () => {
       expect(res.status).toBe(403);
     });
 
+    /**
+     * A reply to a request that is not there is a missing request, not a
+     * server fault. Updating a row that does not exist is an internal fault
+     * in the database, so the request is looked up first and the caller is
+     * told the request was not found.
+     */
+    it("reports a reply to a request that does not exist as not found", async () => {
+      const res = await support.agent
+        .post("/api/v1/admin/support/no-such-request/reply")
+        .send({ response: "A reply to nothing." });
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe("NOT_FOUND");
+    });
+
     it("shows a customer only their own requests", async () => {
       const other = await createUser("s13-other");
       const res = await other.agent.get("/api/v1/support/requests");

@@ -1,7 +1,10 @@
 import { afterAll, describe, expect, it } from "vitest";
+import { zodTextFormat } from "openai/helpers/zod";
+import { LISTING_PROFILES, type DistributionDestination } from "@ebook/shared";
 import { prisma } from "../src/database/prisma.js";
 import { closeQueues } from "../src/queues/index.js";
 import { createUser } from "./helpers.js";
+import { aiListingSchemaFor } from "../src/services/publishing/listingService.js";
 
 afterAll(async () => {
   await closeQueues();
@@ -257,4 +260,58 @@ describe("marketplace listing copy", () => {
     expect(kdp.fields.length).toBeGreaterThan(0);
     expect(kdp.source).toMatch(/^https?:\/\//);
   }, 60_000);
+
+  /**
+   * The provider's strict output mode refuses any object that does not declare
+   * that it accepts no additional properties, and refuses an optional key
+   * outright. An open map cannot be used, so the schema is built per
+   * destination with one fixed key per field. A schema that breaks that rule
+   * turns a listing request into a 500 at the provider, which is what this
+   * test exists to catch.
+   */
+  it("builds a provider-acceptable strict schema for every destination", () => {
+    for (const destination of Object.keys(LISTING_PROFILES) as DistributionDestination[]) {
+      const schema = aiListingSchemaFor(destination);
+
+      // The provider's own helper throws when the schema is not strict-compatible.
+      const format = zodTextFormat(schema, `listing_${destination}`);
+      const json = format.schema as {
+        additionalProperties?: unknown;
+        properties?: { fields?: { additionalProperties?: unknown; properties?: Record<string, unknown>; required?: string[] } };
+      };
+
+      expect(format.strict).toBe(true);
+      expect(json.additionalProperties).toBe(false);
+
+      const fields = json.properties?.fields;
+      expect(fields).toBeDefined();
+      expect(fields?.additionalProperties).toBe(false);
+
+      // Every field the destination's own form asks for is a named, required key.
+      const keys = Object.keys(fields?.properties ?? {});
+      expect(keys.sort()).toEqual(
+        LISTING_PROFILES[destination].fields.map((f: { key: string }) => f.key).sort(),
+      );
+      for (const key of keys) expect(fields?.required ?? []).toContain(key);
+    }
+  });
+
+  it("accepts a field the model could not fill in", () => {
+    const schema = aiListingSchemaFor("kdp_ebook");
+    const parsed = schema.parse({
+      fields: {
+        title: "The Practical Guide",
+        subtitle: null,
+        author: null,
+        description: "A description.",
+        keywords: null,
+        categories: null,
+        audience: null,
+      },
+      flaggedPhrases: [],
+    });
+    expect(parsed.fields.title).toBe("The Practical Guide");
+    expect(parsed.fields.subtitle).toBeNull();
+    expect(parsed.flaggedPhrases).toEqual([]);
+  });
 });

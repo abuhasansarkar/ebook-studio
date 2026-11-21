@@ -39,13 +39,32 @@ import { logger } from "../../utils/logger.js";
 /** What a listing draft costs. It is one provider call over the whole book. */
 export const LISTING_COST = 3;
 
-/** The structured output the model returns. */
-const aiListingSchema = z.object({
-  /** The field values, keyed by the destination's field key. */
-  fields: z.record(z.string(), z.string()),
-  /** The phrases that claim an endorsement, a ranking, a result or a price. */
-  flaggedPhrases: z.array(z.string()),
-});
+/**
+ * The structured output the model returns.
+ *
+ * The provider's strict output mode requires every object to declare that it
+ * accepts no additional properties, so an open map cannot be used here. The
+ * field keys are known in advance — they come from the destination's own form —
+ * so the schema is built per destination with one fixed key per field.
+ */
+export function aiListingSchemaFor(destination: DistributionDestination) {
+  const profile = LISTING_PROFILES[destination];
+  const shape: Record<string, z.ZodType<string | null>> = {};
+  for (const field of profile.fields) {
+    // The provider's strict mode requires every key to be present in the
+    // schema, so the key is required here and may only be null rather than
+    // absent. A field the model could not fill in arrives as null, and the
+    // caller falls back to the deterministic value for it.
+    shape[field.key] = z.string().nullable();
+  }
+  return z.object({
+    /** The field values, keyed by the destination's field key. */
+    fields: z.object(shape),
+    /** The phrases that claim an endorsement, a ranking, a result or a price. */
+    flaggedPhrases: z.array(z.string()),
+  });
+}
+
 
 /** The instruction the model is given for a destination. */
 function instructions(destination: DistributionDestination): { system: string; shape: string } {
@@ -291,11 +310,17 @@ export async function prepareListing(
       const { data } = await openaiProvider.json({
         system: `${instruction.system}\n\n${instruction.shape}`,
         user: prompt,
-        schema: aiListingSchema,
+        schema: aiListingSchemaFor(input.destination),
         name: "listing_copy",
         maxOutputTokens: 2000,
       });
-      drafted = { ...deterministic, ...(data.fields ?? {}) };
+      // A field the model left empty arrives as null, so it is dropped here and
+      // the deterministic value below fills it in.
+      const produced: Record<string, string> = {};
+      for (const [key, value] of Object.entries(data.fields ?? {})) {
+        if (typeof value === "string" && value.trim()) produced[key] = value;
+      }
+      drafted = { ...deterministic, ...produced };
       // A field the model did not produce keeps the deterministic value.
       for (const [key, value] of Object.entries(deterministic)) {
         if (!drafted[key]) drafted[key] = value;
