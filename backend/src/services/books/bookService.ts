@@ -19,7 +19,7 @@ export async function getBrief(bookId: string): Promise<BookBrief> {
 }
 
 export const bookService = {
-  async create(userId: string, brief: BookBrief, projectId?: string) {
+  async create(userId: string, brief: BookBrief, projectId?: string | null) {
     // The book count is a paid quota. A plan that carries `maxBooks: 5`
     // allows five live books; the sixth is refused rather than silently
     // allowed. The count excludes archived and deleted books, so archiving

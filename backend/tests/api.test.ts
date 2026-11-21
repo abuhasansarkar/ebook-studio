@@ -76,6 +76,23 @@ describe("auth & access control", () => {
     expect(res.body.error.code).toBe("BAD_REQUEST");
     expect(res.body.error.details.map((d: { path: string }) => d.path)).toEqual(expect.arrayContaining(["brief.topic", "brief.language"]));
   });
+
+  it("refuses an empty project id as a bad request rather than a server fault", async () => {
+    // The books table carries a foreign key to projects, so an empty string is
+    // not a project id. It used to reach the database and surface as a 500.
+    const { agent } = await createUser("empty-project");
+    const res = await agent.post("/api/v1/books").set("Origin", ORIGIN).send({ ...brief(), projectId: "" });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("BAD_REQUEST");
+    expect(res.body.error.details.map((d: { path: string }) => d.path)).toEqual(expect.arrayContaining(["projectId"]));
+  });
+
+  it("accepts a null project id, which means the book is filed under no project", async () => {
+    const { agent } = await createUser("null-project");
+    const res = await agent.post("/api/v1/books").set("Origin", ORIGIN).send({ ...brief(), projectId: null });
+    expect(res.status).toBe(201);
+    expect(res.body.book.projectId).toBeNull();
+  });
 });
 
 describe("book pipeline", () => {

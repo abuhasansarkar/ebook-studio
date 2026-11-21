@@ -19,7 +19,7 @@ export const bookController = {
   /** Creates the book and immediately queues outline generation. */
   async create(req: Request, res: Response) {
     const uid = userId(req);
-    const { brief, projectId } = req.body as { brief: BookBrief; projectId?: string };
+    const { brief, projectId } = req.body as { brief: BookBrief; projectId?: string | null };
     await submitOperation(req, res, uid, "create_book", null, async () => {
     const book = await bookService.create(uid, brief, projectId);
     let job = null;

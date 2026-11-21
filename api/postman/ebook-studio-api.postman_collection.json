@@ -1,0 +1,5015 @@
+{
+  "info": {
+    "name": "eBookStudio API",
+    "description": "Every endpoint of the eBookStudio backend, with the use case it serves and the guard that enforces it.\n\n**How to use it.**\n1. Set `baseUrl` to your API host (default `http://localhost:4000`).\n2. Sign up, then verify the email with the six digit code. The session cookie is set on the response.\n3. Create a book, approve its outline, then start writing. The `{{bookId}}`, `{{chapterId}}` and `{{jobId}}` variables are filled in from the responses as you go.\n\n**Authentication.** The API is session based: send the session cookie. The `Authorization: Bearer {{accessToken}}` header is included on the protected requests so a token based setup also works.\n\n**The boundary the product keeps.** Nothing in this API publishes, emails or posts on an author's behalf. The distribution and marketing routes produce files the author downloads and uses themselves, and the publishing status is the author's own record of what they did with a store.\n\n**Errors.** Every error carries `{ \"error\": { \"code\", \"message\", \"details\" } }` and an `x-request-id` header that matches the server log line.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:4000",
+      "type": "string"
+    },
+    {
+      "key": "apiBase",
+      "value": "{{baseUrl}}/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "bookId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "chapterId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "jobId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "outlineVersion",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "chapterVersion",
+      "value": "0",
+      "type": "string"
+    },
+    {
+      "key": "sourceId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "sourceVersion",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "passageLocator",
+      "value": "p1",
+      "type": "string"
+    },
+    {
+      "key": "listingId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "listingVersion",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "marketingDraftId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "marketingGraphicId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "marketingSampleId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "packageId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "exportId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "assetId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "coverVersion",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "designVersion",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "reportId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "findingId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "imageJobId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "qualityJobId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "operationId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "supportRequestId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "backupName",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "paymentId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "planId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "checkoutSession",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "userId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "00 - Health & public config",
+      "description": "Public. No session needed. Use these to confirm the server, its database and its queue are up before starting anything else.",
+      "item": [
+        {
+          "name": "Liveness",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{apiBase}}/health/live",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "health",
+                "live"
+              ]
+            },
+            "description": "Confirm the process is running and answering.\n\nGuard: None — public."
+          }
+        },
+        {
+          "name": "Readiness",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{apiBase}}/health/ready",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "health",
+                "ready"
+              ]
+            },
+            "description": "Confirm the server can actually serve work: database, redis queue and worker are all present. Returns 503 when degraded.\n\nGuard: None — public."
+          }
+        },
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{apiBase}}/health",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Check the database and the redis queue specifically.\n\nGuard: None — public."
+          }
+        },
+        {
+          "name": "Public config",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{apiBase}}/config",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "config"
+              ]
+            },
+            "description": "Read which sign-in methods and which book languages the frontend should offer before a user is signed in.\n\nGuard: None — public."
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 - Authentication (Better Auth)",
+      "description": "Sessions are cookie based. `sign-up/email` sends a six digit code; the code is confirmed with `email-otp/verify-email`. Every other endpoint in this collection expects the session cookie that follows. If you drive the API with a bearer token instead, set the `accessToken` variable and add the Authorization header.",
+      "item": [
+        {
+          "name": "Sign up",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/auth/sign-up/email",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "auth",
+                "sign-up",
+                "email"
+              ]
+            },
+            "description": "Create an account with an email and a password. A six digit code is emailed; the account stays unverified until it is confirmed.\n\nGuard: None — public. Rate limited in production.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ada Lovelace\",\n  \"email\": \"ada@example.com\",\n  \"password\": \"correct-horse-battery\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Resend the sign-up code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/auth/email-otp/send-verification-otp",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "auth",
+                "email-otp",
+                "send-verification-otp"
+              ]
+            },
+            "description": "Send the verification code again when the first one expired or never arrived.\n\nGuard: None — public. The response stays the same whether or not the account exists.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"ada@example.com\",\n  \"type\": \"sign-up\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Verify the email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/auth/email-otp/verify-email",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "auth",
+                "email-otp",
+                "verify-email"
+              ]
+            },
+            "description": "Confirm the six digit code, which marks the account verified and returns the session. A verified session is required by every other endpoint here.\n\nGuard: None — public. The code expires after 600 seconds and allows 5 attempts.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"ada@example.com\",\n  \"otp\": \"123456\",\n  \"type\": \"sign-up\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Sign in",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/auth/sign-in/email",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "auth",
+                "sign-in",
+                "email"
+              ]
+            },
+            "description": "Sign in with an existing email and password.\n\nGuard: None — public.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"ada@example.com\",\n  \"password\": \"correct-horse-battery\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Sign in with a code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/auth/sign-in/email-otp",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "auth",
+                "sign-in",
+                "email-otp"
+              ]
+            },
+            "description": "Sign in without a password by receiving a one-time code by email.\n\nGuard: None — public.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"ada@example.com\",\n  \"otp\": \"123456\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Request a password reset",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/auth/email-otp/request-password-reset",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "auth",
+                "email-otp",
+                "request-password-reset"
+              ]
+            },
+            "description": "Ask for a reset code by email when the password is lost.\n\nGuard: None — public.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"ada@example.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Reset the password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/auth/email-otp/reset-password",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "auth",
+                "email-otp",
+                "reset-password"
+              ]
+            },
+            "description": "Set a new password using the code that was emailed.\n\nGuard: None — public.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"ada@example.com\",\n  \"otp\": \"123456\",\n  \"password\": \"a-new-long-password\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Read the current session",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{apiBase}}/auth/get-session",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "auth",
+                "get-session"
+              ]
+            },
+            "description": "Read the signed-in user, so a screen knows whether to show the app or the sign-in form.\n\nGuard: None — public, but returns nothing when there is no session."
+          }
+        },
+        {
+          "name": "Sign out",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{apiBase}}/auth/sign-out",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "auth",
+                "sign-out"
+              ]
+            },
+            "description": "End the session and clear the cookie.\n\nGuard: None — public."
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Account, credits & projects",
+      "description": "The signed-in author's own account. Every call here is scoped to the session, so one author can never read another's credits or projects.",
+      "item": [
+        {
+          "name": "Read my account",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/users/me",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            },
+            "description": "Read the signed-in user's id, email and name.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/users/me/dashboard",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "users",
+                "me",
+                "dashboard"
+              ]
+            },
+            "description": "Read the counts and recent activity the dashboard shows.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Read my credits",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/credits",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "credits"
+              ]
+            },
+            "description": "Read the credit balance, the reserved amount and the ledger of recent transactions.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "List projects",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/projects",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "projects"
+              ],
+              "query": [
+                {
+                  "key": "archived",
+                  "value": "active"
+                },
+                {
+                  "key": "search",
+                  "value": ""
+                },
+                {
+                  "key": "limit",
+                  "value": "24"
+                }
+              ]
+            },
+            "description": "List the projects books are filed under.\n\nGuard: Verified session. Archived projects are hidden unless `archived=all`."
+          }
+        },
+        {
+          "name": "Create a project",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/projects",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            },
+            "description": "Group books under a named project so a series can be managed together.\n\nGuard: Verified session.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Self-help series\",\n  \"description\": \"Books in the same series.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Update a project",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/projects/:projectId",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "projects",
+                ":projectId"
+              ]
+            },
+            "description": "Rename a project, change its description, or archive it.\n\nGuard: Verified session. At least one field is required.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Self-help series (renamed)\",\n  \"description\": \"\",\n  \"archived\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete a project",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/projects/:projectId",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "projects",
+                ":projectId"
+              ]
+            },
+            "description": "Remove a project. The books inside it are kept.\n\nGuard: Verified session."
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Books & library",
+      "description": "Creating a book, filing it, and finding it again. Creating a book also queues the outline, so the response carries both the book and the outline job.",
+      "item": [
+        {
+          "name": "Create a book",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books"
+              ]
+            },
+            "description": "Start a new book from a brief. The outline is generated in the background; the response carries the book and the outline job.\n\nGuard: Verified session. Rate limited. Fails with 402 when the credit balance is too low.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"brief\": {\n    \"topic\": \"How to grow herbs on a small kitchen windowsill\",\n    \"bookType\": \"guide\",\n    \"title\": \"The Windowsill Herb Garden\",\n    \"targetAudience\": \"Beginner cooks with a small kitchen\",\n    \"knowledgeLevel\": \"beginner\",\n    \"readerProblem\": \"They buy herbs and let them die.\",\n    \"readerOutcome\": \"They can grow and use six herbs year round.\",\n    \"language\": \"en\",\n    \"tone\": \"friendly\",\n    \"depth\": \"standard\",\n    \"chapterCount\": 8,\n    \"wordsPerChapter\": 1200,\n    \"authorName\": \"Ada Lovelace\",\n    \"purpose\": \"Lead magnet for a gardening newsletter\",\n    \"readerAge\": \"25-45\",\n    \"writingStyle\": \"Practical and warm\",\n    \"pointOfView\": \"Second person\",\n    \"brandName\": \"The Small Garden\",\n    \"terminology\": \"Use 'windowsill' rather than 'windowsill garden' consistently.\",\n    \"extraInstructions\": \"\"\n  },\n  \"projectId\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List books",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books"
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": ""
+                },
+                {
+                  "key": "projectId",
+                  "value": ""
+                },
+                {
+                  "key": "language",
+                  "value": ""
+                },
+                {
+                  "key": "bookType",
+                  "value": ""
+                },
+                {
+                  "key": "status",
+                  "value": ""
+                },
+                {
+                  "key": "archived",
+                  "value": "active"
+                },
+                {
+                  "key": "sort",
+                  "value": "newest"
+                },
+                {
+                  "key": "limit",
+                  "value": "24"
+                }
+              ]
+            },
+            "description": "Find a book in the library. Filter by project, language, type, status, or archived.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Read a book",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId"
+              ]
+            },
+            "description": "Read one book with its brief, outline status and chapter list.\n\nGuard: Verified session. Own book only."
+          }
+        },
+        {
+          "name": "File a book",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId"
+              ]
+            },
+            "description": "Move a book into a project, or archive it.\n\nGuard: Verified session. At least one field is required.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"projectId\": \"\",\n  \"archived\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Duplicate a book",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/duplicate",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "duplicate"
+              ]
+            },
+            "description": "Copy a book so the author can work on a variant without losing the original.\n\nGuard: Verified session. The copy carries no jobs, exports, history or credit spend.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"includeManuscript\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete a book",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId"
+              ]
+            },
+            "description": "Remove a book and its manuscript.\n\nGuard: Verified session. Own book only. The delete is soft, so a restore can still find it."
+          }
+        },
+        {
+          "name": "Change the brief",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/brief",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "brief"
+              ]
+            },
+            "description": "Change what the book is about, before any chapter is written.\n\nGuard: Verified session. Refused once a chapter is written, and refused while a job is running.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"topic\": \"How to grow herbs on a small kitchen windowsill\",\n  \"bookType\": \"guide\",\n  \"title\": \"The Windowsill Herb Garden\",\n  \"targetAudience\": \"Beginner cooks\",\n  \"knowledgeLevel\": \"beginner\",\n  \"language\": \"en\",\n  \"tone\": \"friendly\",\n  \"depth\": \"standard\",\n  \"chapterCount\": 8,\n  \"wordsPerChapter\": 1200\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 - Outline",
+      "description": "The outline is the plan of the book. It is generated, edited by the author, and approved before any chapter is written. Every edit creates a version, so an earlier plan can be restored.",
+      "item": [
+        {
+          "name": "Generate the outline",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/outline/generate",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "outline",
+                "generate"
+              ]
+            },
+            "description": "Draft the chapter plan from the brief.\n\nGuard: Verified session. Rate limited. Charged against the credit balance."
+          }
+        },
+        {
+          "name": "Outline history",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/outlines",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "outlines"
+              ],
+              "query": [
+                {
+                  "key": "before",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Read the saved versions of the outline, newest first.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Read one outline version",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/outlines/:version",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "outlines",
+                ":version"
+              ]
+            },
+            "description": "Read the chapter plan as it was at that version.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Restore an outline version",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/outlines/:version/restore",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "outlines",
+                ":version",
+                "restore"
+              ]
+            },
+            "description": "Go back to an earlier plan and make it the current one, as a new version.\n\nGuard: Verified session. The version it was based on is checked, so a lost edit is refused. `baseVersion` is the current outline version.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"baseVersion\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Save an edited outline",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/outline",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "outline"
+              ]
+            },
+            "description": "Change the chapter titles, goals, key points or word targets.\n\nGuard: Verified session. `baseVersion` refuses a lost edit rather than overwriting a newer save. A book with no outline yet starts at version 0.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"The Windowsill Herb Garden\",\n  \"subtitle\": \"Six herbs, one windowsill, all year\",\n  \"baseVersion\": 0,\n  \"chapters\": [\n    {\n      \"id\": \"\",\n      \"title\": \"Before you buy a single pot\",\n      \"goal\": \"Set up the space\",\n      \"keyPoints\": [\n        \"Choosing a windowsill\",\n        \"Light and heat\",\n        \"What to clear away\"\n      ],\n      \"targetWords\": 1200\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Approve the outline",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/outline/approve",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "outline",
+                "approve"
+              ]
+            },
+            "description": "Accept the plan. Chapters can only be written once the outline is approved.\n\nGuard: Verified session. Approving twice is harmless. Refused while a job is running.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 - Generation (chapters)",
+      "description": "Writing the chapters. A run reserves credits, writes each chapter section by section, and settles what it actually used. A retry reuses the sections an earlier failed run already wrote, and charges only for the prose it still has to write.",
+      "item": [
+        {
+          "name": "Start writing",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/generate",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "generate"
+              ]
+            },
+            "description": "Queue the chapters of an approved outline for writing.\n\nGuard: Verified session. Rate limited. The outline must be approved and no other run may be active. Returns 402 when the balance is too low."
+          }
+        },
+        {
+          "name": "Retry writing",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/generate/retry",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "generate",
+                "retry"
+              ]
+            },
+            "description": "Start again after a failure. The sections the failed run already wrote are reused, and only the remaining prose is charged for.\n\nGuard: Verified session. Rate limited. Same requirements as starting a run."
+          }
+        },
+        {
+          "name": "Cancel writing",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/generate/cancel",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "generate",
+                "cancel"
+              ]
+            },
+            "description": "Stop a run that is queued or in progress, and release the credits it had reserved.\n\nGuard: Verified session. A run that has already finished cannot be cancelled."
+          }
+        },
+        {
+          "name": "Read a generation job",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/generation-jobs/:jobId",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "generation-jobs",
+                ":jobId"
+              ]
+            },
+            "description": "Read how far a run has got, what it was charged, and why it failed.\n\nGuard: Verified session. Own job only."
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 - Chapters & editor",
+      "description": "Reading and editing the manuscript. Every save carries the version it was based on, so two tabs editing the same chapter cannot silently overwrite each other.",
+      "item": [
+        {
+          "name": "List chapters",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/chapters",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "chapters"
+              ]
+            },
+            "description": "Read the chapters of a book, in order.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Read a chapter",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/chapters/:chapterId",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "chapters",
+                ":chapterId"
+              ]
+            },
+            "description": "Read one chapter with its content, summary and word count.\n\nGuard: Verified session. Own chapter only."
+          }
+        },
+        {
+          "name": "Save a chapter",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/chapters/:chapterId",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "chapters",
+                ":chapterId"
+              ]
+            },
+            "description": "Save an edit to a chapter.\n\nGuard: Verified session. `version` refuses a lost edit with 409 rather than overwriting a newer save.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Before you buy a single pot\",\n  \"contentJson\": {\n    \"type\": \"doc\",\n    \"content\": [\n      {\n        \"type\": \"paragraph\",\n        \"content\": [\n          {\n            \"type\": \"text\",\n            \"text\": \"A windowsill is enough.\"\n          }\n        ]\n      }\n    ]\n  },\n  \"version\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Chapter version history",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/chapters/:chapterId/versions",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "chapters",
+                ":chapterId",
+                "versions"
+              ],
+              "query": [
+                {
+                  "key": "before",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Read the saved versions of a chapter.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Read one chapter version",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/chapters/:chapterId/versions/:versionId",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "chapters",
+                ":chapterId",
+                "versions",
+                ":versionId"
+              ]
+            },
+            "description": "Read a chapter as it was at that version.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Restore a chapter version",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/chapters/:chapterId/versions/:versionId/restore",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "chapters",
+                ":chapterId",
+                "versions",
+                ":versionId",
+                "restore"
+              ]
+            },
+            "description": "Go back to an earlier version of a chapter and make it the current one.\n\nGuard: Verified session. `version` refuses a lost edit.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Ask the assistant",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "assist-{{$timestamp}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/ai/assist",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "ai",
+                "assist"
+              ]
+            },
+            "description": "Rewrite, expand, shorten, proofread or otherwise change the selected text.\n\nGuard: Verified session. Rate limited. One credit per request. `Idempotency-Key` makes a repeated request free.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookId\": \"{{bookId}}\",\n  \"action\": \"rewrite\",\n  \"text\": \"A windowsill is enough.\",\n  \"instruction\": \"Make it warmer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 - Quality review",
+      "description": "Free deterministic checks on the manuscript, plus a costed AI review. A report is anchored to the exact text it found, so it survives later edits.",
+      "item": [
+        {
+          "name": "Quality configuration",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/quality/config",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "quality",
+                "config"
+              ]
+            },
+            "description": "Read which checks are available and what they cost.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Read the book context",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/quality/context",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "quality",
+                "context"
+              ]
+            },
+            "description": "Read the voice, terminology, definitions and chapter summaries the checks run against.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Save the book context",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/quality/context",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "quality",
+                "context"
+              ]
+            },
+            "description": "Save the voice, the preferred terms, the definitions and the chapter summaries.\n\nGuard: Verified session. `baseVersion` refuses a lost edit. A book with no saved context starts at version 0.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"baseVersion\": 0,\n  \"data\": {\n    \"voice\": \"Practical and warm\",\n    \"terms\": [\n      {\n        \"preferred\": \"windowsill\",\n        \"avoid\": [\n          \"windowsill garden\"\n        ],\n        \"note\": \"\"\n      }\n    ],\n    \"definitions\": [\n      {\n        \"term\": \"windowsill\",\n        \"definition\": \"A horizontal ledge outside a window.\",\n        \"note\": \"\"\n      }\n    ],\n    \"chapterSummaries\": []\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List quality reports",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/quality/reports",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "quality",
+                "reports"
+              ]
+            },
+            "description": "List the reports produced for a book.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Run the free checks",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/quality/reports",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "quality",
+                "reports"
+              ]
+            },
+            "description": "Run the deterministic checks. The report is reused when nothing has changed since the last one.\n\nGuard: Verified session. Free. Returns 201 for a new report and 200 when an unchanged report is reused.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Read a quality report",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/quality/reports/:reportId",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "quality",
+                "reports",
+                ":reportId"
+              ]
+            },
+            "description": "Read one report with its findings.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Start an AI review",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/quality/ai-reviews",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "quality",
+                "ai-reviews"
+              ]
+            },
+            "description": "Ask a model to review the chapters and report what it found, with the quoted text it found it in.\n\nGuard: Verified session. Rate limited. Charged per chapter. The request is idempotent.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"chapterIds\": [\n    \"{{chapterId}}\"\n  ],\n  \"expectedCredits\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Cancel an AI review",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/quality/ai-reviews/:jobId/cancel",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "quality",
+                "ai-reviews",
+                ":jobId",
+                "cancel"
+              ]
+            },
+            "description": "Stop a queued AI review and release the credits it reserved.\n\nGuard: Verified session.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"headers\": [\n    {\n      \"key\": \"Authorization\",\n      \"value\": \"Bearer {{accessToken}}\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Read one finding",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/quality/findings/:findingId",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "quality",
+                "findings",
+                ":findingId"
+              ]
+            },
+            "description": "Read a single finding and the text it points at.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Decide on a finding",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/quality/findings/:findingId",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "quality",
+                "findings",
+                ":findingId"
+              ]
+            },
+            "description": "Mark a finding resolved or dismissed, and record why.\n\nGuard: Verified session. A dismissal needs a note of at least 3 characters.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"resolved\",\n  \"note\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 - Interior design",
+      "description": "The book's interior: typography, page setup, front and back matter. Every save is a version, so a design can be rolled back.",
+      "item": [
+        {
+          "name": "List design templates",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/design/templates",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "design",
+                "templates"
+              ]
+            },
+            "description": "Read the templates that can be applied to a book.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Design capabilities",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/design/capabilities",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "design",
+                "capabilities"
+              ]
+            },
+            "description": "Read which fonts this server can actually render, per language.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Download a font face",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/design-fonts/:font",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "design-fonts",
+                ":font"
+              ]
+            },
+            "description": "Fetch the pinned, hash-verified bytes of one font face, so the preview renders exactly as the export will.\n\nGuard: Verified session. Only the bundled faces are served."
+          }
+        },
+        {
+          "name": "Read the design",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/design",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "design"
+              ]
+            },
+            "description": "Read the book's saved design at the current version, or at a named one.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Design history",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/design/versions",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "design",
+                "versions"
+              ]
+            },
+            "description": "List the saved versions of the design.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Save the design",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/design",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "design"
+              ]
+            },
+            "description": "Save the typography, page setup and matter.\n\nGuard: Verified session. `baseVersion` refuses a lost edit. A book that has never been designed starts at version 0.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"baseVersion\": 0,\n  \"data\": {\n    \"schema\": 1,\n    \"template\": null,\n    \"typography\": {\n      \"body\": \"serif\",\n      \"headings\": \"serif\",\n      \"lineHeight\": 1.6,\n      \"paragraph\": \"spaced\",\n      \"align\": \"start\",\n      \"headingScale\": \"standard\",\n      \"hyphenate\": true\n    },\n    \"elements\": {\n      \"accent\": \"#e8603c\",\n      \"chapterLabel\": \"number\",\n      \"chapterOrnament\": \"none\",\n      \"tableStyle\": \"grid\",\n      \"imageWidth\": \"full\",\n      \"captionAlign\": \"center\"\n    },\n    \"digital\": {\n      \"fontScale\": 1,\n      \"lineWidth\": \"standard\"\n    },\n    \"print\": {\n      \"trim\": \"6x9\",\n      \"fontSizePt\": 11,\n      \"margins\": {\n        \"top\": 0.8,\n        \"bottom\": 0.85,\n        \"inside\": 0.7,\n        \"outside\": 0.7\n      },\n      \"mirrored\": false,\n      \"header\": \"none\",\n      \"pageNumbers\": \"bottom-center\"\n    },\n    \"matter\": {\n      \"titlePage\": true,\n      \"copyright\": {\n        \"enabled\": true,\n        \"text\": \"© 2026 Ada Lovelace. All rights reserved.\"\n      },\n      \"dedication\": {\n        \"enabled\": false,\n        \"text\": \"\"\n      },\n      \"contents\": {\n        \"enabled\": true,\n        \"title\": \"Contents\"\n      },\n      \"aboutAuthor\": {\n        \"enabled\": false,\n        \"title\": \"About the author\",\n        \"text\": \"\"\n      },\n      \"references\": {\n        \"enabled\": false,\n        \"title\": \"References\",\n        \"text\": \"\"\n      }\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Apply a template",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/design/apply-template",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "design",
+                "apply-template"
+              ]
+            },
+            "description": "Apply one of the built-in templates as a reversible snapshot. The front and back matter is never touched.\n\nGuard: Verified session. `baseVersion` refuses a lost edit. A book that has never been designed starts at version 0.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"baseVersion\": 0,\n  \"templateId\": \"classic\",\n  \"templateVersion\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Restore a design version",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/design/restore",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "design",
+                "restore"
+              ]
+            },
+            "description": "Go back to an earlier design and make it the current one.\n\nGuard: Verified session. `baseVersion` refuses a lost edit.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"baseVersion\": 1,\n  \"version\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Preview the design",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/design/preview",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "design",
+                "preview"
+              ]
+            },
+            "description": "Render the design as a reader would see it, or as a print sample, without saving anything.\n\nGuard: Verified session. Preview either a saved version or a draft, never both. The print mode returns a PDF with the layout warnings in its headers.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mode\": \"print\",\n  \"version\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 - Cover studio & image generation",
+      "description": "The cover is a saved design plus optional generated artwork. Generation is queued and charged; the saved cover is versioned so an earlier one can be returned to.",
+      "item": [
+        {
+          "name": "Image generation configuration",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/image-config",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "image-config"
+              ]
+            },
+            "description": "Read what image generation costs and whether it is enabled on this server.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Download a cover font",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/cover-fonts/:font",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "cover-fonts",
+                ":font"
+              ]
+            },
+            "description": "Fetch the pinned bytes of a cover font face.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Read the cover",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/cover",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "cover"
+              ]
+            },
+            "description": "Read the book's saved cover design at the current version, or at a named one.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Save the cover",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/cover",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "cover"
+              ]
+            },
+            "description": "Save the cover: artwork, background, shading and the position of the title, subtitle and author.\n\nGuard: Verified session. `baseVersion` refuses a lost edit. A book with no saved cover starts at version 0.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"baseVersion\": 0,\n  \"data\": {\n    \"artworkId\": null,\n    \"background\": \"#172033\",\n    \"shade\": 0.35,\n    \"visual\": {\n      \"style\": \"editorial\",\n      \"palette\": \"\",\n      \"characters\": \"\",\n      \"direction\": \"\"\n    },\n    \"title\": {\n      \"text\": \"The Windowsill Herb Garden\",\n      \"font\": \"notosans\",\n      \"color\": \"#ffffff\",\n      \"x\": 0.08,\n      \"y\": 0.08,\n      \"width\": 0.84,\n      \"height\": 0.3,\n      \"size\": 0.06,\n      \"weight\": \"700\",\n      \"align\": \"center\",\n      \"direction\": \"ltr\"\n    },\n    \"subtitle\": {\n      \"text\": \"Six herbs, one windowsill, all year\",\n      \"font\": \"notosans\",\n      \"color\": \"#ffffff\",\n      \"x\": 0.08,\n      \"y\": 0.4,\n      \"width\": 0.84,\n      \"height\": 0.2,\n      \"size\": 0.03,\n      \"weight\": \"400\",\n      \"align\": \"center\",\n      \"direction\": \"ltr\"\n    },\n    \"author\": {\n      \"text\": \"Ada Lovelace\",\n      \"font\": \"notosans\",\n      \"color\": \"#ffffff\",\n      \"x\": 0.08,\n      \"y\": 0.85,\n      \"width\": 0.84,\n      \"height\": 0.1,\n      \"size\": 0.035,\n      \"weight\": \"700\",\n      \"align\": \"center\",\n      \"direction\": \"ltr\"\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Download the cover",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/cover/render",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "cover",
+                "render"
+              ],
+              "query": [
+                {
+                  "key": "version",
+                  "value": "{{coverVersion}}"
+                }
+              ]
+            },
+            "description": "Render the saved cover to a JPEG the author can use.\n\nGuard: Verified session. The version must be saved and selected first. Text that would overflow is refused rather than silently clipped."
+          }
+        },
+        {
+          "name": "Generate an image",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/images",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "images"
+              ]
+            },
+            "description": "Queue generated artwork for the cover or an illustration.\n\nGuard: Verified session. Rate limited. `expectedCredits` is checked against the price before anything is queued, and the credits are reserved. Cover artwork must be portrait.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"purpose\": \"cover\",\n  \"prompt\": \"A sunlit kitchen windowsill with six potted herbs\",\n  \"aspect\": \"portrait\",\n  \"expectedCredits\": 4\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Image history",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/images",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "images"
+              ],
+              "query": [
+                {
+                  "key": "cursor",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Read the image generation jobs for a book.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Cancel an image job",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/images/:jobId/cancel",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "images",
+                ":jobId",
+                "cancel"
+              ]
+            },
+            "description": "Cancel a queued image job and release the credits it reserved.\n\nGuard: Verified session.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"headers\": [\n    {\n      \"key\": \"Authorization\",\n      \"value\": \"Bearer {{accessToken}}\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 - Image library (assets)",
+      "description": "Private images the author uploaded. They are decoded, stripped of metadata and re-encoded on the way in, and served only to their owner.",
+      "item": [
+        {
+          "name": "List images",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/assets",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "assets"
+              ],
+              "query": [
+                {
+                  "key": "cursor",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "List the images in the library.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Upload an image",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "image/png"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/assets",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "assets"
+              ]
+            },
+            "description": "Add an image to the library so it can be used in the manuscript or on a cover.\n\nGuard: Verified session. Accepts image/png, image/jpeg and image/webp only, up to the shared size limit. The bytes are re-encoded, so metadata is stripped and a spoofed content type is refused."
+          }
+        },
+        {
+          "name": "Read an image",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/assets/:id/content",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "assets",
+                ":id",
+                "content"
+              ]
+            },
+            "description": "Read the stored bytes of an image, as webp.\n\nGuard: Verified session. Own asset only."
+          }
+        },
+        {
+          "name": "Edit an image",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/assets/:id",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "assets",
+                ":id"
+              ]
+            },
+            "description": "Change an image's alt text or caption, so the manuscript stays accessible.\n\nGuard: Verified session. Both fields are required.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"alt\": \"Six herb pots on a sunlit windowsill\",\n  \"caption\": \"The windowsill in early summer.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete an image",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/assets/:id",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "assets",
+                ":id"
+              ]
+            },
+            "description": "Remove an image from the library.\n\nGuard: Verified session. References already saved in the manuscript are pinned, so deleting does not break the book."
+          }
+        }
+      ]
+    },
+    {
+      "name": "11 - Sources, research & citations",
+      "description": "Private documents the author imported. Extraction is separate and reviewable: the text becomes proposed chapters that the author confirms before anything is written into the manuscript. Answers are grounded in the passages that support them, or the API says it cannot answer.",
+      "item": [
+        {
+          "name": "Source formats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/sources/formats",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "sources",
+                "formats"
+              ]
+            },
+            "description": "Read the formats this server can extract and the size each accepts.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "List sources",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/sources",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "sources"
+              ]
+            },
+            "description": "List the sources attached to a book.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Upload a source",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/sources",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "sources"
+              ]
+            },
+            "description": "Import a document the book is written from, so passages can be cited and used as chapters.\n\nGuard: Verified session. The body is the file itself; the metadata travels in the query string. Up to 5 MiB. A document with no text layer is reported as scanned rather than imported as empty."
+          }
+        },
+        {
+          "name": "Read a source",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/sources/:sourceId",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "sources",
+                ":sourceId"
+              ]
+            },
+            "description": "Read one source with its extraction status and counts.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Source versions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/sources/:sourceId/versions",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "sources",
+                ":sourceId",
+                "versions"
+              ]
+            },
+            "description": "List the extracted versions of a source. Each version is immutable, so a citation points at exact text.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Read the passages",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/sources/:sourceId/passages",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "sources",
+                ":sourceId",
+                "passages"
+              ],
+              "query": [
+                {
+                  "key": "version",
+                  "value": "{{sourceVersion}}"
+                }
+              ]
+            },
+            "description": "Read the passages extracted from a source version.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Preview an import",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/sources/:sourceId/preview",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "sources",
+                ":sourceId",
+                "preview"
+              ],
+              "query": [
+                {
+                  "key": "version",
+                  "value": "{{sourceVersion}}"
+                }
+              ]
+            },
+            "description": "Read the chapter mapping the import would make, before anything is written.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Confirm the import",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/sources/:sourceId/apply",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "sources",
+                ":sourceId",
+                "apply"
+              ]
+            },
+            "description": "Write the confirmed passages into the manuscript as chapters.\n\nGuard: Verified session. A passage the version does not have is refused. Confirming the same version twice does not create duplicate chapters.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": 1,\n  \"chapters\": [\n    {\n      \"title\": \"Before you buy a single pot\",\n      \"locators\": [\n        \"p1\",\n        \"p2\"\n      ]\n    }\n  ],\n  \"appendToChapterIds\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Link a source to a chapter",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/sources/:sourceId/links",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "sources",
+                ":sourceId",
+                "links"
+              ]
+            },
+            "description": "Record that particular passages support a particular chapter.\n\nGuard: Verified session.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"chapterId\": \"{{chapterId}}\",\n  \"locators\": [\n    \"p1\"\n  ],\n  \"note\": \"The light requirements come from here.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Read the links",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/sources/:sourceId/links",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "sources",
+                ":sourceId",
+                "links"
+              ]
+            },
+            "description": "Read which chapters this source supports, and with which passages.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Delete a source",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/sources/:sourceId",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "sources",
+                ":sourceId"
+              ]
+            },
+            "description": "Remove a source and its citations.\n\nGuard: Verified session. The citations stay visible in the quality report as a lost source, rather than disappearing."
+          }
+        },
+        {
+          "name": "Read a chapter's citations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/chapters/:chapterId/sources",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "chapters",
+                ":chapterId",
+                "sources"
+              ]
+            },
+            "description": "Read the citations of one chapter, and whether each source still supports it.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Read one cited passage",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/sources/:sourceId/passages/:locator",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "sources",
+                ":sourceId",
+                "passages",
+                ":locator"
+              ]
+            },
+            "description": "Read the exact text behind a citation, so a reader can check it.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Ask a question of the sources",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/research/ask",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "research",
+                "ask"
+              ]
+            },
+            "description": "Ask a question the book is able to answer from its sources.\n\nGuard: Verified session. Rate limited. When the sources do not support an answer, the response says so and carries no passages rather than inventing one.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question\": \"How much light does basil need?\",\n  \"sourceIds\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Summarize the sources",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/research/summary",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "research",
+                "summary"
+              ]
+            },
+            "description": "Summarize what the book's sources say, with the passages the summary rests on.\n\nGuard: Verified session. Rate limited.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceIds\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "12 - Exports",
+      "description": "An export is an immutable snapshot: the design, the chapters and the pinned image bytes are captured when it is requested, so a later edit cannot change what a queued export renders. Every export is validated before it is offered for download.",
+      "item": [
+        {
+          "name": "List export formats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/exports/formats",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "exports",
+                "formats"
+              ]
+            },
+            "description": "Read the formats this server can produce and the options each accepts.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "List exports",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/exports",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "exports"
+              ]
+            },
+            "description": "List the exports made for a book.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Request an export",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/exports",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "exports"
+              ]
+            },
+            "description": "Queue an export. The file is rendered in the background.\n\nGuard: Verified session. The options are validated against the format, so an EPUB option cannot be sent for a PDF. Only one export per book may be in progress.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"format\": \"pdf\",\n  \"options\": {\n    \"layout\": \"print\",\n    \"includeMatter\": true,\n    \"includeToc\": true\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Read an export",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/exports/:exportId",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "exports",
+                ":exportId"
+              ]
+            },
+            "description": "Read one export with its snapshot and its validation summary.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Download an export",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/exports/:exportId/download",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "exports",
+                ":exportId",
+                "download"
+              ]
+            },
+            "description": "Download the finished file.\n\nGuard: Verified session. The download is refused when the file did not validate."
+          }
+        }
+      ]
+    },
+    {
+      "name": "13 - Distribution packages",
+      "description": "A package is a ZIP the author downloads and uploads to a store themselves. The product assembles and checks it. It never publishes to a store and never claims a store accepted the book.",
+      "item": [
+        {
+          "name": "List destinations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/distribution/destinations",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "distribution",
+                "destinations"
+              ]
+            },
+            "description": "Read the destinations a package can be prepared for, and the rules each one applies.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "List packages",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/distribution/books/:bookId/packages",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "distribution",
+                "books",
+                ":bookId",
+                "packages"
+              ]
+            },
+            "description": "List the packages prepared for a book.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Prepare a package",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/distribution/books/:bookId/packages",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "distribution",
+                "books",
+                ":bookId",
+                "packages"
+              ]
+            },
+            "description": "Assemble the ZIP for a destination from the book's ready exports.\n\nGuard: Verified session. A package that cannot satisfy the destination's rules is recorded as blocked and refused with 422 rather than assembled.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"destination\": \"kdp_ebook\",\n  \"exportIds\": [\n    \"{{exportId}}\"\n  ],\n  \"metadata\": {\n    \"title\": \"The Windowsill Herb Garden\",\n    \"subtitle\": \"Six herbs, one windowsill, all year\",\n    \"author\": \"Ada Lovelace\",\n    \"language\": \"en\",\n    \"description\": \"A practical guide to growing six herbs on one kitchen windowsill.\",\n    \"asin\": \"\",\n    \"isbn\": \"\",\n    \"keywords\": [\n      \"herbs\",\n      \"windowsill\",\n      \"cooking\"\n    ],\n    \"categories\": [\n      \"Gardening\",\n      \"Cooking\"\n    ],\n    \"publisher\": \"The Small Garden\",\n    \"publicationDate\": \"2026-03-01\"\n  },\n  \"includeCover\": true,\n  \"notes\": \"Upload the EPUB through KDP's own page.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Read a package",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/distribution/packages/:packageId",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "distribution",
+                "packages",
+                ":packageId"
+              ]
+            },
+            "description": "Read one package with its files and the checks that were run on it.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Download a package",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/distribution/packages/:packageId/download",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "distribution",
+                "packages",
+                ":packageId",
+                "download"
+              ]
+            },
+            "description": "Download the ZIP the author uploads to the store themselves.\n\nGuard: Verified session. Own package only."
+          }
+        },
+        {
+          "name": "Read publishing status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/distribution/books/:bookId/publishing-status",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "distribution",
+                "books",
+                ":bookId",
+                "publishing-status"
+              ]
+            },
+            "description": "Read the author's own record of what they have done with each store.\n\nGuard: Verified session. Only the author knows whether a store accepted the book."
+          }
+        },
+        {
+          "name": "Record publishing status",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/distribution/books/:bookId/publishing-status",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "distribution",
+                "books",
+                ":bookId",
+                "publishing-status"
+              ]
+            },
+            "description": "Record what the author has done: not prepared, in progress, submitted or published.\n\nGuard: Verified session.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"destination\": \"kdp_ebook\",\n  \"state\": \"submitted\",\n  \"externalReference\": \"B0ABCDEF1\",\n  \"note\": \"Submitted through KDP.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "14 - Store listing copy",
+      "description": "The product drafts the text a store's own form asks for, and calculates what the author would keep at the price they chose. No store API is called from anywhere here: the author submits the listing themselves.",
+      "item": [
+        {
+          "name": "List listing destinations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/listings/destinations",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "listings",
+                "destinations"
+              ]
+            },
+            "description": "Read the fields each destination's form asks for, and the rate it publishes.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Quote the royalty",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/listings/royalty-quote",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "listings",
+                "royalty-quote"
+              ]
+            },
+            "description": "Calculate what the author would keep at a price, without spending any credits.\n\nGuard: Verified session. A pure calculation — safe to call as often as the price moves.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"destination\": \"kdp_ebook\",\n  \"priceInMinorUnits\": 999\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List listings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/listings/books/:bookId",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "listings",
+                "books",
+                ":bookId"
+              ]
+            },
+            "description": "List the listings prepared for a book.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Prepare a listing",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/listings/books/:bookId",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "listings",
+                "books",
+                ":bookId"
+              ]
+            },
+            "description": "Draft the listing copy for a destination from the author's own manuscript.\n\nGuard: Verified session. Charged against the credit balance. Refused when the book has no manuscript.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"destination\": \"kdp_ebook\",\n  \"priceInMinorUnits\": 999\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Read a listing",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/listings/:listingId",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "listings",
+                ":listingId"
+              ]
+            },
+            "description": "Read one listing with its fields, their limits and the royalty estimate.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Read the gaps in a listing",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/listings/:listingId/gaps",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "listings",
+                ":listingId",
+                "gaps"
+              ]
+            },
+            "description": "Read which fields the listing is still missing, and whether it has gone stale because the manuscript moved on.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Save an edited listing",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/listings/:listingId",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "listings",
+                ":listingId"
+              ]
+            },
+            "description": "Change the price or the text of a listing field, and confirm the fields the author has checked.\n\nGuard: Verified session. `baseVersion` refuses a lost edit rather than overwriting a newer save.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"baseVersion\": 1,\n  \"priceInMinorUnits\": 999,\n  \"fields\": {\n    \"description\": \"A practical guide to growing six herbs on one kitchen windowsill.\"\n  },\n  \"confirmed\": {\n    \"description\": true\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "15 - Marketing studio",
+      "description": "Everything here produces material the author downloads and uses themselves. No route sends an email, posts to a social network or publishes anything. Every output stays editable, and claims that would need proof are flagged rather than removed.",
+      "item": [
+        {
+          "name": "List output types",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/marketing/outputs",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "marketing",
+                "outputs"
+              ]
+            },
+            "description": "Read the kinds of material the studio can draft, and what each one costs.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "List drafts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/marketing/books/:bookId/drafts",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "marketing",
+                "books",
+                ":bookId",
+                "drafts"
+              ]
+            },
+            "description": "List the marketing drafts for a book.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Draft marketing copy",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/marketing/books/:bookId/drafts",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "marketing",
+                "books",
+                ":bookId",
+                "drafts"
+              ]
+            },
+            "description": "Draft a piece of launch material from the book's own manuscript.\n\nGuard: Verified session. Charged against the credit balance. The cost is shown in the output types before the request is made. Refused when the book has no manuscript.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"outputType\": \"description\",\n  \"tone\": \"clear\",\n  \"audience\": \"Beginner cooks\",\n  \"instruction\": \"\",\n  \"authorName\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Read a draft",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/marketing/drafts/:draftId",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "marketing",
+                "drafts",
+                ":draftId"
+              ]
+            },
+            "description": "Read one draft with its flags, and whether the manuscript has moved on since it was written.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Save an edited draft",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/marketing/drafts/:draftId",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "marketing",
+                "drafts",
+                ":draftId"
+              ]
+            },
+            "description": "Save the author's own edit, or approve the draft.\n\nGuard: Verified session. `baseVersion` refuses a lost edit.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Six herbs, one windowsill, all year.\",\n  \"baseVersion\": 1,\n  \"approve\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Regenerate a draft",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/marketing/drafts/:draftId/regenerate",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "marketing",
+                "drafts",
+                ":draftId",
+                "regenerate"
+              ]
+            },
+            "description": "Draft a fresh version without losing the edited one.\n\nGuard: Verified session. The existing draft is kept, so a manual edit is never overwritten."
+          }
+        },
+        {
+          "name": "List graphics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/marketing/books/:bookId/graphics",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "marketing",
+                "books",
+                ":bookId",
+                "graphics"
+              ]
+            },
+            "description": "List the promotional graphics composed for a book.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Compose a graphic",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/marketing/books/:bookId/graphics",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "marketing",
+                "books",
+                ":bookId",
+                "graphics"
+              ]
+            },
+            "description": "Compose a promotional graphic and render it to an image the author can download.\n\nGuard: Verified session. The image is rendered locally and stored privately. A colour that is not a hex value is refused.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"template\": \"square_cover\",\n  \"headline\": \"Six herbs, one windowsill\",\n  \"subhead\": \"All year round\",\n  \"callToAction\": \"Start growing\",\n  \"textColor\": \"#1b1b1f\",\n  \"backgroundColor\": \"#f5f1e8\",\n  \"useCover\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Read a graphic",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/marketing/graphics/:graphicId",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "marketing",
+                "graphics",
+                ":graphicId"
+              ]
+            },
+            "description": "Read one graphic with its copy and its metadata.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Download a graphic",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/marketing/graphics/:graphicId/download",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "marketing",
+                "graphics",
+                ":graphicId",
+                "download"
+              ]
+            },
+            "description": "Download the rendered graphic as a PNG the author can use.\n\nGuard: Verified session. Own graphic only. The lookup is scoped to the owner, so one author cannot download another's graphic."
+          }
+        },
+        {
+          "name": "List samples",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/marketing/books/:bookId/samples",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "marketing",
+                "books",
+                ":bookId",
+                "samples"
+              ]
+            },
+            "description": "List the sample packs assembled for a book.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Assemble a sample",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/marketing/books/:bookId/samples",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "marketing",
+                "books",
+                ":bookId",
+                "samples"
+              ]
+            },
+            "description": "Assemble a sample pack from the chapters the author chose.\n\nGuard: Verified session. The chapters must belong to the book and must be written. A chapter of another book is refused, and so is a pack larger than a sample may hold. The file is validated before it is offered.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"chapterIds\": [\n    \"{{chapterId}}\"\n  ],\n  \"format\": \"pdf\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Download a sample",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/marketing/samples/:sampleId/download",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "marketing",
+                "samples",
+                ":sampleId",
+                "download"
+              ]
+            },
+            "description": "Download the sample pack the author hands out themselves.\n\nGuard: Verified session. Own sample only."
+          }
+        }
+      ]
+    },
+    {
+      "name": "16 - Publishing checks",
+      "description": "A readiness report for one marketplace. It checks the book against that marketplace's rules and states the source of every rule. It never declares that the store will accept the book.",
+      "item": [
+        {
+          "name": "Run the publishing checks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/publishing-checks",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "publishing-checks"
+              ],
+              "query": [
+                {
+                  "key": "destination",
+                  "value": "kdp_ebook"
+                }
+              ]
+            },
+            "description": "Read the readiness report for a destination: which checks pass, which block, and which need the author's own eyes.\n\nGuard: Verified session. The destination must be one of kdp_ebook, etsy, gumroad or direct."
+          }
+        }
+      ]
+    },
+    {
+      "name": "17 - Support center (customer)",
+      "description": "The customer's own side of support. A customer submits a request and gets back a correlation id, so they can quote it when they follow up and support can find the matching logs.",
+      "item": [
+        {
+          "name": "Submit a support request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/support/requests",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "support",
+                "requests"
+              ]
+            },
+            "description": "Ask for help and receive a correlation id to quote later.\n\nGuard: Verified session. The request is recorded whether or not it can be answered immediately.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category\": \"question\",\n  \"subject\": \"My export is missing its cover\",\n  \"message\": \"The PDF I downloaded has no cover page. I expected one.\",\n  \"context\": \"Exported a PDF from the export screen\",\n  \"email\": \"ada@example.com\",\n  \"correlationId\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List my support requests",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/support/requests",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "support",
+                "requests"
+              ]
+            },
+            "description": "Read the requests this customer submitted, and the answer an agent wrote.\n\nGuard: Verified session. A customer sees only their own requests, and never an agent's internal notes."
+          }
+        }
+      ]
+    },
+    {
+      "name": "18 - Operations (author-visible)",
+      "description": "How a long-running request is doing. Every queued action returns an operation the author can poll, so a screen can show real progress rather than a spinner.",
+      "item": [
+        {
+          "name": "Read an operation",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/operations/:operationId",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "operations",
+                ":operationId"
+              ]
+            },
+            "description": "Read the state of one queued action.\n\nGuard: Verified session. Own operation only."
+          }
+        },
+        {
+          "name": "List a book's operations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/books/:bookId/operations",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "books",
+                ":bookId",
+                "operations"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "24"
+                },
+                {
+                  "key": "cursor",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Read every queued action for a book.\n\nGuard: Verified session."
+          }
+        }
+      ]
+    },
+    {
+      "name": "19 - Administration",
+      "description": "The operator's API. Every route checks a permission on the server, so an operator who navigates straight to a route they have no permission for is refused with a 403 that names the missing permission. The roles are `support` (ops.read, users.manage, deliveries.read, support.reply), `finance` (ops.read, billing.read, billing.refund, credits.adjust, audit.read) and `administrator` (everything).",
+      "item": [
+        {
+          "name": "Read my operator authority",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/admin/me",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "admin",
+                "me"
+              ]
+            },
+            "description": "Read which roles the signed-in operator holds and what they permit.\n\nGuard: Verified session. Returns the roles and permissions; it does not grant anything."
+          }
+        },
+        {
+          "name": "Operations dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/admin/dashboard",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "admin",
+                "dashboard"
+              ]
+            },
+            "description": "Read the operational overview: users, books, jobs, payments and queue health.\n\nGuard: Verified session. Requires `ops.read`."
+          }
+        },
+        {
+          "name": "List users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/admin/users",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "admin",
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": ""
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "Find a user by email or id.\n\nGuard: Verified session. Requires `ops.read`."
+          }
+        },
+        {
+          "name": "List books",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/admin/books",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "admin",
+                "books"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "Read every book across all authors, with its owner.\n\nGuard: Verified session. Requires `ops.read`."
+          }
+        },
+        {
+          "name": "List generation jobs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/admin/jobs",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "admin",
+                "jobs"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": ""
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "Read the generation jobs across all books.\n\nGuard: Verified session. Requires `ops.read`."
+          }
+        },
+        {
+          "name": "List payments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/admin/payments",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "admin",
+                "payments"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": ""
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "Read the payments across all customers.\n\nGuard: Verified session. Requires `billing.read`."
+          }
+        },
+        {
+          "name": "List open incidents",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/admin/incidents",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "admin",
+                "incidents"
+              ]
+            },
+            "description": "Read the operational incidents that are still open.\n\nGuard: Verified session. Requires `ops.read`."
+          }
+        },
+        {
+          "name": "Resolve an incident",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/admin/incidents/:incidentId/resolve",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "admin",
+                "incidents",
+                ":incidentId",
+                "resolve"
+              ]
+            },
+            "description": "Close an incident and record how it was resolved.\n\nGuard: Verified session. Requires `ops.read`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resolution\": \"The provider was restored and the queue drained.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Alert history",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/admin/alerts",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "admin",
+                "alerts"
+              ]
+            },
+            "description": "Read the alerts that were raised and whether they were delivered.\n\nGuard: Verified session. Requires `ops.read`."
+          }
+        },
+        {
+          "name": "Raise an alert",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/admin/alerts",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "admin",
+                "alerts"
+              ]
+            },
+            "description": "Raise an operational alert and report whether it was delivered.\n\nGuard: Verified session. Requires `ops.read`. A destination must be configured, otherwise the request is refused.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"kind\": \"provider_error\",\n  \"summary\": \"The writing provider is returning errors.\",\n  \"severity\": \"warning\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Adjust a customer's credits",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/admin/credits/adjust",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "admin",
+                "credits",
+                "adjust"
+              ]
+            },
+            "description": "Add or take away credits from a customer's balance.\n\nGuard: Verified session. Requires `credits.adjust`. The adjustment goes through the credit ledger so the balance still reconciles, and the reason is required because an operator reads it later.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"credits\": 25,\n  \"reason\": \"Goodwill credit for the failed export on 12 March.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Refund a payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/admin/payments/refund",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "admin",
+                "payments",
+                "refund"
+              ]
+            },
+            "description": "Refund a payment, taking the credits back and withdrawing the capabilities it granted.\n\nGuard: Verified session. Requires `billing.refund`. Refusing a second refund of the same payment is refused.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentId\": \"{{paymentId}}\",\n  \"reason\": \"The customer was charged twice for the same plan.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Retry or cancel a job",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/admin/jobs/intervene",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "admin",
+                "jobs",
+                "intervene"
+              ]
+            },
+            "description": "Release a stuck job back to the queue, or cancel it.\n\nGuard: Verified session. Requires `jobs.intervene`. The intervention goes through the service that owns the job, so the credits settle correctly. A job that has already finished is refused.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jobId\": \"{{jobId}}\",\n  \"action\": \"retry\",\n  \"reason\": \"The worker died while the job was queued.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List roles and holders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/admin/roles",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "admin",
+                "roles"
+              ]
+            },
+            "description": "Read the operator roles and who holds them.\n\nGuard: Verified session. Requires `roles.manage`."
+          }
+        },
+        {
+          "name": "Grant a role",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/admin/roles/grant",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "admin",
+                "roles",
+                "grant"
+              ]
+            },
+            "description": "Give an operator a role.\n\nGuard: Verified session. Requires `roles.manage`. The reason is required.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"role\": \"support\",\n  \"reason\": \"Joined the support team this month.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Revoke a role",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/admin/roles/revoke",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "admin",
+                "roles",
+                "revoke"
+              ]
+            },
+            "description": "Take a role away from an operator.\n\nGuard: Verified session. Requires `roles.manage`. The reason is required.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"role\": \"support\",\n  \"reason\": \"Left the support team.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Read the audit trail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/admin/audit",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "admin",
+                "audit"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "100"
+                },
+                {
+                  "key": "action",
+                  "value": ""
+                },
+                {
+                  "key": "targetType",
+                  "value": ""
+                },
+                {
+                  "key": "targetId",
+                  "value": ""
+                },
+                {
+                  "key": "actorId",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Read who did what, and why.\n\nGuard: Verified session. Requires `audit.read`."
+          }
+        },
+        {
+          "name": "List backups",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/admin/backups",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "admin",
+                "backups"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            },
+            "description": "Read the backups that have been taken, with their checksums and counts.\n\nGuard: Verified session. Requires `backup.manage`."
+          }
+        },
+        {
+          "name": "Read one backup",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/admin/backups/:name",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "admin",
+                "backups",
+                ":name"
+              ]
+            },
+            "description": "Read the manifest of one backup.\n\nGuard: Verified session. Requires `backup.manage`."
+          }
+        },
+        {
+          "name": "Take a backup",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/admin/backups",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "admin",
+                "backups"
+              ]
+            },
+            "description": "Take a backup of the database and record its checksums and counts.\n\nGuard: Verified session. Requires `backup.manage`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"\",\n  \"reason\": \"Before the schema change.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Rehearse a restore",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/admin/backups/:name/restore",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "admin",
+                "backups",
+                ":name",
+                "restore"
+              ]
+            },
+            "description": "Load a backup into a separate database and check the counts against its manifest.\n\nGuard: Verified session. Requires `backup.manage`. The live database is never touched by a rehearsal.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"keepDatabase\": false,\n  \"reason\": \"Monthly rehearsal.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete a backup",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/admin/backups/:name",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "admin",
+                "backups",
+                ":name"
+              ]
+            },
+            "description": "Remove a backup.\n\nGuard: Verified session. Requires `backup.manage`."
+          }
+        },
+        {
+          "name": "List support requests",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/admin/support",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "admin",
+                "support"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": ""
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "Read the support requests from every customer, so an agent can pick one up.\n\nGuard: Verified session. Requires `support.reply`."
+          }
+        },
+        {
+          "name": "Reply to a support request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/admin/support/:requestId/reply",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "admin",
+                "support",
+                ":requestId",
+                "reply"
+              ]
+            },
+            "description": "Answer a customer's support request. The answer is then visible to that customer.\n\nGuard: Verified session. Requires `support.reply`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"response\": \"The cover is included when the design has artwork selected. Here is how to attach it.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "20 - Billing",
+      "description": "Plans, checkout and payments. Credits and entitlements are granted only by a verified payment event, never by a browser callback.",
+      "item": [
+        {
+          "name": "List plans",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{apiBase}}/billing/plans",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "billing",
+                "plans"
+              ]
+            },
+            "description": "Read the plans on offer, with their prices, credits and capabilities.\n\nGuard: None — public. The catalogue is not private information."
+          }
+        },
+        {
+          "name": "Read my billing state",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/billing",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "billing"
+              ]
+            },
+            "description": "Read the author's subscription, entitlements, plans and payment history.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "Start a checkout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/billing/checkout",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "billing",
+                "checkout"
+              ]
+            },
+            "description": "Ask for a checkout session for a plan.\n\nGuard: Verified session. Grants nothing until a verified payment arrives.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{planId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Cancel my subscription",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/billing/cancel",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "billing",
+                "cancel"
+              ]
+            },
+            "description": "Cancel the subscription. It runs to the end of the period already paid for.\n\nGuard: Verified session."
+          }
+        },
+        {
+          "name": "List my payments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/billing/payments",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "billing",
+                "payments"
+              ]
+            },
+            "description": "Read the author's own payment history.\n\nGuard: Verified session. Scoped to the author, so one customer cannot read another's payments."
+          }
+        },
+        {
+          "name": "Payment webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-ebookstudio-signature",
+                "value": "v1=<hmac>"
+              },
+              {
+                "key": "x-ebookstudio-timestamp",
+                "value": "1772323200"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/billing/webhook",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "billing",
+                "webhook"
+              ]
+            },
+            "description": "The payment processor tells the merchant that a customer paid. This is what actually grants the credits.\n\nGuard: No session. The signature over the raw body is the authentication, and the timestamp stops a captured body being replayed. Only `payment.succeeded` grants credits; every other event changes state but grants nothing.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"payment.succeeded\",\n  \"providerEventId\": \"evt_123\",\n  \"providerPaymentId\": \"pay_123\",\n  \"occurredAt\": \"2026-03-01T00:00:00.000Z\",\n  \"customerReference\": \"cus_123\",\n  \"planId\": \"pro\",\n  \"amountMinor\": 2900,\n  \"currency\": \"USD\",\n  \"credits\": 500\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "21 - Local payment provider (test only)",
+      "description": "Stands in for a payment processor so the merchant side can be exercised end to end. It is only mounted when the build talks to the local provider, which cannot take real money. The customer cannot name an amount: both the amount and the customer come from the checkout the merchant created.",
+      "item": [
+        {
+          "name": "Read the checkout page",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{apiBase}}/local-provider/pay/:session",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "local-provider",
+                "pay",
+                ":session"
+              ]
+            },
+            "description": "Read what the customer is about to pay for.\n\nGuard: None. Not reachable in a build with a live provider."
+          }
+        },
+        {
+          "name": "Pay the checkout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{apiBase}}/local-provider/pay/:session",
+              "host": [
+                "{{apiBase}}"
+              ],
+              "path": [
+                "local-provider",
+                "pay",
+                ":session"
+              ]
+            },
+            "description": "The customer pays. The processor signs a `payment.succeeded` event and delivers it to the merchant's webhook, which is what grants the credits.\n\nGuard: None. Not reachable in a build with a live provider."
+          }
+        }
+      ]
+    }
+  ]
+}

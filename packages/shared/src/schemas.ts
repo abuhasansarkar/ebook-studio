@@ -78,7 +78,14 @@ export type Outline = z.output<typeof outlineSchema>;
 // ---------- Books ----------
 export const createBookSchema = z.object({
   brief: bookBriefSchema,
-  projectId: z.string().optional(),
+  /**
+   * The project the book is filed under.
+   *
+   * An empty string is not a project id. The column carries a foreign key, so
+   * an empty value would be refused by the database as an internal fault
+   * rather than as the bad request it is. `null` means "no project".
+   */
+  projectId: z.string().min(1).max(100).nullable().optional(),
 });
 
 export const BOOK_STATUSES = ["draft", "outline_ready", "generating", "written", "failed"] as const;
