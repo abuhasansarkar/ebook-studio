@@ -33,7 +33,7 @@ function ChapterRow({ ch, dir }: { ch: ChapterMeta; dir: string }) {
 export function GenerateScreen({ params }: { params: Promise<{ bookId: string }> }) {
   const { bookId } = use(params);
   const qc = useQueryClient();
-  const { data: book, isLoading, error, refetch } = useBook(bookId);
+  const { data: book, isPending, error, refetch } = useBook(bookId);
   const credits = useCredits();
   const actions = useBookAction(bookId);
   const wasActive = useRef(false);
@@ -58,7 +58,10 @@ export function GenerateScreen({ params }: { params: Promise<{ bookId: string }>
     }
   }, [job, book, bookId, qc]);
 
-  if (isLoading) return <PageLoader />;
+  // Pending, not loading: before the session is known the query is disabled, and a
+  // disabled query is pending without loading. The server render and the first
+  // client render then both show the loader instead of disagreeing.
+  if (isPending && !error) return <PageLoader />;
   if (error || !book) return <div className="mx-auto max-w-4xl px-4 py-8"><ErrorState message={errorMessage(error)} onRetry={() => void refetch()} /></div>;
 
   const lang = getLanguage(book.language);

@@ -12,9 +12,19 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
   return <textarea ref={ref} className={cn(fieldBase, "min-h-24 py-2.5 leading-relaxed", className)} {...props} />;
 });
 
-export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(function Select({ className, children, ...props }, ref) {
+// The chevron is set inline rather than with utility classes: tailwind-merge
+// reads an arbitrary `bg-[right_12px_center]` as a colour, so a caller passing
+// `bg-background` would silently drop the position and pin the chevron top-left.
+const SELECT_CHEVRON = {
+  backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236f655d' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")",
+  backgroundSize: "16px",
+  backgroundPosition: "right 12px center",
+  backgroundRepeat: "no-repeat",
+} as const;
+
+export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(function Select({ className, children, style, ...props }, ref) {
   return (
-    <select ref={ref} className={cn(fieldBase, "h-11 appearance-none bg-[length:16px] bg-[right_12px_center] bg-no-repeat pe-9", className)} style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236f655d' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")" }} {...props}>
+    <select ref={ref} className={cn(fieldBase, "h-11 appearance-none pe-9", className)} style={{ ...SELECT_CHEVRON, ...style }} {...props}>
       {children}
     </select>
   );

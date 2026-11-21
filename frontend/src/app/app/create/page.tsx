@@ -2,16 +2,14 @@
 
 import { useSession } from "@/lib/auth-client";
 import { usePlanningDraft } from "@/components/books/use-planning-draft";
-import { RadioGroup } from "@/components/ui/radio-group";
+import { BookTypePicker, enumLabel as cap } from "@/components/books/book-type-picker";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm, useWatch, type FieldPath } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowRight, BookMarked, BookOpen, ChefHat, ClipboardList, FileBarChart, GraduationCap, Heart, Magnet, Map, Sparkles, type LucideIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, Sparkles } from "lucide-react";
 import {
-  BOOK_TYPES,
-  BOOK_TYPE_LABELS,
   CREDIT_COSTS,
   DEPTHS,
   KNOWLEDGE_LEVELS,
@@ -20,7 +18,6 @@ import {
   bookBriefSchema,
   estimateBookCredits,
   type BookBriefInput,
-  type BookType,
 } from "@ebook/shared";
 import { PageHeader } from "@/components/app/app-shell";
 import { Button } from "@/components/ui/button";
@@ -29,19 +26,6 @@ import { Alert, Card, PageLoader } from "@/components/ui/misc";
 import { ApiError, errorMessage } from "@/lib/api";
 import { useCreateBook, useCredits } from "@/lib/queries";
 import { cn } from "@/lib/utils";
-
-const TYPE_ICONS: Record<BookType, LucideIcon> = {
-  guide: BookOpen,
-  lead_magnet: Magnet,
-  workbook: ClipboardList,
-  report: FileBarChart,
-  course: GraduationCap,
-  self_help: Heart,
-  educational: BookMarked,
-  recipe: ChefHat,
-  travel: Map,
-  fiction: Sparkles,
-};
 
 const IDEA_EXAMPLES = [
   "A beginner's guide to meal prep for busy parents",
@@ -54,8 +38,6 @@ const STEPS = [
   { title: "Readers & voice", fields: ["targetAudience", "knowledgeLevel", "readerProblem", "readerOutcome", "language", "tone"] },
   { title: "Length & details", fields: ["chapterCount", "wordsPerChapter", "depth", "authorName", "extraInstructions"] },
 ] as const;
-
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).replace("_", " ");
 
 function CreateBookForm() {
   const router = useRouter();
@@ -143,28 +125,7 @@ function CreateBookForm() {
             <div className="space-y-6">
               <div>
                 <p className="mb-3 text-sm font-medium">What kind of book?</p>
-                <RadioGroup
-                  label="Book type"
-                  value={bookType ?? "guide"}
-                  onChange={(t) => setValue("bookType", t, { shouldDirty: true })}
-                  className="grid grid-cols-2 gap-2 sm:grid-cols-5"
-                  itemClassName={(_option, selected) => cn(
-                    "flex cursor-pointer flex-col items-center gap-2 rounded-xl border p-3 text-center text-xs font-medium transition",
-                    selected ? "border-primary bg-primary-soft text-primary-hover" : "border-border hover:bg-muted",
-                  )}
-                  options={BOOK_TYPES.map((t) => {
-                    const Icon = TYPE_ICONS[t];
-                    return {
-                      value: t,
-                      label: (
-                        <>
-                          <Icon className="h-5 w-5" />
-                          {BOOK_TYPE_LABELS[t]}
-                        </>
-                      ),
-                    };
-                  })}
-                />
+                <BookTypePicker value={bookType ?? "guide"} onChange={(t) => setValue("bookType", t, { shouldDirty: true })} />
               </div>
               <Field label="Describe your book idea" htmlFor="topic" error={errors.topic?.message} hint="One or two sentences. Be specific about who it's for and what they'll get.">
                 <Textarea id="topic" rows={3} placeholder={IDEA_EXAMPLES[0]} aria-invalid={!!errors.topic} {...register("topic")} />

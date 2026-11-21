@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { BookBriefInput, Operation, Outline } from "@ebook/shared";
+import type { BookBrief, BookBriefInput, Operation, Outline } from "@ebook/shared";
 import { operationRequest } from "./operation-request";
 import { api } from "./api";
 import { useSession } from "./auth-client";
@@ -349,6 +349,18 @@ export function useBookAction(bookId: string) {
     startGeneration: useMutation({ mutationFn: () => operationRequest<{ job: GenerationJob }>(`/books/${bookId}/generate`), onSettled: invalidate }),
     cancelGeneration: useMutation({ mutationFn: () => api.post(`/books/${bookId}/generate/cancel`), onSettled: invalidate }),
   };
+}
+
+/**
+ * Saves the book brief. The server refuses while a job is running and once any
+ * chapter has been written, because the brief is what the writing was based on.
+ */
+export function useUpdateBrief(bookId: string) {
+  const invalidate = useInvalidateBook(bookId);
+  return useMutation({
+    mutationFn: (brief: BookBriefInput) => api.put<{ brief: BookBrief }>(`/books/${bookId}/brief`, brief).then((r) => r.brief),
+    onSettled: invalidate,
+  });
 }
 
 export function useCreateExport(bookId: string) {

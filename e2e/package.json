@@ -13,6 +13,7 @@
     "e2e:wiring": "tsx wiring-flow.e2e.ts",
     "e2e:library": "tsx library-flow.e2e.ts",
     "e2e:account": "tsx account-flow.e2e.ts",
+    "e2e:brief-roles": "tsx brief-roles-flow.e2e.ts",
     "e2e:stripe": "tsx stripe-live.e2e.ts",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit"

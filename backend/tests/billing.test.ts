@@ -242,13 +242,17 @@ describe('a verified payment grants credits and entitlements', () => {
     const record = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
     expect(record.status).toBe('pending');
 
+    // Unique per run: the payment id is unique across payments, and the
+    // database persists between runs, so a fixed id would already be held by
+    // an earlier run's record and would never be written.
+    const providerPaymentId = `pi_by_session_${paymentId}`;
     const res = await sendWebhook(eventBody({
       id: `evt_by_session_${paymentId}`,
       type: 'payment.succeeded',
       customerReference: customerReference(user.user.id),
       // The provider knows the payment under a different identifier than the
       // checkout it settles.
-      providerPaymentId: 'pi_a_different_identifier',
+      providerPaymentId,
       providerCheckoutId: record.providerCheckoutId,
       planId: PLAN.id,
       amountMinor: PLAN.priceMinor,
@@ -265,7 +269,8 @@ describe('a verified payment grants credits and entitlements', () => {
     // the one on the record.
     const settled = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
     expect(settled.status).toBe('succeeded');
-    expect(settled.providerPaymentId).toBe(record.providerPaymentId);
+    expect(settled.providerPaymentId).toBe(providerPaymentId);
+    expect(settled.providerCheckoutId).toBe(record.providerCheckoutId);
   });
 
   /**

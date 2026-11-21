@@ -1,13 +1,14 @@
 "use client";
 
 import { OutlineHistory } from "./outline-history";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { use, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { CheckCircle2, Copy, GripVertical, Lock, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { CheckCircle2, Copy, FileText, GripVertical, Lock, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 import { CREDIT_COSTS, chapterCredits, getLanguage, outlineSchema, type Outline } from "@ebook/shared";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -94,7 +95,7 @@ function SortableChapter({ ch, index, dir, onChange, onRemove, onDuplicate, canR
 export function OutlineScreen({ params }: { params: Promise<{ bookId: string }> }) {
   const { bookId } = use(params);
   const router = useRouter();
-  const { data: book, isLoading, error, refetch } = useBook(bookId);
+  const { data: book, isPending, error, refetch } = useBook(bookId);
   const actions = useBookAction(bookId);
   const [draft, setDraft] = useState<{ title: string; subtitle: string; chapters: EditableChapter[] } | null>(null);
   const [loadedVersion, setLoadedVersion] = useState<number | null>(null);
@@ -118,7 +119,10 @@ export function OutlineScreen({ params }: { params: Promise<{ bookId: string }> 
   const lang = getLanguage(book?.language ?? "en");
   const writeCost = useMemo(() => draft?.chapters.reduce((s, c) => s + chapterCredits(c.targetWords), 0) ?? 0, [draft]);
 
-  if (isLoading) return <PageLoader />;
+  // Pending, not loading: before the session is known the query is disabled, and a
+  // disabled query is pending without loading. The server render and the first
+  // client render then both show the loader instead of disagreeing.
+  if (isPending && !error) return <PageLoader />;
   if (error || !book) return <div className="mx-auto max-w-4xl px-4 py-8"><ErrorState message={errorMessage(error)} onRetry={() => void refetch()} /></div>;
 
   const update = (fn: (d: NonNullable<typeof draft>) => NonNullable<typeof draft>) => {
@@ -199,9 +203,14 @@ export function OutlineScreen({ params }: { params: Promise<{ bookId: string }> 
           <Sparkles className="mx-auto h-8 w-8 text-primary" />
           <h2 className="mt-3 text-xl font-semibold">{failed ? "The outline couldn't be generated" : "No outline yet"}</h2>
           <p className="mt-2 text-sm text-muted-foreground">{failed ? book.lastJob?.error ?? "Something went wrong." : "Generate a chapter plan from your brief."} Your credits were not charged for failed attempts.</p>
-          <Button className="mt-6" loading={actions.generateOutline.isPending} onClick={() => void regenerate()}>
-            <Sparkles className="h-4 w-4" /> Generate outline ({CREDIT_COSTS.outline} credits)
-          </Button>
+          <div className="mt-6 flex flex-wrap justify-center gap-2">
+            <Button loading={actions.generateOutline.isPending} onClick={() => void regenerate()}>
+              <Sparkles className="h-4 w-4" /> Generate outline ({CREDIT_COSTS.outline} credits)
+            </Button>
+            <Link href={`/app/books/${bookId}/brief`} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted">
+              <FileText className="h-4 w-4" /> Review brief
+            </Link>
+          </div>
         </Card>
       </div>
     );
@@ -238,9 +247,14 @@ export function OutlineScreen({ params }: { params: Promise<{ bookId: string }> 
             {draft.chapters.length} chapters <span className="text-sm font-normal text-muted-foreground">· drag to reorder</span>
           </h2>
           {!locked && (
-            <Button variant="secondary" size="sm" onClick={() => setConfirmRegen(true)} loading={actions.generateOutline.isPending}>
-              <RefreshCw className="h-3.5 w-3.5" /> Regenerate
-            </Button>
+            <div className="flex items-center gap-2">
+              <Link href={`/app/books/${bookId}/brief`} className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground">
+                <FileText className="h-3.5 w-3.5" /> Edit brief
+              </Link>
+              <Button variant="secondary" size="sm" onClick={() => setConfirmRegen(true)} loading={actions.generateOutline.isPending}>
+                <RefreshCw className="h-3.5 w-3.5" /> Regenerate
+              </Button>
+            </div>
           )}
         </div>
 

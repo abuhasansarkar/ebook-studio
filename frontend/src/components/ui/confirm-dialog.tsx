@@ -23,6 +23,7 @@ export function ConfirmDialog({
   cancelLabel = "Cancel",
   tone = "danger",
   busy = false,
+  confirmDisabled = false,
   children,
 }: {
   open: boolean;
@@ -34,6 +35,8 @@ export function ConfirmDialog({
   cancelLabel?: string;
   tone?: "danger" | "primary";
   busy?: boolean;
+  /** Holds the confirm button back until the dialog's own input is complete. */
+  confirmDisabled?: boolean;
   children?: ReactNode;
 }) {
   return (
@@ -50,7 +53,7 @@ export function ConfirmDialog({
           <Button variant="secondary" onClick={onClose} disabled={busy}>
             {cancelLabel}
           </Button>
-          <Button variant={tone === "danger" ? "danger" : "primary"} onClick={onConfirm} loading={busy}>
+          <Button variant={tone === "danger" ? "danger" : "primary"} onClick={onConfirm} loading={busy} disabled={confirmDisabled}>
             {confirmLabel}
           </Button>
         </div>
