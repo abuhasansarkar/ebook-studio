@@ -121,3 +121,47 @@ export interface PlanCatalog {
   /** False when the provider cannot take money, as with the local one. */
   providerLive: boolean;
 }
+
+/**
+ * The signed-in account, as the product's own account endpoint reports it.
+ *
+ * This is the server's authoritative view of the account. It is not the auth
+ * session: the session says who is signed in, and this says what the product
+ * knows about that account.
+ */
+export interface AccountUser {
+  id: string;
+  email: string;
+  name: string;
+  emailVerified: boolean;
+}
+
+/**
+ * The readiness of the service, as the health endpoint reports it.
+ *
+ * Each check is a separate dependency. A false check means that dependency is
+ * not available right now, not that the product is broken.
+ */
+export interface ReadinessChecks {
+  database: boolean;
+  redis: boolean;
+  workers: boolean;
+  storage: boolean;
+}
+
+/** The liveness probe: the process is up and serving. */
+export interface LiveStatus {
+  status: "alive";
+}
+
+/** The readiness probe: the dependencies are all available. */
+export interface ReadyStatus {
+  status: "ready" | "degraded";
+  checks: ReadinessChecks;
+}
+
+/** The general health check: the database and the queue are reachable. */
+export interface HealthStatus {
+  status: "ok" | "degraded";
+  checks: { database: boolean; redis: boolean };
+}

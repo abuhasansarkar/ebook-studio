@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Coins } from "lucide-react";
 import { CREDIT_COSTS } from "@ebook/shared";
 import { PageHeader } from "@/components/app/app-shell";
-import { Badge, Card, EmptyState, ErrorState, PageLoader } from "@/components/ui/misc";
+import { Badge, Card, EmptyState, ErrorState, PageLoader, Section } from "@/components/ui/misc";
 import { errorMessage } from "@/lib/api";
 import { useCredits } from "@/lib/queries";
 import { formatNumber, timeAgo } from "@/lib/utils";
@@ -45,28 +45,29 @@ export default function CreditsPage() {
             </Card>
           </div>
 
-          <h2 className="mb-3 mt-10 text-lg font-semibold">History</h2>
-          {data.transactions.length === 0 ? (
-            <EmptyState icon={<Coins className="h-6 w-6" />} title="No activity yet" description="Credit usage will appear here." />
-          ) : (
-            <Card className="divide-y divide-border">
-              {data.transactions.map((t) => (
-                <div key={t.id} className="flex items-center justify-between gap-4 px-5 py-3.5">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{t.description ?? TYPE_LABEL[t.type]}</p>
-                    <p className="text-xs text-muted-foreground">{timeAgo(t.createdAt)}</p>
+          <Section title="History" description="Every credit movement on your account." className="mt-10">
+            {data.transactions.length === 0 ? (
+              <EmptyState icon={<Coins className="h-6 w-6" />} title="No activity yet" description="Credit usage will appear here." />
+            ) : (
+              <Card className="divide-y divide-border">
+                {data.transactions.map((t) => (
+                  <div key={t.id} className="flex items-center justify-between gap-4 px-5 py-3.5">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{t.description ?? TYPE_LABEL[t.type]}</p>
+                      <p className="text-xs text-muted-foreground">{timeAgo(t.createdAt)}</p>
+                    </div>
+                    <div className="text-end">
+                      <Badge tone={t.amount > 0 ? "success" : t.amount < 0 ? "warning" : "neutral"}>
+                        {t.amount > 0 ? "+" : ""}
+                        {t.amount}
+                      </Badge>
+                      <p className="mt-0.5 text-xs text-muted-foreground">Balance {t.balanceAfter}</p>
+                    </div>
                   </div>
-                  <div className="text-end">
-                    <Badge tone={t.amount > 0 ? "success" : t.amount < 0 ? "warning" : "neutral"}>
-                      {t.amount > 0 ? "+" : ""}
-                      {t.amount}
-                    </Badge>
-                    <p className="mt-0.5 text-xs text-muted-foreground">Balance {t.balanceAfter}</p>
-                  </div>
-                </div>
-              ))}
-            </Card>
-          )}
+                ))}
+              </Card>
+            )}
+          </Section>
         </>
       ) : null}
     </div>

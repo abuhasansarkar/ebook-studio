@@ -5,10 +5,10 @@ import { useState } from "react";
 import { Coins, CreditCard, Sparkles } from "lucide-react";
 import { FREE_TIER_ENTITLEMENTS, type EntitlementKey, type Plan, type SubscriptionStatus } from "@ebook/shared";
 import { PageHeader } from "@/components/app/app-shell";
-import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader } from "@/components/ui/misc";
+import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader, Section } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
 import { errorMessage } from "@/lib/api";
-import { useBilling, useCancelSubscription, usePlans, useStartCheckout } from "@/lib/queries";
+import { useBilling, useCancelSubscription, usePayments, usePlans, useStartCheckout } from "@/lib/queries";
 import { formatNumber, timeAgo } from "@/lib/utils";
 
 /**
@@ -175,8 +175,8 @@ export default function BillingPage() {
             <EmptyState icon={<CreditCard className="h-6 w-6" />} title="No plans on offer" description="Plans will appear here when they are published." />
           )}
 
-          <h2 className="mb-3 mt-10 text-lg font-semibold">Your subscription</h2>
-          {subscription ? (
+          <Section title="Your subscription" className="mt-10">
+            {subscription ? (
             <Card className="p-6">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -211,61 +211,93 @@ export default function BillingPage() {
                 {subscription.canceledAt ? "Cancelled" : "Cancel subscription"}
               </Button>
             </Card>
-          ) : (
-            <EmptyState icon={<Sparkles className="h-6 w-6" />} title="No subscription" description="Buying a plan starts a subscription." />
-          )}
+            ) : (
+              <EmptyState icon={<Sparkles className="h-6 w-6" />} title="No subscription" description="Buying a plan starts a subscription." />
+            )}
+          </Section>
 
-          <h2 className="mb-3 mt-10 text-lg font-semibold">What your plan unlocks</h2>
-          {paidEntitlements.length > 0 ? (
-            <Card className="divide-y divide-border" data-testid="paid-entitlements">
-              {paidEntitlements.map(([key, value]) => (
+          <Section
+            title="What your plan unlocks"
+            description="The capabilities a paid plan adds on top of the free tier."
+            className="mt-10"
+          >
+            {paidEntitlements.length > 0 ? (
+              <Card className="divide-y divide-border" data-testid="paid-entitlements">
+                {paidEntitlements.map(([key, value]) => (
+                  <div key={key} className="flex items-center justify-between gap-4 px-5 py-3.5">
+                    <p className="text-sm font-medium">{ENTITLEMENT_LABEL[key] ?? key}</p>
+                    <Badge tone="success">{typeof value === "boolean" ? (value ? "Included" : "—") : String(value)}</Badge>
+                  </div>
+                ))}
+              </Card>
+            ) : (
+              <Card className="p-6 text-sm text-muted-foreground" data-testid="paid-entitlements">
+                No paid capabilities are unlocked yet. Entitlements are added only when a payment is confirmed.
+              </Card>
+            )}
+          </Section>
+
+          <Section title="Included on every plan" className="mt-10">
+            <Card className="divide-y divide-border" data-testid="free-entitlements">
+              {(Object.keys(FREE_TIER_ENTITLEMENTS) as EntitlementKey[]).map((key) => (
                 <div key={key} className="flex items-center justify-between gap-4 px-5 py-3.5">
-                  <p className="text-sm font-medium">{ENTITLEMENT_LABEL[key] ?? key}</p>
-                  <Badge tone="success">{typeof value === "boolean" ? (value ? "Included" : "—") : String(value)}</Badge>
+                  <p className="text-sm font-medium">{FREE_LABEL[key] ?? key}</p>
+                  <Badge tone="neutral">Free</Badge>
                 </div>
               ))}
             </Card>
-          ) : (
-            <Card className="p-6 text-sm text-muted-foreground" data-testid="paid-entitlements">
-              No paid capabilities are unlocked yet. Entitlements are added only when a payment is confirmed.
-            </Card>
-          )}
+          </Section>
 
-          <h2 className="mb-3 mt-10 text-lg font-semibold">Included on every plan</h2>
-          <Card className="divide-y divide-border" data-testid="free-entitlements">
-            {(Object.keys(FREE_TIER_ENTITLEMENTS) as EntitlementKey[]).map((key) => (
-              <div key={key} className="flex items-center justify-between gap-4 px-5 py-3.5">
-                <p className="text-sm font-medium">{FREE_LABEL[key] ?? key}</p>
-                <Badge tone="neutral">Free</Badge>
-              </div>
-            ))}
-          </Card>
-
-          <h2 className="mb-3 mt-10 text-lg font-semibold">Payment history</h2>
-          {state && state.payments.length > 0 ? (
-            <Card className="divide-y divide-border">
-              {state.payments.map((payment) => (
-                <div key={payment.id} className="flex items-center justify-between gap-4 px-5 py-3.5" data-testid="payment-row">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{payment.planName ?? "Payment"}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatPrice(payment.amountMinor, payment.currency)} · {timeAgo(payment.createdAt)}
-                    </p>
-                  </div>
-                  <div className="text-end">
-                    <Badge tone={PAYMENT_TONE[payment.status] ?? "neutral"}>{payment.status.replace(/_/g, " ")}</Badge>
-                    {payment.credits > 0 && (
-                      <p className="mt-0.5 text-xs text-muted-foreground">+{formatNumber(payment.credits)} credits</p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </Card>
-          ) : (
-            <EmptyState icon={<Coins className="h-6 w-6" />} title="No payments yet" description="Your payments will appear here once they are confirmed." />
-          )}
+          <PaymentHistory />
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * The author's payments, read on their own.
+ *
+ * This is the scoped payment list rather than the copy nested inside the
+ * billing state, so it is refreshed on its own after a checkout settles and
+ * it keeps working when the rest of the billing state is still loading.
+ */
+function PaymentHistory() {
+  const payments = usePayments();
+
+  return (
+    <Section title="Payment history" description="Every payment on your account, newest first.">
+      {payments.isPending ? (
+        <PageLoader label="Loading your payments…" />
+      ) : payments.error ? (
+        <ErrorState message={errorMessage(payments.error)} onRetry={() => void payments.refetch()} />
+      ) : (payments.data ?? []).length > 0 ? (
+        <Card className="divide-y divide-border" data-testid="payment-history">
+          {payments.data!.map((payment) => (
+            <div key={payment.id} className="flex items-center justify-between gap-4 px-5 py-3.5">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{payment.planName ?? "Payment"}</p>
+                <p className="text-xs text-muted-foreground">
+                  {formatPrice(payment.amountMinor, payment.currency)} · {timeAgo(payment.createdAt)}
+                  {payment.description && payment.description !== payment.planName ? ` · ${payment.description}` : ""}
+                </p>
+              </div>
+              <div className="text-end">
+                <Badge tone={PAYMENT_TONE[payment.status] ?? "neutral"}>{payment.status.replace(/_/g, " ")}</Badge>
+                {payment.credits > 0 && (
+                  <p className="mt-0.5 text-xs text-muted-foreground">+{formatNumber(payment.credits)} credits</p>
+                )}
+              </div>
+            </div>
+          ))}
+        </Card>
+      ) : (
+        <EmptyState
+          icon={<Coins className="h-6 w-6" />}
+          title="No payments yet"
+          description="Your payments will appear here once they are confirmed."
+        />
+      )}
+    </Section>
   );
 }

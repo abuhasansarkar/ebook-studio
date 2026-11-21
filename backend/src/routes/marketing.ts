@@ -116,7 +116,11 @@ marketingRouter.get("/marketing/graphics/:graphicId/download", async (req, res) 
   const file = await graphicForDownload(id, String(req.params.graphicId));
   res.setHeader("Content-Type", file.contentType);
   res.setHeader("Content-Length", String(file.size));
-  res.setHeader("Content-Disposition", `attachment; filename="${file.filename}"`);
+  // The gallery shows this file with an <img> element, so it is served inline.
+  // A download disposition here makes the browser treat the response as a file
+  // to save rather than an image to render, which leaves the preview blank.
+  // The filename is still offered, so saving a copy keeps its name.
+  res.setHeader("Content-Disposition", `inline; filename="${file.filename}"`);
   res.setHeader("Cache-Control", "private, max-age=0, must-revalidate");
   file.stream.pipe(res);
 });
@@ -156,6 +160,9 @@ marketingRouter.get("/marketing/samples/:sampleId/download", async (req, res) =>
   const file = await sampleForDownload(id, String(req.params.sampleId));
   res.setHeader("Content-Type", file.contentType);
   res.setHeader("Content-Length", String(file.size));
+  // The sample pack is a file the author saves and hands out, so it is sent as
+  // an attachment rather than shown in the page.
   res.setHeader("Content-Disposition", `attachment; filename="${file.filename}"`);
+  res.setHeader("Cache-Control", "private, max-age=0, must-revalidate");
   file.stream.pipe(res);
 });

@@ -75,3 +75,80 @@ export function Alert({ tone = "warning", children, className }: { tone?: "warni
   };
   return <div role={tone === "danger" ? "alert" : "status"} className={cn("rounded-xl border px-4 py-3 text-sm", tones[tone], className)}>{children}</div>;
 }
+
+/**
+ * A titled block of content.
+ *
+ * Screens here are a list of sections, and each one says what it is. The
+ * heading level is a parameter because a section is not always the first thing
+ * on the page, and a heading that skips a level breaks the outline a screen
+ * reader reads.
+ */
+export function Section({ title, description, actions, headingLevel = 2, className, children }: { title: string; description?: ReactNode; actions?: ReactNode; headingLevel?: 2 | 3 | 4; className?: string; children: ReactNode }) {
+  const Heading = `h${headingLevel}` as "h2" | "h3" | "h4";
+  return (
+    <section className={className}>
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <Heading className="text-lg font-semibold">{title}</Heading>
+          {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
+        </div>
+        {actions && <div className="flex shrink-0 gap-2">{actions}</div>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/**
+ * A label and a value, on one row.
+ *
+ * A definition list is used rather than a table, because these are terms and
+ * their definitions rather than tabular data, and a screen reader announces a
+ * definition list correctly.
+ */
+export function DetailRow({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
+  return (
+    <div className={cn("flex flex-wrap items-center justify-between gap-3 px-5 py-3.5", className)}>
+      <dt className="text-sm text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 text-end text-sm font-medium">{children}</dd>
+    </div>
+  );
+}
+
+/**
+ * A definition list of label-and-value rows.
+ *
+ * The rows are divided by a hairline so a long list can be scanned, and the
+ * whole thing is one card so it reads as a single piece of information.
+ */
+export function DetailList({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <dl className={cn("divide-y divide-border", className)}>
+      {children}
+    </dl>
+  );
+}
+
+/**
+ * A labelled status, as a coloured pill.
+ *
+ * The tone is passed in rather than derived, because the caller knows what the
+ * status means; deriving it here would need a lookup table of every status in
+ * the product.
+ */
+export function StatusDot({ tone = "neutral", label }: { tone?: "neutral" | "primary" | "success" | "warning" | "danger"; label: string }) {
+  const dots = {
+    neutral: "bg-muted-foreground",
+    primary: "bg-primary",
+    success: "bg-success",
+    warning: "bg-warning",
+    danger: "bg-danger",
+  } as const;
+  return (
+    <span className="inline-flex items-center gap-2 text-sm">
+      <span className={cn("h-2 w-2 shrink-0 rounded-full", dots[tone])} aria-hidden />
+      {label}
+    </span>
+  );
+}

@@ -76,9 +76,12 @@ export function useAdminAuthority() {
   return useQuery({
     queryKey: studioQk.authority,
     queryFn: () => api.get<AdminAuthority>("/admin/me"),
-    // The authority rarely changes and a wrong answer here hides controls, so
-    // it is refetched when the window regains focus.
-    staleTime: 30_000,
+    // Roles can be granted to a signed-in account by an operator at any time.
+    // A stale window here would hide role-gated controls until it expires, so
+    // the authority is always refetched when the window regains focus and the
+    // payload is small enough that a refetch costs little.
+    staleTime: 0,
+    refetchOnWindowFocus: "always",
     retry: false,
   });
 }

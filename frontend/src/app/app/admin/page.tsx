@@ -8,6 +8,7 @@ import {
   BookOpen,
   Coins,
   FileClock,
+  HeartPulse,
   LifeBuoy,
   ScrollText,
   ShieldAlert,
@@ -16,6 +17,7 @@ import {
 } from "lucide-react";
 import type { AdminPermission } from "@ebook/shared";
 import { PageHeader } from "@/components/app/app-shell";
+import { ServiceStatusPanel } from "@/components/app/service-status";
 import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader } from "@/components/ui/misc";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
@@ -59,6 +61,7 @@ import { formatNumber, timeAgo } from "@/lib/utils";
 
 type Panel =
   | "overview"
+  | "status"
   | "users"
   | "books"
   | "jobs"
@@ -71,6 +74,7 @@ type Panel =
 
 const PANELS: { id: Panel; label: string; icon: typeof Activity; permission?: AdminPermission }[] = [
   { id: "overview", label: "Overview", icon: Activity, permission: "ops.read" },
+  { id: "status", label: "Status", icon: HeartPulse, permission: "ops.read" },
   { id: "users", label: "Customers", icon: Users, permission: "ops.read" },
   { id: "books", label: "Books", icon: BookOpen, permission: "ops.read" },
   { id: "jobs", label: "Jobs", icon: FileClock, permission: "ops.read" },
@@ -166,6 +170,7 @@ export default function AdminPage() {
           </div>
 
           {panel === "overview" && <OverviewPanel />}
+          {panel === "status" && <StatusPanel />}
           {panel === "users" && <UsersPanel />}
           {panel === "books" && <BooksPanel />}
           {panel === "jobs" && <JobsPanel />}
@@ -218,6 +223,25 @@ function OverviewPanel() {
         <Stat label="Unresolved incidents" value={formatNumber(data.incidents.unresolved)} tone={data.incidents.unresolved > 0 ? "warning" : undefined} />
         <Stat label="Open support requests" value={formatNumber(data.support.open)} />
       </div>
+    </div>
+  );
+}
+
+/**
+ * The live service status.
+ *
+ * The probes are public, so this panel answers even when the operator's own
+ * session has just expired — which is exactly when an operator needs to know
+ * whether the service or the session is at fault.
+ */
+function StatusPanel() {
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        These are the same probes the platform runs to decide whether to route traffic to this instance. A degraded
+        dependency is named rather than hidden, so an incident can be told apart from a slow query.
+      </p>
+      <ServiceStatusPanel />
     </div>
   );
 }

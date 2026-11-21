@@ -12,12 +12,32 @@
  */
 import puppeteer, { type Page } from "puppeteer";
 import { execFile } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * Reads a variable from the e2e environment file.
+ *
+ * The journey needs to know which database the running API uses so that a
+ * direct database write lands in the right one. The file the stack is started
+ * with is the same file the journey reads, so the two cannot drift apart.
+ */
+function envFileValue(key: string): string | undefined {
+  const file = path.resolve(__dirname, "..", ".env.e2e");
+  try {
+    for (const line of readFileSync(file, "utf8").split(/\r?\n/)) {
+      const match = new RegExp(`^\\s*${key}\\s*=\\s*(.*)$`).exec(line);
+      if (match) return match[1].trim().replace(/^["']|["']$/g, "");
+    }
+  } catch {
+    // The file is optional: the environment may already provide the value.
+  }
+  return undefined;
+}
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3100";
 const MAILPIT = process.env.MAILPIT_URL ?? "http://localhost:8025";
@@ -28,13 +48,31 @@ mkdirSync(SHOTS, { recursive: true });
 const email = `e2e-studio-${Date.now()}@example.com`;
 let step = 0;
 
+/**
+ * Reads the database name out of a PostgreSQL connection string.
+ *
+ * Used to make sure a direct database write lands in the same database the
+ * running API reads, instead of in a separately configured default.
+ */
+function databaseFromUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  const match = /\/\/[^/]*\/([^?]+)/.exec(url);
+  return match ? match[1] : undefined;
+}
+
 function log(msg: string) {
   console.log(`✓ ${msg}`);
 }
 
 async function shot(page: Page, name: string) {
   if (process.env.SKIP_SCREENSHOTS === "1") return;
-  await page.screenshot({ path: `${SHOTS}/${String(++step).padStart(2, "0")}-${name}.png`, fullPage: true });
+  // A screenshot is diagnostic evidence, not an assertion: a capture failure
+  // must not abort a journey whose page state was already verified.
+  try {
+    await page.screenshot({ path: `${SHOTS}/${String(++step).padStart(2, "0")}-${name}.png`, fullPage: true });
+  } catch (error) {
+    console.warn(`! screenshot "${name}" failed: ${(error as Error).message}`);
+  }
 }
 
 async function waitText(page: Page, text: string, timeout = 30_000) {
@@ -89,9 +127,15 @@ async function getOtp(to: string): Promise<string> {
  */
 async function grantSupportRole(target: string): Promise<boolean> {
   const container = process.env.PG_CONTAINER ?? "ebook-studio-postgres-1";
-  // The grant has to land in the database the journey's API reads. The e2e
-  // stack uses its own database, and the development stack uses another one.
-  const database = process.env.E2E_PG_DB ?? "ebook_studio";
+  // The grant has to land in the database the journey's API reads. That
+  // database is named by DATABASE_URL, so it is derived from there: a separate
+  // default could name a different database and the grant would be invisible
+  // to the API while appearing to succeed.
+  const database =
+    process.env.E2E_PG_DB ??
+    databaseFromUrl(process.env.DATABASE_URL) ??
+    databaseFromUrl(envFileValue("DATABASE_URL")) ??
+    "ebook_studio";
   const script = `
     INSERT INTO admin_roles (id, "userId", role, reason, "grantedAt")
     SELECT 'e2e-role-' || substr(md5(random()::text), 1, 12), u.id, 'support',
@@ -214,9 +258,19 @@ try {
   // The graphic is a file the author takes away, so it must be visible and
   // downloadable rather than a row of text.
   await page.waitForSelector('[data-testid="marketing-graphic"] img', { timeout: 30_000 });
-  const graphicShown = await page.evaluate(() => {
+  // The image is fetched and decoded by the browser, so the check waits for the
+  // decode rather than sampling the element the moment it appears. The wait is
+  // bounded: a decode that never settles must not stall the journey.
+  const graphicShown = await page.evaluate(async () => {
     const img = document.querySelector('[data-testid="marketing-graphic"] img') as HTMLImageElement | null;
-    return !!img && img.naturalWidth > 0;
+    if (!img) return false;
+    if (!img.complete) {
+      await Promise.race([
+        img.decode().catch(() => undefined),
+        new Promise((resolve) => setTimeout(resolve, 10_000)),
+      ]);
+    }
+    return img.naturalWidth > 0;
   });
   if (!graphicShown) throw new Error("The promotional graphic image was not rendered");
   log("the promotional graphic shows the image it composed");

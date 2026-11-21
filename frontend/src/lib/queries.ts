@@ -5,7 +5,25 @@ import type { BookBriefInput, Operation, Outline } from "@ebook/shared";
 import { operationRequest } from "./operation-request";
 import { api } from "./api";
 import { useSession } from "./auth-client";
-import type { BillingState, BookDetail, BookSummary, ChapterFull, ChapterMeta, CheckoutSession, CreditTransaction, Dashboard, ExportRecord, ExportFormat, GenerationJob, PlanCatalog } from "./types";
+import type {
+  AccountUser,
+  BillingState,
+  BookDetail,
+  BookSummary,
+  ChapterFull,
+  ChapterMeta,
+  CheckoutSession,
+  CreditTransaction,
+  Dashboard,
+  ExportRecord,
+  ExportFormat,
+  GenerationJob,
+  HealthStatus,
+  LiveStatus,
+  Payment,
+  PlanCatalog,
+  ReadyStatus,
+} from "./types";
 
 export const qk = {
   dashboard: ["dashboard"] as const,
@@ -17,9 +35,14 @@ export const qk = {
   credits: ["credits"] as const,
   plans: ["billing-plans"] as const,
   billing: ["billing"] as const,
+  payments: ["billing-payments"] as const,
   config: ["config"] as const,
   operation: (id: string) => ["operation", id] as const,
   generationJob: (id: string) => ["generation-job", id] as const,
+  account: ["account"] as const,
+  health: ["health"] as const,
+  readiness: ["health-ready"] as const,
+  liveness: ["health-live"] as const,
 };
 
 /**
@@ -193,6 +216,90 @@ export function useCancelSubscription() {
       void qc.invalidateQueries({ queryKey: qk.billing });
       void qc.invalidateQueries({ queryKey: qk.credits });
     },
+  });
+}
+
+/**
+ * The author's payment history, on its own.
+ *
+ * This is the scoped payment list rather than the one nested inside the
+ * billing state, so it is read on its own whenever the payments screen is
+ * opened, and refreshed on its own after a checkout or a cancellation.
+ */
+export function usePayments() {
+  const signedIn = useIsSignedIn();
+  return useQuery({
+    queryKey: qk.payments,
+    queryFn: () => api.get<{ payments: Payment[] }>("/billing/payments").then((r) => r.payments),
+    enabled: signedIn,
+  });
+}
+
+// ---------- The account ----------
+
+/**
+ * The signed-in account, as the product's own account endpoint reports it.
+ *
+ * The auth session says who is signed in. This says what the product knows
+ * about that account — including whether the address is verified — so the
+ * profile screen does not have to infer it from a session cookie.
+ */
+export function useAccount() {
+  const signedIn = useIsSignedIn();
+  return useQuery({
+    queryKey: qk.account,
+    queryFn: () => api.get<{ user: AccountUser }>("/users/me").then((r) => r.user),
+    enabled: signedIn,
+  });
+}
+
+// ---------- Service health ----------
+
+/**
+ * The liveness probe.
+ *
+ * The probe is public, so it answers even when the session is not. It says the
+ * process is up; it says nothing about whether the dependencies are healthy.
+ */
+export function useLiveness() {
+  return useQuery({
+    queryKey: qk.liveness,
+    queryFn: () => api.get<LiveStatus>("/health/live"),
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+    retry: false,
+  });
+}
+
+/**
+ * The readiness probe.
+ *
+ * Each dependency is reported separately, so a degraded service can say which
+ * one is unavailable rather than only that something is wrong.
+ */
+export function useReadiness() {
+  return useQuery({
+    queryKey: qk.readiness,
+    queryFn: () => api.get<ReadyStatus>("/health/ready"),
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+    retry: false,
+  });
+}
+
+/**
+ * The general health check.
+ *
+ * It covers the database and the queue. The readiness probe covers more, so
+ * this is the one to read when the service is up but something is slow.
+ */
+export function useHealth() {
+  return useQuery({
+    queryKey: qk.health,
+    queryFn: () => api.get<HealthStatus>("/health"),
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+    retry: false,
   });
 }
 

@@ -28,7 +28,13 @@ function log(msg: string) {
 
 async function shot(page: Page, name: string) {
   if (process.env.SKIP_SCREENSHOTS === "1") return;
-  await page.screenshot({ path: `${SHOTS}/${String(++step).padStart(2, "0")}-${name}.png`, fullPage: true });
+  // A screenshot is diagnostic evidence, not an assertion: a capture failure
+  // must not abort a journey whose page state was already verified.
+  try {
+    await page.screenshot({ path: `${SHOTS}/${String(++step).padStart(2, "0")}-${name}.png`, fullPage: true });
+  } catch (error) {
+    console.warn(`! screenshot "${name}" failed: ${(error as Error).message}`);
+  }
 }
 
 async function waitText(page: Page, text: string, timeout = 30_000) {

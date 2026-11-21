@@ -12,7 +12,7 @@ import {
 } from "@ebook/shared";
 
 import { PageHeader } from "@/components/app/app-shell";
-import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader } from "@/components/ui/misc";
+import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader, Section } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { errorMessage } from "@/lib/api";
@@ -436,51 +436,53 @@ export function Distribution({ bookId }: { bookId: string }) {
         </div>
       )}
 
-      <h2 className="mb-3 mt-10 text-lg font-semibold">Prepared packages</h2>
-      {packages.isLoading ? (
-        <PageLoader />
-      ) : packages.error ? (
-        <ErrorState message={errorMessage(packages.error)} onRetry={() => void packages.refetch()} />
-      ) : packages.data && packages.data.length > 0 ? (
-        <div className="space-y-4">
-          {packages.data.map((pkg) => (
-            <PackageCard key={pkg.id} pkg={pkg} />
-          ))}
-        </div>
-      ) : (
-        <EmptyState
-          icon={<Package className="h-6 w-6" />}
-          title="No packages yet"
-          description="Prepare one above to get a ZIP you can upload to a store."
-        />
-      )}
-
-      <h2 className="mb-3 mt-10 text-lg font-semibold">Your publishing status</h2>
-      <Alert tone="info" className="mb-4">
-        <ShieldCheck className="me-2 inline h-4 w-4" />
-        You record this yourself. Only you know whether a store has reviewed or accepted your book.
-      </Alert>
-      <Card className="divide-y divide-border">
-        {(destinations.data ?? []).map((item) => (
-          <PublishingStatusRow
-            key={item.destination}
-            destination={item.destination}
-            current={statusFor(item.destination)}
-            onChange={(state) =>
-              setStatus.mutate(
-                { destination: item.destination, state },
-                {
-                  onSuccess: () => {
-                    setNotice("Publishing status recorded.");
-                    void statuses.refetch();
-                  },
-                  onError: (err) => setProblem(errorMessage(err)),
-                },
-              )
-            }
+      <Section title="Prepared packages" className="mt-10">
+        {packages.isLoading ? (
+          <PageLoader />
+        ) : packages.error ? (
+          <ErrorState message={errorMessage(packages.error)} onRetry={() => void packages.refetch()} />
+        ) : packages.data && packages.data.length > 0 ? (
+          <div className="space-y-4">
+            {packages.data.map((pkg) => (
+              <PackageCard key={pkg.id} pkg={pkg} />
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            icon={<Package className="h-6 w-6" />}
+            title="No packages yet"
+            description="Prepare one above to get a ZIP you can upload to a store."
           />
-        ))}
-      </Card>
+        )}
+      </Section>
+
+      <Section title="Your publishing status" className="mt-10">
+        <Alert tone="info" className="mb-4">
+          <ShieldCheck className="me-2 inline h-4 w-4" />
+          You record this yourself. Only you know whether a store has reviewed or accepted your book.
+        </Alert>
+        <Card className="divide-y divide-border">
+          {(destinations.data ?? []).map((item) => (
+            <PublishingStatusRow
+              key={item.destination}
+              destination={item.destination}
+              current={statusFor(item.destination)}
+              onChange={(state) =>
+                setStatus.mutate(
+                  { destination: item.destination, state },
+                  {
+                    onSuccess: () => {
+                      setNotice("Publishing status recorded.");
+                      void statuses.refetch();
+                    },
+                    onError: (err) => setProblem(errorMessage(err)),
+                  },
+                )
+              }
+            />
+          ))}
+        </Card>
+      </Section>
 
       <div className="mt-8 flex justify-end">
         <Button variant="ghost" onClick={() => setNotice(null)}>

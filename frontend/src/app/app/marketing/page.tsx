@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import type { MarketingDraft, MarketingGraphic, MarketingOutputType, MarketingTone } from "@ebook/shared";
 import { PageHeader } from "@/components/app/app-shell";
-import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader } from "@/components/ui/misc";
+import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader, Section } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
@@ -332,7 +332,6 @@ function GraphicStudio({ bookId }: { bookId: string }) {
                 <img
                   src={graphicUrl(graphic.id)}
                   alt={`Promotional graphic: ${graphic.headline}`}
-                  loading="lazy"
                   className="aspect-[4/3] w-full bg-muted object-contain"
                 />
               ) : (
@@ -777,59 +776,62 @@ export function MarketingStudio({ bookId }: { bookId: string }) {
         </div>
       </Card>
 
-      <h2 className="mb-3 mt-10 text-lg font-semibold">Your drafts</h2>
-      {drafts.isLoading ? (
-        <PageLoader />
-      ) : drafts.error ? (
-        <ErrorState message={errorMessage(drafts.error)} onRetry={() => void drafts.refetch()} />
-      ) : drafts.data && drafts.data.length > 0 ? (
-        <div className="space-y-4">
-          {drafts.data.map((draft) => (
-            <DraftCard
-              key={draft.id}
-              draft={draft}
-              saving={saveDraft.isPending}
-              onRegenerate={() => {
-                setNotice(null);
-                setProblem(null);
-                regenerate.mutate(draft.id, {
-                  onSuccess: () => {
-                    setNotice("A new version was written. The original is kept.");
-                    void drafts.refetch();
-                  },
-                  onError: (err) => setProblem(errorMessage(err)),
-                });
-              }}
-              onSave={(content, approve) => {
-                setNotice(null);
-                setProblem(null);
-                saveDraft.mutate(
-                  { draftId: draft.id, content, approve },
-                  {
+      <Section title="Your drafts" className="mt-10">
+        {drafts.isLoading ? (
+          <PageLoader />
+        ) : drafts.error ? (
+          <ErrorState message={errorMessage(drafts.error)} onRetry={() => void drafts.refetch()} />
+        ) : drafts.data && drafts.data.length > 0 ? (
+          <div className="space-y-4">
+            {drafts.data.map((draft) => (
+              <DraftCard
+                key={draft.id}
+                draft={draft}
+                saving={saveDraft.isPending}
+                onRegenerate={() => {
+                  setNotice(null);
+                  setProblem(null);
+                  regenerate.mutate(draft.id, {
                     onSuccess: () => {
-                      setNotice(approve ? "Draft saved and approved." : "Draft saved.");
+                      setNotice("A new version was written. The original is kept.");
                       void drafts.refetch();
                     },
                     onError: (err) => setProblem(errorMessage(err)),
-                  },
-                );
-              }}
-            />
-          ))}
-        </div>
-      ) : (
-        <EmptyState
-          icon={<Megaphone className="h-6 w-6" />}
-          title="No drafts yet"
-          description="Write a description, a caption or a bio for this book to get started."
-        />
-      )}
+                  });
+                }}
+                onSave={(content, approve) => {
+                  setNotice(null);
+                  setProblem(null);
+                  saveDraft.mutate(
+                    { draftId: draft.id, content, approve },
+                    {
+                      onSuccess: () => {
+                        setNotice(approve ? "Draft saved and approved." : "Draft saved.");
+                        void drafts.refetch();
+                      },
+                      onError: (err) => setProblem(errorMessage(err)),
+                    },
+                  );
+                }}
+              />
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            icon={<Megaphone className="h-6 w-6" />}
+            title="No drafts yet"
+            description="Write a description, a caption or a bio for this book to get started."
+          />
+        )}
+      </Section>
 
-      <h2 className="mb-3 mt-10 text-lg font-semibold">Graphics</h2>
-      <GraphicStudio bookId={bookId} />
+      <Section title="Graphics" className="mt-10">
+        <GraphicStudio bookId={bookId} />
+      </Section>
 
-      <h2 className="mb-3 mt-10 text-lg font-semibold">Sample chapters</h2>
-      <SampleStudio bookId={bookId} />
+      <Section title="Sample chapters" className="mt-10">
+        <SampleStudio bookId={bookId} />
+      </Section>
 
       <div className="mt-8 flex justify-end">
         <Button variant="ghost" onClick={() => router.back()}>
