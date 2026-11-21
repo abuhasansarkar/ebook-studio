@@ -185,15 +185,19 @@ Status: core implementation complete and verified locally. Nine output types are
 ## S16 — Validate and release
 
 1. Run the acceptance matrix against the release build in staging.
-2. Validate actual OpenAI outputs/costs separately from deterministic mocks.
-3. Complete security/accessibility reviews, responsive checks and measured load tests.
+2. Validate actual OpenAI outputs/costs separately from deterministic mocks. *Done — see "Costed live AI verification" in ACCEPTANCE.md.*
+3. Complete security/accessibility reviews, responsive checks and measured load tests. *Accessibility and the measured load test are done; the security review is not.*
 4. Rehearse migrations, restore, rollback and worker recovery with representative data.
 5. Verify alerts, privacy/retention controls, payment settings and deployed email behavior.
 6. Record evidence, remaining limitations and release approval; deploy only with required gates satisfied.
 
 Gate: the complete workflow meets [ACCEPTANCE.md](./ACCEPTANCE.md); failed critical checks block release.
 
-Status: partially complete. The release build compiles and the acceptance matrix is exercised in the browser against an isolated stack: the backend passes 388 tests in 30 files, the shared, backend and frontend type checks pass, the frontend lint and production build pass with 33 routes, and the UI, billing, source, citation-impact, studio and Stripe sandbox journeys all pass. The billing journey runs against the local provider (`.env.e2e.local`) and the Stripe journey against Stripe's own sandbox (`.env.e2e`, Stripe CLI listener). Migrations, backup/restore rehearsal and worker recovery are rehearsed with the test suite. The release gate is **not** met: the live processor path has been validated against Stripe's sandbox, but `STRIPE_WEBHOOK_SECRET` is empty in the working environment, no real OpenAI output or cost has been measured, and no load, security or accessibility review has been performed. The release gate stays closed until those are done; see ACCEPTANCE.md for the full list of boundaries.
+Status: partially complete. The release build compiles and the acceptance matrix is exercised in the browser against an isolated stack: the backend passes **440 tests in 33 files**, the shared, backend and frontend type checks pass, the frontend lint and production build pass with 33 routes, and the UI, billing, source, citation-impact, studio and Stripe sandbox journeys all pass. The billing journey runs against the local provider (`.env.e2e.local`) and the Stripe journey against Stripe's own sandbox (`.env.e2e`, Stripe CLI listener). Migrations, backup/restore rehearsal and worker recovery are rehearsed with the test suite.
+
+Three of the open gate items are now closed: **the live AI output and cost have been measured** (`AI_MOCK=0`, a dated price list, a costed `gpt-5` quality review and a live Bengali generation), **the accessibility review is done** (33 tests in `backend/tests/accessibility.test.ts`), and **the measured load test is done** (`backend/tests/load.test.ts`, budgets in [LOAD_BUDGETS.md](./LOAD_BUDGETS.md)).
+
+The release gate is **still not met**. What remains: the live processor path has been validated against Stripe's sandbox but not against live keys and a live webhook endpoint; `STRIPE_WEBHOOK_SECRET` is empty in the working environment; the **security review has not been performed**; the representative-reader checks for Kindle Previewer, Apple Books and Microsoft Word have not been done; the privacy and retention controls have not been reviewed and no deployed email behaviour has been verified against a real mail service; and the alert destination is not a real destination. The release gate stays closed until those are done; see ACCEPTANCE.md for the full list of boundaries.
 
 ## Handoff record for each step
 

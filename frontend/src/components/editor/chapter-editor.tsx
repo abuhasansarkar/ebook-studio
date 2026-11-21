@@ -10,37 +10,19 @@ import { TableKit } from "@tiptap/extension-table";
 import { CharacterCount, Placeholder } from "@tiptap/extensions";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Check, CloudOff, History, Loader2, Save, Download } from "lucide-react";
+import { History, Save, Download } from "lucide-react";
 import { getLanguage } from "@ebook/shared";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Alert } from "@/components/ui/misc";
 import { qk } from "@/lib/queries";
 import type { ChapterFull, ChapterMeta } from "@/lib/types";
-import { formatNumber, timeAgo } from "@/lib/utils";
+import { formatNumber } from "@/lib/utils";
 import { AiAssist } from "./ai-assist";
 import { VersionHistory } from "./version-history";
 import { EditorToolbar } from "./toolbar";
-import { useAutosave, type ChapterPatch, type SavedChapter, type SaveState } from "./use-autosave";
-
-function SaveIndicator({ state, lastSavedAt, error, onRetry }: { state: SaveState; lastSavedAt: Date; error: string | null; onRetry: () => void }) {
-  const [, tick] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => tick((n) => n + 1), 30_000);
-    return () => clearInterval(t);
-  }, []);
-  if (state === "saving") return <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</span>;
-  if (state === "dirty") return <span className="text-xs text-muted-foreground">Unsaved changes</span>;
-  if (state === "conflict") return <span className="flex items-center gap-1.5 text-xs text-warning"><AlertTriangle className="h-3.5 w-3.5" /> Edit conflict</span>;
-  if (state === "error" || state === "offline")
-    return (
-      <span className="flex items-center gap-1.5 text-xs text-danger" title={error ?? undefined}>
-        <CloudOff className="h-3.5 w-3.5" /> {state === "offline" ? "Offline — changes pending" : "Not saved"}
-        <button type="button" onClick={onRetry} className="cursor-pointer font-semibold underline">Retry</button>
-      </span>
-    );
-  return <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><Check className="h-3.5 w-3.5 text-success" /> Saved {timeAgo(lastSavedAt)}</span>;
-}
+import { useAutosave, type ChapterPatch, type SavedChapter } from "./use-autosave";
+import { SaveIndicator } from "./save-indicator";
 
 export function ChapterEditor({ ownerId, chapter, bookId, language, findingId }: { ownerId: string; chapter: ChapterFull; bookId: string; language: string; findingId?: string | null }) {
   const qc = useQueryClient();

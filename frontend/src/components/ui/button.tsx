@@ -8,12 +8,14 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
+        // bg-primary is the text-safe shade, so the white label clears WCAG AA.
         primary: "bg-primary text-primary-foreground hover:bg-primary-hover shadow-sm",
         secondary: "bg-surface text-foreground border border-border hover:bg-muted",
         ghost: "text-foreground hover:bg-muted",
+        // The danger fill carries white text, so it needs the darker danger shade.
         danger: "bg-danger text-white hover:bg-danger/90",
-        soft: "bg-primary-soft text-primary-hover hover:bg-primary-soft/70",
-        link: "text-primary-hover underline-offset-4 hover:underline px-0",
+        soft: "bg-primary-soft text-primary hover:bg-primary-soft/70",
+        link: "text-primary underline-offset-4 hover:underline px-0",
       },
       size: {
         sm: "h-8 px-3 text-xs",

@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* eBookStudio design tokens — coral accent on warm off-white */
+/* eBookStudio design tokens â€” coral accent on warm off-white */
 @theme inline {
   --color-background: #fbf7f3;
   --color-surface: #ffffff;
@@ -8,15 +8,20 @@
   --color-muted: #f4eee8;
   --color-muted-foreground: #6f655d;
   --color-border: #ebe3dc;
-  --color-primary: #e8603c;
-  --color-primary-hover: #d4512f;
+  /* Accent and status colours are the text-safe shades: every one of these
+     reaches WCAG AA (4.5:1) on --color-background, --color-surface and its own
+     soft tint. The brighter brand shades are kept below for fills only. */
+  --color-primary: #a9462c;
+  --color-primary-hover: #943d26;
   --color-primary-soft: #fdebe5;
   --color-primary-foreground: #ffffff;
-  --color-success: #2f9e6a;
+  --color-primary-fill: #e8603c;
+  --color-primary-fill-hover: #c4472a;
+  --color-success: #22734d;
   --color-success-soft: #e6f6ee;
-  --color-warning: #c98a12;
+  --color-warning: #93650d;
   --color-warning-soft: #fdf4e1;
-  --color-danger: #d4433a;
+  --color-danger: #c13d35;
   --color-danger-soft: #fdeceb;
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
@@ -70,3 +75,28 @@ body {
 /* Quality finding highlight in the editor (not saved with the manuscript). */
 .finding-highlight { background: #fde68a; border-radius: 2px; box-shadow: 0 0 0 2px #f59e0b; }
 @media (prefers-color-scheme: dark) { .finding-highlight { background: #78350f; color: #fff; } }
+
+/* ---------- Focus visibility ----------
+   Every interactive control must show where the keyboard is. The ring is
+   drawn with outline so it survives a forced-colors mode, and it is only
+   shown for keyboard focus, not for a mouse click. */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ---------- Reduced motion ----------
+   Honour the operating-system preference: animation and transition are the
+   vestibular trigger, so they are shortened to nothing rather than merely
+   slowed. Scrolling behaviour is left alone because it is not animation. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { applyTemplate, type BookDesign } from '@ebook/shared';
 import { api, errorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import { RadioGroup } from '@/components/ui/radio-group';
 import { Alert, Spinner } from '@/components/ui/misc';
 import { cn } from '@/lib/utils';
 import type { PreviewSource, ReaderPreviewResult } from './design-types';
@@ -31,9 +32,17 @@ export function DesignPreview({ bookId, draft, valid, source, onResetSource }: {
   const canRender = valid || source.kind === 'version';
   return <section className="min-w-0 lg:sticky lg:top-4 lg:self-start" aria-label="Preview">
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <div role="radiogroup" aria-label="Preview type" className="inline-flex rounded-xl border border-border p-0.5">
-        {(['reader', 'print'] as const).map(m => <button key={m} type="button" role="radio" aria-checked={mode === m} onClick={() => setMode(m)} className={cn('rounded-lg px-3 py-1.5 text-sm font-medium', mode === m ? 'bg-primary-soft text-primary-hover' : 'text-muted-foreground hover:text-foreground')}>{m === 'reader' ? 'Reader preview' : 'Print sample (PDF)'}</button>)}
-      </div>
+      <RadioGroup
+        label="Preview type"
+        value={mode}
+        onChange={setMode}
+        className="rounded-xl border border-border p-0.5"
+        itemClassName={(_option, selected) => cn('rounded-lg px-3 py-1.5 text-sm font-medium', selected ? 'bg-primary-soft text-primary-hover' : 'text-muted-foreground hover:text-foreground')}
+        options={[
+          { value: 'reader', label: 'Reader preview' },
+          { value: 'print', label: 'Print sample (PDF)' },
+        ]}
+      />
       <p className="text-xs text-muted-foreground" aria-live="polite">Showing {sourceLabel(source)}{source.kind !== 'draft' && <Button size="sm" variant="link" className="ms-1 h-auto" onClick={onResetSource}>Back to current settings</Button>}</p>
     </div>
     {!canRender && <Alert tone="warning" className="mt-3">Fix the highlighted settings to refresh the preview.</Alert>}
@@ -63,7 +72,14 @@ function ReaderPreview({ bookId, body, enabled }: { bookId: string; body: string
   const d = preview.data?.diagnostics;
   return <div className="mt-3 space-y-3">
     <div className="flex flex-wrap items-center gap-2">
-      <div role="radiogroup" aria-label="Reading width" className="inline-flex rounded-xl border border-border p-0.5">{WIDTHS.map(([key, label, w]) => <button key={key} type="button" role="radio" aria-checked={width === key} title={`${w}px wide`} onClick={() => setWidth(key)} className={cn('rounded-lg px-2.5 py-1 text-xs font-medium', width === key ? 'bg-muted text-foreground' : 'text-muted-foreground')}>{label}</button>)}</div>
+      <RadioGroup
+        label="Reading width"
+        value={width}
+        onChange={setWidth}
+        className="rounded-xl border border-border p-0.5"
+        itemClassName={(_option, selected) => cn('rounded-lg px-2.5 py-1 text-xs font-medium', selected ? 'bg-muted text-foreground' : 'text-muted-foreground')}
+        options={WIDTHS.map(([key, label, w]) => ({ value: key, label, title: `${w}px wide` }))}
+      />
       <div className="inline-flex items-center gap-1" role="group" aria-label="Reader text size"><Button size="sm" variant="secondary" aria-label="Smaller reader text" disabled={scale <= 0.8} onClick={() => setScale(s => Math.round((s - 0.1) * 10) / 10)}>A−</Button><span className="w-12 text-center text-xs tabular-nums" aria-live="polite">{Math.round(scale * 100)}%</span><Button size="sm" variant="secondary" aria-label="Larger reader text" disabled={scale >= 1.6} onClick={() => setScale(s => Math.round((s + 0.1) * 10) / 10)}>A+</Button></div>
       {preview.isFetching && <Spinner className="h-4 w-4" label="Updating preview" />}
     </div>

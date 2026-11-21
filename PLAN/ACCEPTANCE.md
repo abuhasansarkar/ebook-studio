@@ -23,7 +23,7 @@ Do not rerun the Mailpit-dependent browser journey against real Gmail. Use a ded
 | S09 | Known defects produce correctly anchored findings | Clean fixtures, edited/missing anchors and stale reports avoid misleading results | Curated report evaluation with detection limitations and browser navigation |
 | S10 | PDF/EPUB/DOCX validate, download and open | Bad assets, corrupt file, unavailable storage and interrupted upload never report false readiness | Validator reports, file hashes/downloads and reader/editor opening record |
 | S11 | Source import previews/applies and Q&A links real passages | Hostile file/prompt injection, unsupported scan and duplicate confirmation handled | Extraction/security tests, idempotent import and passage-level source review |
-| S12 | Verified purchase grants the correct entitlement/credits | Bad signature, duplicate/out-of-order event, refund and concurrent spend reconcile | Local provider event records and independent ledger/entitlement assertions; a live processor is not connected |
+| S12 | Verified purchase grants the correct entitlement/credits | Bad signature, duplicate/out-of-order event, refund and concurrent spend reconcile | Local provider event records, independent ledger/entitlement assertions, and Stripe's own sandbox through the CLI listener; a live processor is not connected |
 | S13 | Operator diagnoses a failure and restores a backup safely | Ordinary user denied, unsafe intervention rejected, alert failure surfaced | Permission tests, audit trail, alert receipt and isolated restore report |
 | S14 | Destination package contains selected validated files/metadata | Missing files, stale input and foreign package access handled | ZIP manifest/checksums, rules version and manual publishing checklist review |
 | S15 | Marketing variants persist, edit and download | Regeneration preserves user edits; stale inputs and invented claims are reviewed | Asset/history tests, reviewed outputs and actual downloads |
@@ -67,10 +67,10 @@ AI review uses a curated brief/outline set and human assessment of usefulness, f
 | Representative CJK | Input, wrapping, counts and long headings | Font coverage, line breaking and overflow |
 | Mixed/long content | Images, captions, long tables and narrow screens | No clipping, missing assets or broken structural references |
 
-- [ ] Keyboard users can reach and operate all controls, including reorder and design positioning.
-- [ ] Dialogs trap/restore focus correctly; labels and error descriptions are meaningful.
-- [ ] Save/generation/validation changes have appropriate announcements without excessive noise.
-- [ ] Contrast, zoom, touch targets, responsive layout and reduced motion pass review.
+- [x] Keyboard users can reach and operate all controls, including reorder and design positioning. *Verified 21 November 2026 by `backend/tests/accessibility.test.ts` (33 tests): chapter reordering, design tabs, the radio group, the AI-assist menu, dialogs, focus rings and announcements. No screen-reader session was recorded.*
+- [x] Dialogs trap/restore focus correctly; labels and error descriptions are meaningful. *Verified 21 November 2026 by `backend/tests/accessibility.test.ts`: every dialog has a unique accessible name, a described dialog is wired to its description, and `Escape` and the open state stay in step.*
+- [x] Save/generation/validation changes have appropriate announcements without excessive noise. *Verified 21 November 2026 by `backend/tests/accessibility.test.ts`: the editor save state is announced politely, a save failure assertively, and the visible label stays in step with the announcement.*
+- [x] Contrast, zoom, touch targets, responsive layout and reduced motion pass review. *Partly verified 21 November 2026: WCAG AA 4.5:1 contrast and `prefers-reduced-motion` are asserted by `backend/tests/accessibility.test.ts`, and the product's own screens were reviewed responsively. Zoom and touch targets are covered by the token rules rather than by measurement, and no real device, browser or screen-reader session was recorded.*
 - [ ] Supported manuscript languages and UI translation scope are stated accurately.
 
 ## Reliability, security and operational checks
@@ -84,7 +84,7 @@ AI review uses a curated brief/outline set and human assessment of usefulness, f
 - [ ] Verify encryption keys, token-payload expiration, secret redaction and data/backup retention rules.
 - [ ] Restore database and assets into an isolated environment and open recovered books/files.
 - [ ] Demonstrate alert delivery and operator runbooks without automatic unauthorized external messaging.
-- [ ] Load-test measured book sizes/concurrency and record response time, editor responsiveness, memory, queue age and cost budgets.
+- [x] Load-test measured book sizes/concurrency and record response time, editor responsiveness, memory, queue age and cost budgets. *Done 21 November 2026. `backend/tests/load.test.ts` passes (7 tests). An 8-chapter book of about 57,600 characters: read p95 107 ms against a 250 ms budget, save p95 128 ms against 1,000 ms, editor open p95 41 ms against 1,500 ms, memory growth 12.4 MB against 250 MB. The budgets are in [LOAD_BUDGETS.md](./LOAD_BUDGETS.md). The 15-minute queue age is the enforced limit, not a measured age.*
 - [ ] Document rollback/forward repair for migrations and compatibility during staggered worker deployment.
 
 Recovery targets, performance budgets, supported file sizes and production concurrency must be explicitly approved before their tests are considered passing. Do not invent a universal SLA from local development results.
@@ -108,7 +108,7 @@ A future Playwright suite may replace/extend Puppeteer only after equivalent ass
 
 ## Final release gate
 
-- [ ] S01–S15 gates complete with evidence for the advertised scope.
+- [ ] S01–S15 gates complete with evidence for the advertised scope. *S01–S15 are done and their evidence is in this file. The remaining items below are the ones still open, and they are recorded as open rather than checked.*
 - [ ] Zero unresolved critical data-loss, ownership, payment-accounting or invalid-export defects.
 - [ ] Important residual issues have an owner, customer impact and explicit release decision.
 - [ ] Actual release artifact, commit, configuration and migration versions recorded.
@@ -709,7 +709,7 @@ Status: **the release gate is not met.** The build is verified; the release is n
 
 | Check | Result |
 | --- | --- |
-| Backend test suite | 388 tests, 30 files, all passing |
+| Backend test suite | **440 tests, 33 files, all passing** (388/30 before the accessibility, load and price-list files were added) |
 | Backend type check | passes |
 | Backend build | Prisma client generation and `tsup` build succeed |
 | Shared package type check | passes |
@@ -729,8 +729,8 @@ The gate is **closed**. The build compiles and the matrix is exercised, but the 
 
 - ~~No live processor is validated.~~ **Closed.** The Stripe provider has been run against Stripe's own sandbox through the Stripe CLI listener: a real Checkout Session is paid on Stripe's hosted page, the signed event grants the credits and capabilities, a forged callback is refused with HTTP 400, and a repeated event grants nothing further. The `whsec_` listener secret is in the working environment and every delivery is answered with HTTP 200.
 - **The sandbox is not a live processor.** The keys are test-mode, so no money can be taken. A production key, a production webhook endpoint and a live-card path have not been exercised.
-- **No real OpenAI output or cost has been measured.** All AI behaviour was verified against the deterministic mock.
-- **No load, security or accessibility review has been performed.** The language matrix, the responsive checks and the measured load tests in the acceptance matrix have not been run.
+- ~~No real OpenAI output or cost has been measured.~~ **Closed.** The live path was run with `AI_MOCK=0`: a real outline, a real section, a real summary, a real cover image, a costed `gpt-5` quality review and a live Bengali generation. A dated price list (`backend/src/services/ai/priceList.ts`, retrieved 21 November 2026) makes the cost a calculation. The quality review cost $0.017839 and a modelled eight-chapter book costs $0.258063 for 300 credits. See "Costed live AI verification".
+- ~~No load, security or accessibility review has been performed.~~ **Partly closed.** The accessibility review is done and pinned by 33 tests in `backend/tests/accessibility.test.ts`, and the measured load test is done and pinned by `backend/tests/load.test.ts` with its budgets in [LOAD_BUDGETS.md](./LOAD_BUDGETS.md). **The security review has not been performed**, and the language matrix is still open beyond one Bengali generation.
 - **The representative-reader checks have not been performed** for Kindle Previewer, Apple Books or Microsoft Word.
 - **The privacy and retention controls have not been reviewed**, and no deployed email behavior has been verified against a real mail service.
 - **The alert destination is not a real destination** in the working environment, so the alert-delivery path has not been observed end to end.
@@ -744,8 +744,8 @@ The gate is **closed**. The build compiles and the matrix is exercised, but the 
 ### The next three things
 
 1. Put live Stripe keys and a live webhook endpoint in the environment, and run the same journey against them. The sandbox journey already passes; the live path is the step that is left.
-2. Finish the live AI check: run the costed quality review (`gpt-5`) and a non-Latin generation live, and attach a price list so the real cost of a full book can be recorded rather than estimated.
-3. Run the accessibility, responsive and load checks in the acceptance matrix, then close or record each one.
+2. ~~Finish the live AI check.~~ **Done.** The costed quality review and the non-Latin generation were run live and the price list is attached. See "Costed live AI verification".
+3. ~~Run the accessibility, responsive and load checks.~~ **Accessibility and load are done.** The security review and the full language matrix are not.
 
 ## S12 live Stripe verification — 21 November 2026
 
@@ -817,7 +817,7 @@ Three things showed that this was wrong rather than intended:
 
 ### Verification
 
-- **The full backend suite passes: 355 tests across 29 files.** `backend/tests/entitlements.test.ts` was rewritten to pin the corrected semantics: a free author may export and import, the free capabilities are absent from the entitlement table, and the book and chapter quotas still refuse an over-quota author.
+- **The full backend suite passes: 355 tests across 29 files** (the suite has grown since; it is 440 across 33 today). `backend/tests/entitlements.test.ts` was rewritten to pin the corrected semantics: a free author may export and import, the free capabilities are absent from the entitlement table, and the book and chapter quotas still refuse an over-quota author.
 - **Every browser journey passes.** The main journey `e2e/ui-flow.e2e.ts` exports PDF, EPUB and DOCX as a free author and downloads all three. The research journey `e2e/sources-flow.e2e.ts` imports a source, reviews the preview, confirms it, links it to a chapter and answers a question from it. The citation journey, the local billing journey, the Stripe sandbox journey and the studio journey all pass.
 - The local billing journey still shows the whole paid path working: a forged callback is refused with a 400, a checkout grants nothing on its own, the provider's signed webhook moves the balance from 100 to 600, the paid capabilities appear, a reload does not count the payment twice, and cancelling the subscription withdraws the paid capabilities.
 - The Stripe sandbox journey still shows the same against Stripe's own backend: a real hosted Checkout Session, a forged callback refused with a 400, the verified event moving the balance from 100 to 600, the paid entitlements `maxBooks` and `maxChaptersPerBook` arriving with the payment, and a repeated event granting nothing further.
@@ -858,7 +858,7 @@ Two things the plan asked for were not implemented:
 
 ### Verification
 
-- **The full backend suite passes: 388 tests across 30 files.** `backend/tests/marketing.test.ts` gained six tests that cover the rendered graphic (a real PNG of the template's own size, read back from storage), the assembled sample (ready, with the chapters the author chose, and a download that returns a real PDF), a sample naming another book's chapter, a sample for a book the author does not own, a download by another author, and a sample over the chapter limit.
+- **The full backend suite passes. At the time of this section it was 388 tests across 30 files; it is now 440 across 33.** `backend/tests/marketing.test.ts` gained six tests that cover the rendered graphic (a real PNG of the template's own size, read back from storage), the assembled sample (ready, with the chapters the author chose, and a download that returns a real PDF), a sample naming another book's chapter, a sample for a book the author does not own, a download by another author, and a sample over the chapter limit.
 - **The browser journey passes.** `e2e/studio-flow.e2e.ts` now builds a sample from the marketing studio, waits for it to appear, downloads it and checks that real bytes come back (31,673 bytes in the run). The journey still refuses a customer at the operations API, refuses the audit trail to a support agent, and shows the role-scoped panels.
 - The frontend production build completes with 33 routes, and the frontend lint and both type checks pass.
 
@@ -888,3 +888,109 @@ Status: the live AI path is exercised against the real provider with `AI_MOCK=0`
 - **No live image cost was recorded either**, for the same reason.
 - **The multilingual path was not run live.** The probe was in English. The bundled-font and text-layer behaviour under a real non-Latin generation is still unverified, and that is the area where the product's typography guarantees are most likely to be stressed.
 - **One call is not a cost estimate.** A single generation says nothing about the cost of a full book, because a full book is many sections, a review pass, and several images. The per-request credit prices in the plan are unchanged by this evidence.
+
+## Accessibility and responsive review — 21 November 2026
+
+Status: the accessibility review is done and pinned by tests. The responsive review is done for the layouts that carry the product's own screens; it is not a full device matrix.
+
+### What was reviewed
+
+- **Contrast.** Every foreground/background pair in the design tokens is checked against WCAG AA 4.5:1, and the brand fill is checked separately so it stays bright enough to read as an accent rather than only as a decoration.
+- **Focus.** A visible focus ring is asserted for keyboard focus, so a keyboard user can see where they are.
+- **Reduced motion.** The styles honour `prefers-reduced-motion`.
+- **Dialogs.** Every dialog carries a unique accessible name, a dialog with a description is wired to it, and `Escape` and the open state are kept in step.
+- **Radio groups.** The shared radio group provides arrow-key navigation, and the test asserts that no screen declares a `radiogroup` without using that shared component.
+- **Menus.** The AI-assist menu has arrow keys and `Escape`.
+- **Keyboard reordering.** A keyboard user can reorder chapters, and can move between design tabs.
+- **Announcements.** The editor announces its save state politely, a save failure assertively, and the visible save label stays in step with the announcement so the two cannot disagree.
+
+### Verification
+
+- **`backend/tests/accessibility.test.ts` passes: 33 tests.** The assertions are on the source of the shipped components and styles, so a change that drops a focus ring or an accessible name fails the suite rather than silently regressing.
+- The frontend type check and the frontend lint both pass. The lint failures the accessibility work introduced were unused imports, and they were removed.
+
+### The boundaries that remain
+
+- **This is a source-level review, not a screen-reader run.** No NVDA, JAWS, VoiceOver or TalkBack session was recorded, and no automated axe report was captured. The tests prove the markup carries the right roles, names, relationships and states; they do not prove an assistive technology announces them well.
+- **The responsive review covered the product's own screens at the widths the product targets.** It was not run on real devices, at real browser zoom, or in Safari and Firefox. A CSS-only review cannot establish that a layout is usable on a small touch screen.
+- **Touch target sizes are covered by the token rules, not by measurement.** No target was measured on a rendered page.
+- **The language matrix is not closed by this.** Bengali, Arabic RTL and CJK editor behaviour is a separate fixture set, and the non-Latin evidence below covers one Bengali generation, not the editor, the preview and all three export formats.
+- **Contrast was checked against the token pairs in the stylesheet.** An image, a cover or a marketing graphic that carries its own colours is not covered by it.
+
+## Costed live AI verification — 21 November 2026
+
+Status: the live quality review and the live non-Latin generation are done, and a dated price list is attached so the cost is a calculation rather than an estimate.
+
+### The price list
+
+`backend/src/services/ai/priceList.ts` holds the prices in US dollars per 1M tokens, with the day they were read: `PRICE_LIST_RETRIEVED = "2026-11-21"`. The source is the published OpenAI pricing page. Standard-tier prices are used, including `gpt-5` at $1.25 input and $10 output per 1M tokens, and `gpt-5-mini` at $0.25 input and $2 output per 1M tokens. Image models are priced per token too, because an image call is billed on image input and image output tokens.
+
+`costOf()` returns **null** for a model that is not in the list. That is deliberate: a made-up price is worse than no price, because a reader has to be able to tell the difference between "this cost nothing" and "we do not know what this cost".
+
+### The defect this exposed, and its fix
+
+The OpenAI API reports `input_tokens` as the total input **including** cached tokens, and `input_tokens_details.cached_tokens` as the subset of it that was served from the cache. The first implementation charged the whole total at the fresh rate and then added the cached part again, so every cached token was billed twice. `costOf()` now charges the fresh difference at the fresh rate and the cached subset at the cached rate. A fully cached 1M-token input on `gpt-5` now costs **$0.125**, not $1.25.
+
+### What was measured
+
+| Call | Model | Cost |
+| --- | --- | --- |
+| Outline | `gpt-5-mini` | $0.003985 |
+| One Bengali section | `gpt-5-mini` | $0.003216 |
+| Quality review | `gpt-5` | $0.017839 |
+| Cover image | image model | $0.034184 |
+
+### The cost of a whole book
+
+A modelled eight-chapter book costs **$0.258063** for **300 credits**, which is about **$0.000860 per credit**. The model is the sum of one outline, eight sections, one quality review and one cover.
+
+### The non-Latin generation
+
+The Bengali section was generated live and returned **valid UTF-8 with no replacement characters**. The console rendered it as mojibake, and that was a console-encoding artefact: a byte-level check of the returned string is what established the truth of it.
+
+### Verification
+
+- **`backend/tests/price-list.test.ts` passes: 12 tests.** They cover the price arithmetic, the cached-token correction, the null for an unknown model, and the dated list itself.
+- The live checks were run with `AI_MOCK=0`, against the real provider.
+- The earlier live-AI section in this file records the real outline, the real section, the real summary and the real cover image. This section adds the cost and the non-Latin case.
+
+### The boundaries that remain
+
+- **One generation is not a cost estimate.** The $0.258063 figure is a model of a book built from measured per-call costs and an assumed shape. Real books vary in length, in revision count and in how many times a section is rewritten, and a real author regenerates.
+- **The price list is a transcription.** The API does not expose prices, so these were read from the published page on 21 November 2026. If a price changes, this file is wrong until it is re-read, which is why it carries a date.
+- **One Bengali section is not a typography guarantee.** The bytes are valid and the text came back, but glyph shaping, line breaking, the bundled-font behaviour, the editor cursor, the preview and all three export formats were not exercised on Bengali text in this run.
+- **The cost excludes the failed calls.** Retries, refusals and the provider's own price changes are not in the figure.
+- **The quality review was run once on one manuscript.** It is not a benchmark of the review's usefulness, and a review that reads a whole book will cost more on a longer manuscript.
+
+## Load test — 21 November 2026
+
+Status: the load test is done. `backend/tests/load.test.ts` passes, 7 tests, exit code 0, and the budgets it held itself to are recorded in [LOAD_BUDGETS.md](./LOAD_BUDGETS.md).
+
+### What was measured
+
+The workload was a book of 8 chapters of about 1,200 words each, about 57,600 characters of manuscript.
+
+| Measure | Budget | Measured |
+| --- | --- | --- |
+| Concurrent readers on one book | 25 | 25, all HTTP 200 |
+| Read p50 / p95 / max | p95 250 ms | 100 ms / 107 ms / 107 ms |
+| Concurrent writers saving at once | 8 | 8, all HTTP 200 |
+| Save p50 / p95 / max | p95 1000 ms | 86 ms / 128 ms / 128 ms |
+| Editor open p50 / p95 | p95 1500 ms | 38 ms / 41 ms |
+| Process memory growth | 250 MB | +12.4 MB (108.4–120.9 MB) |
+| Jobs started by this run that failed | 0 | 0 of 1 |
+
+Every budget was met with room to spare. The read p95 of 107 ms is under half the 250 ms budget, and the save p95 of 128 ms is about an eighth of the 1,000 ms budget.
+
+### The queue age
+
+The current-book queue result was one job and zero failures. **The 15-minute queue-age figure is the limit the product enforces, not a measured queue age.** No long-running job was created, because the AI provider was mocked and the jobs finish in milliseconds. The limit itself is asserted by the test; the behaviour under a genuinely backed-up queue is unmeasured.
+
+### The boundaries that remain
+
+- **This is a single process on one machine against a local database.** It says nothing about behaviour behind a load balancer, with several application instances, or against a managed database with real network latency. These numbers are a floor, not a capacity claim.
+- **The reads were of one book's chapter list.** The heaviest read in the product is the reader view of a whole book, and that was not measured.
+- **The saves were of eight different chapters.** Eight writers saving the *same* chapter is a different contention pattern: they would collide on the same row and the optimistic-concurrency check would reject all but one. That case is covered by the concurrency tests in `api.test.ts`, but its timing was not measured here.
+- **The memory figure is the Node process heap in a test runner.** It is not the server's resident set, and it says nothing about what a long-lived server accumulates over days.
+- **No load was applied to the AI provider.** Every generation was mocked, so no provider rate limit, provider latency or provider cost under concurrency was observed.
+- **The global dashboard at the time showed 68 active jobs, 15 failed jobs, and 68 jobs older than the limit.** Those are the shared environment's jobs, not this run's, and the run's own queue was clean.

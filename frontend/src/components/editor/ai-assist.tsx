@@ -114,11 +114,38 @@ export function AiAssist({ editor, bookId, dir }: { editor: Editor; bookId: stri
             </button>
           ))}
           <div className="relative">
-            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => setMoreOpen((o) => !o)} className="flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted" aria-expanded={moreOpen}>
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => setMoreOpen((o) => !o)}
+              onKeyDown={(e) => { if (e.key === 'ArrowDown' && !moreOpen) { e.preventDefault(); setMoreOpen(true); } }}
+              className="flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-muted"
+              aria-expanded={moreOpen}
+              aria-haspopup="menu"
+              aria-controls="ai-assist-more-menu"
+            >
               More <ChevronDown className="h-3 w-3" />
             </button>
             {moreOpen && (
-              <div className="absolute end-0 top-full z-20 mt-1 w-48 rounded-xl border border-border bg-surface p-1 shadow-lg" role="menu">
+              <div
+                id="ai-assist-more-menu"
+                className="absolute end-0 top-full z-20 mt-1 w-48 rounded-xl border border-border bg-surface p-1 shadow-lg"
+                role="menu"
+                aria-label="More AI actions"
+                onKeyDown={(e) => {
+                  // The menu role promises arrow-key navigation and Escape to
+                  // close, so both have to work.
+                  if (e.key === 'Escape') { e.preventDefault(); setMoreOpen(false); return; }
+                  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+                  e.preventDefault();
+                  const items = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+                  if (!items.length) return;
+                  const current = items.findIndex((el) => el === document.activeElement);
+                  const delta = e.key === 'ArrowDown' ? 1 : -1;
+                  const next = (current + delta + items.length) % items.length;
+                  items[next].focus();
+                }}
+              >
                 {MORE.map((a) => (
                   <button key={a} type="button" role="menuitem" onMouseDown={(e) => e.preventDefault()} onClick={() => begin(a)} className="block w-full cursor-pointer rounded-lg px-3 py-2 text-start text-xs hover:bg-muted">
                     {ASSIST_ACTION_LABELS[a]}

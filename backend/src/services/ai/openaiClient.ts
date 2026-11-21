@@ -8,6 +8,9 @@ export interface AiUsage {
   inputTokens: number;
   outputTokens: number;
   model: string;
+  /** Tokens served from the prompt cache. They are billed at a lower rate, so
+   *  a cost computed without them would overstate the cost of a run. */
+  cachedInputTokens?: number;
 }
 
 export interface AiTextResult {
@@ -48,8 +51,14 @@ function reasoningFor(model: string) {
   return /^(gpt-5|o\d)/.test(model) ? { effort } : undefined;
 }
 
-function usageOf(model: string, usage: { input_tokens?: number; output_tokens?: number } | null | undefined): AiUsage {
-  return { model, inputTokens: usage?.input_tokens ?? 0, outputTokens: usage?.output_tokens ?? 0 };
+function usageOf(model: string, usage: { input_tokens?: number; output_tokens?: number; input_tokens_details?: { cached_tokens?: number } } | null | undefined): AiUsage {
+  const cached = usage?.input_tokens_details?.cached_tokens ?? 0;
+  return {
+    model,
+    inputTokens: usage?.input_tokens ?? 0,
+    outputTokens: usage?.output_tokens ?? 0,
+    ...(cached > 0 ? { cachedInputTokens: cached } : {}),
+  };
 }
 
 /** The single OpenAI provider layer. All text generation goes through here. */

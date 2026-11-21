@@ -2,6 +2,7 @@
 
 import { useSession } from "@/lib/auth-client";
 import { usePlanningDraft } from "@/components/books/use-planning-draft";
+import { RadioGroup } from "@/components/ui/radio-group";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm, useWatch, type FieldPath } from "react-hook-form";
@@ -142,28 +143,28 @@ function CreateBookForm() {
             <div className="space-y-6">
               <div>
                 <p className="mb-3 text-sm font-medium">What kind of book?</p>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-5" role="radiogroup" aria-label="Book type">
-                  {BOOK_TYPES.map((t) => {
+                <RadioGroup
+                  label="Book type"
+                  value={bookType ?? "guide"}
+                  onChange={(t) => setValue("bookType", t, { shouldDirty: true })}
+                  className="grid grid-cols-2 gap-2 sm:grid-cols-5"
+                  itemClassName={(_option, selected) => cn(
+                    "flex cursor-pointer flex-col items-center gap-2 rounded-xl border p-3 text-center text-xs font-medium transition",
+                    selected ? "border-primary bg-primary-soft text-primary-hover" : "border-border hover:bg-muted",
+                  )}
+                  options={BOOK_TYPES.map((t) => {
                     const Icon = TYPE_ICONS[t];
-                    const active = bookType === t;
-                    return (
-                      <button
-                        key={t}
-                        type="button"
-                        role="radio"
-                        aria-checked={active}
-                        onClick={() => setValue("bookType", t, { shouldDirty: true })}
-                        className={cn(
-                          "flex cursor-pointer flex-col items-center gap-2 rounded-xl border p-3 text-center text-xs font-medium transition",
-                          active ? "border-primary bg-primary-soft text-primary-hover" : "border-border hover:bg-muted",
-                        )}
-                      >
-                        <Icon className="h-5 w-5" />
-                        {BOOK_TYPE_LABELS[t]}
-                      </button>
-                    );
+                    return {
+                      value: t,
+                      label: (
+                        <>
+                          <Icon className="h-5 w-5" />
+                          {BOOK_TYPE_LABELS[t]}
+                        </>
+                      ),
+                    };
                   })}
-                </div>
+                />
               </div>
               <Field label="Describe your book idea" htmlFor="topic" error={errors.topic?.message} hint="One or two sentences. Be specific about who it's for and what they'll get.">
                 <Textarea id="topic" rows={3} placeholder={IDEA_EXAMPLES[0]} aria-invalid={!!errors.topic} {...register("topic")} />
