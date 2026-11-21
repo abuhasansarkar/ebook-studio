@@ -9,7 +9,7 @@ import { buildZip } from '../src/services/exports/zip.js';
 import { markdownToTiptap } from '../src/services/editor/markdownToTiptap.js';
 import { researchService } from '../src/services/sources/researchService.js';
 import { sourceService } from '../src/services/sources/sourceService.js';
-import { brief, createUser, ORIGIN } from './helpers.js';
+import { brief, createUser, grantEntitlements, ORIGIN, PAID_ENTITLEMENTS } from './helpers.js';
 
 afterAll(async () => { await closeBrowser(); await closeQueues(); await prisma.$disconnect(); });
 
@@ -23,6 +23,9 @@ afterAll(async () => { await closeBrowser(); await closeQueues(); await prisma.$
 
 async function setup(prefix = 'source') {
   const user = await createUser(prefix);
+  // Importing a source is a paid capability, so the test says it is assuming a
+  // paid plan.
+  await grantEntitlements(user.user.id, PAID_ENTITLEMENTS);
   const book = await bookService.create(user.user.id, bookBriefSchema.parse(brief({ title: 'Meal Prep Manual' }).brief));
   return { ...user, book, url: `/api/v1/books/${book.id}/sources` };
 }

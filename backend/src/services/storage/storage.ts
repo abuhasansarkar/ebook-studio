@@ -74,4 +74,12 @@ export const storage = {
     const info = await stat(file);
     return { stream: createReadStream(file), size: info.size };
   },
+
+  /** The whole file as one buffer. */
+  async get(key: string): Promise<Buffer> {
+    const { stream } = await storage.getStream(key);
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+    return Buffer.concat(chunks);
+  },
 };

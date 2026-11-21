@@ -1,7 +1,6 @@
 import { FREE_SIGNUP_CREDITS } from "@ebook/shared";
 import { prisma } from "../../database/prisma.js";
-import { paymentRequired } from "../../utils/errors.js";
-
+import { conflict, paymentRequired } from "../../utils/errors.js";
 /**
  * Credit ledger.
  *
@@ -30,6 +29,23 @@ async function runIdempotent(fn: (tx: Tx) => Promise<void>): Promise<void> {
     await prisma.$transaction(fn);
   } catch (err) {
     if (isUniqueViolation(err)) return; // concurrent duplicate — already applied
+    throw err;
+  }
+}
+
+/**
+ * Runs a transaction that returns a value, tolerating a concurrent duplicate.
+ *
+ * When a concurrent request already applied the same idempotency key, the
+ * stored outcome is returned instead of the operation running twice.
+ */
+async function runIdempotentWithResult<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+  try {
+    return await prisma.$transaction(fn);
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      throw conflict("That operation was already applied.");
+    }
     throw err;
   }
 }
@@ -96,6 +112,44 @@ export const creditService = {
 
   grantSignupBonus(userId: string) {
     return this.grant(userId, FREE_SIGNUP_CREDITS, `signup:${userId}`, "Welcome credits");
+  },
+
+  /**
+   * Adjusts a balance by an operator.
+   *
+   * The adjustment lands in the same immutable ledger as every other credit
+   * movement, so the balance still reconciles against the ledger afterwards.
+   * A negative adjustment may not take the balance below zero: an operator
+   * mistake cannot create a negative balance that a customer then has to
+   * explain.
+   */
+  async adjust(userId: string, amount: number, idempotencyKey: string, description: string) {
+    return runIdempotentWithResult(async (tx) => {
+      if (await alreadyApplied(tx, idempotencyKey)) {
+        const wallet = await ensureWallet(tx, userId);
+        return { balance: wallet.balance, transactionId: "" };
+      }
+      await ensureWallet(tx, userId);
+      const current = await tx.creditWallet.findUniqueOrThrow({ where: { userId } });
+      if (current.balance + amount < 0) {
+        throw paymentRequired(
+          `That adjustment would take the balance below zero. The customer has ${current.balance} credits.`,
+          { balance: current.balance, requested: amount },
+        );
+      }
+      const wallet = await tx.creditWallet.update({ where: { userId }, data: { balance: { increment: amount } } });
+      const transaction = await tx.creditTransaction.create({
+        data: {
+          userId,
+          type: amount >= 0 ? "grant" : "refund",
+          amount,
+          balanceAfter: wallet.balance,
+          idempotencyKey,
+          description,
+        },
+      });
+      return { balance: wallet.balance, transactionId: transaction.id };
+    });
   },
 
   /** Move credits from balance to reserved. Throws 402 if the balance is insufficient. */

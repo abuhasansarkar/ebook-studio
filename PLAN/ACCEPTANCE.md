@@ -584,3 +584,307 @@ A payment processor runs its own checkout page and then tells the merchant "this
 - The entitlement rules are published in the plan catalog, but the paid APIs do not yet gate on them. A free author can still call a paid endpoint directly; the entitlements exist and are recorded, but nothing reads them to deny a request yet. That is the remaining part of the gate and is not claimed here.
 - The plan catalog is seeded at startup and seeded plans are never overwritten, so a price change is a deliberate act rather than a side effect of a restart.
 - The evidence was produced locally against the fake AI provider, a local database and the local provider. It was not run against a deployed stack, and no deployment or remote push was performed.
+
+## S13 operations and administration — 21 November 2026
+
+Status: core implementation complete and verified locally. A role is the only thing that grants a capability, the check happens on the server, and every privileged action leaves an immutable record.
+
+### The release gate
+
+> an operator can diagnose a failed customer workflow and recover without unaudited edits
+
+Both halves are enforced on the server. The admin console is a convenience over the same decision the API makes: a panel that is hidden in the browser is still refused by the route when it is called directly.
+
+### What was built
+
+**Shared contract** — `packages/shared/src/admin.ts`
+
+- Three roles: `support`, `finance` and `administrator`. Each carries an explicit permission bundle, so a new capability is granted to one role without touching the others.
+- The permission sets cover the operational views, money, role management, the audit trail, support and backups.
+- Zod schemas for the support reply, credit adjustment, role change, refund and job intervention bodies.
+
+**Data** — migration `20261124090000_s13_operations`
+
+- `AdminRole` (the role an account holds, with the reason and who granted it), `AdminAuditEntry` (immutable), `OperationalIncident`, `BackupManifest`, `SupportRequest` and `AlertDelivery`.
+
+**Service** — `backend/src/services/admin/adminService.ts`, `backend/src/services/admin/operationsService.ts`
+
+- Role and permission lookup, server-side permission checks, role grants and revocations, and immutable audit records.
+- Incidents are created, deduplicated and resolved. An alert delivery is recorded as delivered or failed; a delivery that was never confirmed is recorded as a failed one, because the product does not claim an alert arrived when it did not.
+- Credit adjustments go through the credit service, so an operator's change lands in the same immutable ledger as every other credit movement and the balance still reconciles. A negative balance is refused.
+- A transactional `runIdempotentWithResult` makes a repeated intervention safe.
+
+**Routes** — `backend/src/routes/admin.ts`, `backend/src/routes/support.ts`
+
+| Route | Who | What |
+| --- | --- | --- |
+| `GET /admin/me` | signed in | The caller's own roles and permissions. |
+| `GET /admin/dashboard` | `ops.read` | The operational figures, each with its own period. |
+| `GET /admin/users`, `/admin/books`, `/admin/jobs` | `ops.read` | The narrow operational views. |
+| `GET /admin/payments` | `billing.read` | The money view, which a support agent may not read. |
+| `POST /admin/credits/adjust`, `/admin/payments/:id/refund` | `billing.read` | Audited money movements. |
+| `POST /admin/jobs/:id/retry`, `/admin/jobs/:id/cancel` | `ops.read` | Job interventions. |
+| `GET`/`POST /admin/roles`, `/admin/roles/grant`, `/admin/roles/revoke` | `roles.manage` | Who may use the console. |
+| `GET /admin/audit` | `audit.read` | The immutable trail. |
+| `GET`/`POST`/`DELETE /admin/backups`, `/admin/backups/:name/restore-rehearsal` | `backup.manage` | Backups and restore rehearsals. |
+| `GET /admin/incidents`, `POST /admin/alerts`, `/admin/alerts` | `ops.read` | Incidents and alert deliveries. |
+| `GET /admin/support`, `POST /admin/support/:id/reply` | `support.reply` | The support queue. |
+
+**Backup and restore** — `backend/src/services/admin/backupService.ts`
+
+- A plain SQL dump through `pg_dump`, a capture of the local asset tree, SHA-256 checksums for both, and a manifest of the counts of users, books, chapters, exports, sources, source versions, payments and jobs.
+- A restore is rehearsed against an isolated database. The counts are compared with the manifest, the evidence is recorded on the manifest, and the rehearsal database is removed unless it is explicitly retained. The live database is never the target.
+- A dump that no longer matches its checksum is refused.
+
+### Verification
+
+- 31 tests in `backend/tests/admin.test.ts` cover the authorization boundaries, role grants and revocations, the audit trail, the operational views, credit adjustments, refunds, job interventions, alerts and the dashboard contract.
+- 5 tests in `backend/tests/backup.test.ts` cover taking a backup, rehearsing the restore into an isolated database, leaving the live database alone, and refusing a tampered dump.
+- The full backend suite passes: **343 tests across 29 files**.
+- The browser journey `e2e/studio-flow.e2e.ts` (`pnpm --filter e2e run e2e:studio`) passes end to end. The operations API refuses an account with no operator role; the console says so; the **Operations** link is absent from the navigation for a plain customer. After a role is granted, the console opens and shows only the panels that role carries — overview, customers, jobs, incidents and support — while the payments and audit panels stay absent and `GET /api/v1/admin/audit` answers **403**. The journey also checks that the overview shows figures rather than blanks, and that the customers list shows the role each account holds.
+
+### Boundaries
+
+- The browser journey grants the support role by writing to the database directly, because a second administrator account would otherwise be needed. The grant route itself is covered by the backend tests, not by the browser.
+- There is no test for an alert whose destination fails to receive it, no test for a job intervention through the admin routes, and no test for a refund through the admin routes.
+- The backup tooling uses a PostgreSQL container and `docker cp`, because the host has no `pg_dump`. The backup therefore depends on the container being reachable.
+- The audit trail is append-only in the service. There is no database-level guard against a direct write or a `DELETE` issued outside the service.
+
+## S14 distribution packages — 21 November 2026
+
+Status: complete and verified locally. Nothing is published on the author's behalf.
+
+### What was built
+
+- Six destinations with separate profiles: `kdp_ebook`, `kdp_print`, `apple_books`, `etsy`, `gumroad` and `direct`. Each profile names the required and accepted formats, the cover rules, the package limits, the metadata and the source the rules came from.
+- Validation separates **hard blockers** from checks that need a human, and never claims a store has approved anything.
+- A package is assembled from the author's own finished exports, with the cover, the destination-specific metadata and a README.
+- Ownership is enforced for books, exports, packages and downloads.
+- A blocked package is recorded and answered with **422**; a ready package is answered with **201**.
+- Publishing status is the author's own record of what they did outside the product.
+
+### Verification
+
+- 8 tests in `backend/tests/distribution.test.ts` cover assembly and download, a missing required format, another author's export, another author's book, another author's package, the publishing status, the destination list and an unsupported destination.
+- The shared and backend type checks pass, and the distribution journey in the browser shows the destination requirements, the package button disabled while the book has no finished export, the authoring of a publishing status, and the statement that the product never publishes on the author's behalf.
+
+### Boundaries
+
+- **EPUBCheck is not run.** The generated EPUB is checked by the product's own validator, not by the reference validator.
+- EPUB accessibility is not validated separately from the package structure.
+- Kindle Previewer, Apple Books and Microsoft Word have not been opened against a generated file.
+- The destination rules are recorded with their source and version, but they are not re-read from the destination's site automatically, so they can go stale.
+
+## S15 marketing studio — 21 November 2026
+
+Status: core implementation complete and verified locally. Outputs are downloadable assets. Nothing is published, emailed or posted automatically.
+
+### What was built
+
+- Nine output types with published credit costs: description 2, summary 2, author bio 1, sales copy 3, keywords 1, email draft 2, social caption 1, carousel outline 2, video script 3.
+- A draft is editable and keeps the manuscript versions it was written from. When the manuscript moves on the draft is marked **stale** and the stale inputs are named.
+- A stale save is refused with **409** and the code `STALE_VERSION` under `error.details.code`. A draft for a book with no manuscript is refused with **409** and the code `NO_MANUSCRIPT`.
+- Regeneration writes a new draft and leaves the original alone, so an approved or edited draft is never overwritten.
+- Approval is explicit and separate from editing.
+- Claim checks flag guarantees, endorsements, unsupported efficacy claims and pricing claims.
+- Graphics are composed through the private asset pipeline and remain downloadable assets.
+- The canonical route is **`/app/marketing?bookId=...`**.
+
+### Verification
+
+- 12 tests in `backend/tests/marketing.test.ts` cover the output catalog and the costs, the credit charge, a manual edit, a refused lost edit, regeneration, the stale input, the claim flags, the privacy boundary, an empty manuscript, graphics and an invalid colour.
+- The shared and backend type checks pass, and the marketing journey in the browser drafts an output, edits it, saves it, reloads to prove the edit was kept, approves it, regenerates it and composes a promotional graphic.
+
+### Boundaries
+
+- A sample pack is one whole document built from the chapters the author names, not a set of loose chapter files. It is built from the manuscript as it stands now, so an older sample cannot be reproduced.
+- The rendered graphic is checked for size, format and text overflow, but there is no accessibility audit of the image and no colour-contrast test.
+- The AI generation behind a draft has not been run against a real model, so neither the quality of the copy nor its cost has been measured.
+
+## S16 release validation — 21 November 2026
+
+Status: **the release gate is not met.** The build is verified; the release is not approved.
+
+### What was verified
+
+| Check | Result |
+| --- | --- |
+| Backend test suite | 388 tests, 30 files, all passing |
+| Backend type check | passes |
+| Backend build | Prisma client generation and `tsup` build succeed |
+| Shared package type check | passes |
+| Frontend type check | passes |
+| Frontend lint | passes |
+| Frontend production build | Next.js 16.4.6, **33 routes** |
+| Migrations applied to the isolated database | 17 migrations, all applied |
+| Backend health against the isolated stack | HTTP 200, database and Redis healthy |
+| Frontend `/login` against the isolated stack | HTTP 200 |
+| Browser journeys | UI, sources, citation impact, studio, local billing and Stripe sandbox — all six pass. The billing journey runs against the local provider (`.env.e2e.local`); the Stripe journey runs against Stripe's own sandbox (`.env.e2e`, Stripe CLI listener) |
+
+### The release gate
+
+> the complete workflow meets [ACCEPTANCE.md](./ACCEPTANCE.md); failed critical checks block release
+
+The gate is **closed**. The build compiles and the matrix is exercised, but the items below are required for release and are not done:
+
+- ~~No live processor is validated.~~ **Closed.** The Stripe provider has been run against Stripe's own sandbox through the Stripe CLI listener: a real Checkout Session is paid on Stripe's hosted page, the signed event grants the credits and capabilities, a forged callback is refused with HTTP 400, and a repeated event grants nothing further. The `whsec_` listener secret is in the working environment and every delivery is answered with HTTP 200.
+- **The sandbox is not a live processor.** The keys are test-mode, so no money can be taken. A production key, a production webhook endpoint and a live-card path have not been exercised.
+- **No real OpenAI output or cost has been measured.** All AI behaviour was verified against the deterministic mock.
+- **No load, security or accessibility review has been performed.** The language matrix, the responsive checks and the measured load tests in the acceptance matrix have not been run.
+- **The representative-reader checks have not been performed** for Kindle Previewer, Apple Books or Microsoft Word.
+- **The privacy and retention controls have not been reviewed**, and no deployed email behavior has been verified against a real mail service.
+- **The alert destination is not a real destination** in the working environment, so the alert-delivery path has not been observed end to end.
+
+### Boundaries
+
+- The evidence was produced locally against the fake AI provider, a local PostgreSQL and Redis, and an isolated frontend and backend on ports 4100 and 3100. It was not run against a deployed stack, and no deployment or remote push was performed.
+- The `pg` deprecation warning about overlapping `client.query()` calls appears in the test output. The tests pass; the warning is recorded rather than silenced.
+- The browser journey grants an operator role by writing to the database directly. That is a deliberate shortcut in the test harness, not a product behaviour.
+
+### The next three things
+
+1. Put live Stripe keys and a live webhook endpoint in the environment, and run the same journey against them. The sandbox journey already passes; the live path is the step that is left.
+2. Finish the live AI check: run the costed quality review (`gpt-5`) and a non-Latin generation live, and attach a price list so the real cost of a full book can be recorded rather than estimated.
+3. Run the accessibility, responsive and load checks in the acceptance matrix, then close or record each one.
+
+## S12 live Stripe verification — 21 November 2026
+
+Status: the S12 release gate is now exercised against Stripe's own sandbox through the Stripe CLI listener. The earlier section in this file describes the local provider; this one describes what was proven against Stripe itself.
+
+### What was verified
+
+The browser journey `e2e/stripe-live.e2e.ts` (`pnpm --filter e2e run e2e:stripe`) passes end to end against the sandbox account, with the Stripe CLI delivering events to the running backend:
+
+- Sign-up and email verification succeed.
+- `GET /api/v1/billing/plans` reports `provider: stripe` and `providerLive: false`.
+- A checkout opens a real Stripe Checkout Session. It grants nothing on its own: the balance stays at 100.
+- **A forged callback posted from the browser is refused with HTTP 400 and grants nothing.**
+- The checkout is then paid on Stripe's hosted page, with the test card, the way a customer pays.
+- The verified event grants the credits: the balance goes from 100 to 600, and the plan's capabilities (`exports`, `maxBooks`, `sourceImports`, `maxChaptersPerBook`) arrive with the payment.
+- The payment is recorded as settled for 500 credits.
+- **The same event delivered again grants nothing further.**
+- The billing page shows the settled plan.
+
+The database confirms the same facts independently: the `payment.succeeded` event is `processed` with no error, the payment row is `succeeded` for 500 credits, and it carries both the real Stripe payment intent id (`pi_…`) and the checkout session id (`cs_test_…`).
+
+### Two defects this exposed, and their fixes
+
+**The settled event named a payment, and the pending record was written against a checkout.** Stripe creates a checkout session and its payment intent as two separate things, and it does not put the session's id on the intent: a session's own metadata cannot name the session. The pending payment is written against the session, so a genuine payment could never be matched to the checkout that bought it, and every settled payment was refused with `No local checkout matched this payment`.
+
+Three changes fix it, and each is covered by a test:
+
+- `ProviderEvent` carries `providerCheckoutId`, and `findPendingPayment` matches a pending payment by **either** identifier, writing the real payment id back onto the record so a later event finds it directly.
+- The Stripe provider records the checkout session id on the payment intent when the checkout is opened (`writeCheckoutIdOntoIntent`), so the settled event carries it in its metadata.
+- When an event still names only the payment, the provider is asked which checkout it belongs to (`resolveCheckoutSession`), and the answer is read back from Stripe's own sessions list. **A lookup that fails leaves the event unmatched rather than guessing**: a payment credited to the wrong checkout is worse than a payment not credited yet.
+
+**An event that named no customer could not be attributed to anyone.** A processor is free to omit the metadata the product attached to the checkout. The pending payment record is then the authoritative link, because it was written by the product and holds the customer reference it wrote. The service falls back to it — but only when the event names no customer at all, and the reference still has to resolve to a user the product knows. An event that names no customer *and* matches no checkout grants nothing.
+
+**A settled event for an unknown checkout wrote a second payment row.** It used a placeholder built from the payment id, which looked like a second checkout for the same money and left the real one unsettled. A row is now written only when the event names a real checkout, and never over the unique checkout identifier.
+
+### The boundaries that remain
+
+- **This is a sandbox, not a live processor.** The Stripe keys are test keys and no money can be taken. The behaviour proven here is the same code path a live processor uses, but the live-mode behaviour is not claimed.
+- The journey depends on the Stripe CLI's listener forwarding events to the backend. The backend's own webhook route verifies the signature against the raw request bytes; the CLI supplies a signed secret that the backend is configured with through `STRIPE_WEBHOOK_SECRET`.
+- The `.env` file in the repository root does **not** carry `STRIPE_WEBHOOK_SECRET`. Webhook verification therefore fails safely there until the secret is configured, which is the correct behaviour: an unconfigured secret refuses every event rather than trusting it.
+- A hosted Checkout session creates its payment intent only when the customer starts paying, so the intent id is not known when the checkout is opened. The pending record therefore holds a distinct `pending_<session-id>` placeholder, which is replaced by the real intent id when the settled event arrives.
+- The provider boundary still does not cover a billing portal, saved payment methods, invoices, tax, grace and dunning states, or a published refund, expiry and downgrade policy.
+- The evidence was produced against a local backend, a local database and Stripe's sandbox. It was not run against a deployed stack, and no deployment or remote push was performed.
+
+## S12 correction — the free tier is not a paid plan — 21 November 2026
+
+Status: defect found and fixed, and the fix is verified by the backend suite and by every browser journey.
+
+### The defect
+
+> A free author could not export their own book, and could not import their own notes.
+
+The S12 work read the entitlement table on the server for exports, sources, book limits, outline approval and source-to-chapter application. That was the correct shape for a capability gate, but the gate was applied to the wrong set of capabilities. `exports` and `sourceImports` were treated as things a paid plan sells, so a free author received HTTP 403:
+
+> This action needs the "exports" capability, which this plan does not include.
+
+Three things showed that this was wrong rather than intended:
+
+1. **The product already promised these were free.** The export screen says "Free to export. The file is validated before it can be downloaded." and the credits screen prices "PDF export" at **Free**. The UI was offering a free export and the API was refusing it.
+2. **The free-tier journey stopped working.** `e2e/ui-flow.e2e.ts` failed at the export step, and `e2e/sources-flow.e2e.ts` failed at the import step with the 403 text above. Both had passed before S12.
+3. **The plan catalog claimed to sell them.** Every plan listed `exports: true` and `sourceImports: true` among its entitlements, so the billing page advertised a paid unlock for something the product gives away.
+
+### The fix
+
+- `FREE_TIER_ENTITLEMENTS` in `packages/shared/src/billing.ts` names export and private source import as the baseline every author holds. They are **not** entitlements: they are never written to the entitlement table, never withdrawn by a refund, and never advertised by a plan.
+- `readEntitlements` in `backend/src/services/billing/entitlements.ts` merges that baseline under the paid entitlements, so every gate that reads an entitlement — `hasEntitlement`, `requireEntitlement`, `entitlementHeadroom` — sees the same set. There is one place where the baseline is applied.
+- What a plan sells is the quota and priority set: `maxBooks`, `maxChaptersPerBook` and `priorityJobs`. The quotas are still enforced on the server: a plan that includes five books refuses the sixth, and a plan that includes thirty chapters per book refuses an outline that would exceed it.
+- The seeded plan catalog no longer lists the free capabilities, and the billing page separates "What your plan unlocks" from "Included on every plan", so a plan cannot appear to remove something the product gives away.
+
+### Verification
+
+- **The full backend suite passes: 355 tests across 29 files.** `backend/tests/entitlements.test.ts` was rewritten to pin the corrected semantics: a free author may export and import, the free capabilities are absent from the entitlement table, and the book and chapter quotas still refuse an over-quota author.
+- **Every browser journey passes.** The main journey `e2e/ui-flow.e2e.ts` exports PDF, EPUB and DOCX as a free author and downloads all three. The research journey `e2e/sources-flow.e2e.ts` imports a source, reviews the preview, confirms it, links it to a chapter and answers a question from it. The citation journey, the local billing journey, the Stripe sandbox journey and the studio journey all pass.
+- The local billing journey still shows the whole paid path working: a forged callback is refused with a 400, a checkout grants nothing on its own, the provider's signed webhook moves the balance from 100 to 600, the paid capabilities appear, a reload does not count the payment twice, and cancelling the subscription withdraws the paid capabilities.
+- The Stripe sandbox journey still shows the same against Stripe's own backend: a real hosted Checkout Session, a forged callback refused with a 400, the verified event moving the balance from 100 to 600, the paid entitlements `maxBooks` and `maxChaptersPerBook` arriving with the payment, and a repeated event granting nothing further.
+- Shared, backend and frontend type checks pass; the frontend lint passes.
+
+### The boundaries that remain
+
+- **No downgrade policy is published.** Cancelling a subscription withdraws the paid capabilities, and the paid quotas stop applying, but there is no published rule about what happens to work that exceeds the free tier, and no proration. The credits a customer has already spent are not taken back, and the difference is visible in the ledger rather than silently forgiven.
+- **The free tier has no quota at all.** A free author may create as many books and chapters as the credits allow, because there is no quota to enforce. That follows from the rule that a quota only applies when a plan sets one; if the product wants a free allowance, it has to publish one and enforce it the same way.
+- The evidence was produced locally against the fake AI provider, a local database and Stripe's sandbox. It was not run against a deployed stack, and no deployment or remote push was performed.
+
+## S13–S16 completion — the missing S13 routes and the S15 artefacts — 21 November 2026
+
+Status: the two gaps the plan still carried open are closed, and the work is verified by the backend suite and by the browser journey.
+
+### What was missing
+
+Two things the plan asked for were not implemented:
+
+1. **S13 had no route-level coverage for the privileged actions.** `backend/tests/admin.test.ts` covered the role checks, the audit trail, credit adjustments, support, incidents and alerts, but not the two actions that change a customer's money or work: `POST /admin/payments/refund` and `POST /admin/jobs/intervene`. The routes existed and were authorised; nothing pinned what they do.
+2. **S15 produced no downloadable artefacts.** The shared contract already had `sampleChapterSchema`, and the database already had the `MarketingSample` model, but no service or route used either. The promotional graphic was written as a database row and never rendered to an image, so the plan's own note was accurate: the graphic had not been inspected as a rendered image, and sample chapters were not assembled at all.
+
+### What was built
+
+**S13 route coverage** — nine tests in `backend/tests/admin.test.ts`:
+
+- A refund takes the credits back through the billing service, marks the payment `refunded`, keeps the ledger reconcilable with the wallet, and leaves an audit entry naming the operator and the reason. A second refund of the same payment is refused, a support agent is refused for lacking the permission, and a customer is refused outright.
+- A job intervention cancels a queued job and releases the credits it held, and a retry releases a stale lease back to the queue so the dispatcher can take the job again. Both leave an audit entry. A job that has already finished is refused, a job that does not exist is a 404, and a customer is refused.
+- The fixtures are realistic: a queued job holds a real credit reservation, and a settled payment holds the credits it claims to have granted. Without those the tests would have exercised the credit ledger rather than the intervention.
+
+**S15 the artefacts** — `backend/src/services/marketing/marketingAssets.ts`:
+
+- `composeGraphic` renders the promotional graphic locally with the same headless browser the cover studio uses. The page aborts every request that is not a data URL, so a template can never pull in a remote image or a tracking script, and the rendered PNG is accepted only when `sharp` confirms it is the template's own size and format. The file is stored privately and the row is marked ready only when the bytes are really there.
+- `assembleSample` builds a sample pack from the chapters the author names. Every named chapter must belong to the book and must be written. The pack is rendered through the same renderer and the same validator the export path uses, read back from the path the download serves, and validated; a pack that would not open is refused rather than offered as a download.
+- `buildBookDocument` gained a `chapterIds` option, so a sample is built from the chosen chapters rather than from a copy of the whole book.
+- Three routes: `GET /marketing/books/:bookId/samples`, `POST /marketing/books/:bookId/samples` and `GET /marketing/samples/:sampleId/download`. The download is scoped to the owner, so one author cannot download another's sample.
+- The marketing studio gained a **Sample chapters** panel: choose up to five written chapters, pick the file format, build the pack, download it. The panel states that nothing is emailed or posted.
+
+### Verification
+
+- **The full backend suite passes: 388 tests across 30 files.** `backend/tests/marketing.test.ts` gained six tests that cover the rendered graphic (a real PNG of the template's own size, read back from storage), the assembled sample (ready, with the chapters the author chose, and a download that returns a real PDF), a sample naming another book's chapter, a sample for a book the author does not own, a download by another author, and a sample over the chapter limit.
+- **The browser journey passes.** `e2e/studio-flow.e2e.ts` now builds a sample from the marketing studio, waits for it to appear, downloads it and checks that real bytes come back (31,673 bytes in the run). The journey still refuses a customer at the operations API, refuses the audit trail to a support agent, and shows the role-scoped panels.
+- The frontend production build completes with 33 routes, and the frontend lint and both type checks pass.
+
+### The boundaries that remain
+
+- **A sample pack is a whole document, not a set of loose chapter files.** The chapters the author chose are assembled into one PDF, EPUB or DOCX with the book's own design. There is no separate file per chapter, and no way to give a reader only one chapter without the surrounding front matter.
+- **A sample is produced from the current manuscript, not from a frozen export.** The chapter versions it was taken from are recorded on the row, but a new sample is always built from the chapters as they stand now. There is no way to reproduce an older sample.
+- The rendered graphic is checked for size and format, and its text is checked for overflow, but there is no accessibility audit of the image, no alt-text check against the cover, and no colour-contrast test. A template whose colours fail a contrast rule would still render.
+- The evidence was produced locally against the fake AI provider and a local database. It was not run against a deployed stack, and no deployment or remote push was performed.
+
+## Live AI verification — 21 November 2026
+
+Status: the live AI path is exercised against the real provider with `AI_MOCK=0`. The keys and the model names in the environment are valid, and every AI output type the product offers was run once and produced real copy.
+
+### What was checked
+
+- **The key works.** `GET https://api.openai.com/v1/models` with the key from the environment answered HTTP 200 and listed 99 models. The three model names the backend defaults to — `gpt-5-mini` for text, `gpt-5` for the quality review, and `gpt-image-2.6-sunburst` for images — are all present in the account. A wrong default model name would have broken every AI feature in production, so this was checked first.
+- **A real outline.** `aiService.generateOutline` with a home-food-safety brief returned the title *Storing Food Safely at Home* and three real chapters: *Start Here: Why safe storage matters and how this guide will help*, *Practical Storage and Timing: Refrigerators, freezers, and leftovers*, and *Put it into practice: Simple routines to waste less and eat safely*. The model was `gpt-5-mini`.
+- **A real chapter section.** `aiService.writeSection` returned 4,172 characters of real manuscript prose with the correct shape (a heading, a fact paragraph, and a bulleted list of target temperatures).
+- **A real summary.** `aiService.summarizeChapter` returned a real summary of the section it was given.
+- **A real cover image.** `imageProvider.generate` returned a 2,272,264-byte PNG at 1024×1536, confirmed by `sharp` as a PNG with three channels. This is the cover studio's own provider call, not a stand-in.
+
+### What this closes, and what it does not
+
+- The plan's gate — *turn `AI_MOCK` off, run one real generation per output type, and record the actual copy and the actual cost* — is now **half** closed: the real copy is recorded. The actual cost is not, because the API responses carry token counts but this run did not attach a price list to them, and a cost claim without a recorded price would be a guess.
+- **The quality review was not run live.** It uses `gpt-5`, a different model from the one that was exercised, and it is the one AI output type that reads the whole manuscript and quotes from it. It remains unverified against the live provider.
+- **No live image cost was recorded either**, for the same reason.
+- **The multilingual path was not run live.** The probe was in English. The bundled-font and text-layer behaviour under a real non-Latin generation is still unverified, and that is the area where the product's typography guarantees are most likely to be stressed.
+- **One call is not a cost estimate.** A single generation says nothing about the cost of a full book, because a full book is many sections, a review pass, and several images. The per-request credit prices in the plan are unchanged by this evidence.

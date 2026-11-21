@@ -13,7 +13,7 @@ import { outlineService } from "../src/services/outline/outlineService.js";
 import { closeBrowser } from "../src/services/exports/pdfRenderer.js";
 import { exportService } from "../src/services/exports/exportService.js";
 import { storage } from "../src/services/storage/storage.js";
-import { brief, createUser, ORIGIN } from "./helpers.js";
+import { brief, createUser, grantEntitlements, ORIGIN, PAID_ENTITLEMENTS } from "./helpers.js";
 
 const id = () => randomUUID();
 afterAll(async () => { await closeBrowser(); await closeQueues(); await prisma.$disconnect(); });
@@ -62,7 +62,9 @@ describe("durable operation identity", () => {
   });
 
   it("replays validation failures with the current support request id", async () => {
-    const { agent } = await createUser("operation-failure");
+    const { agent, user } = await createUser("operation-failure");
+    // Exporting is a paid capability, so the test says it is assuming a paid plan.
+    await grantEntitlements(user.id, PAID_ENTITLEMENTS);
     const first = await agent.post("/api/v1/books").set("Origin", ORIGIN).send(brief()).expect(201);
     const url = `/api/v1/books/${first.body.book.id}/exports`;
     const key = id();
@@ -154,7 +156,9 @@ describe("environment and worker readiness", () => {
   });
 
   it("validates and downloads a file through the API that reads the worker storage", async () => {
-    const { agent } = await createUser("artifact");
+    const { agent, user } = await createUser("artifact");
+    // Exporting is a paid capability, so the test says it is assuming a paid plan.
+    await grantEntitlements(user.id, PAID_ENTITLEMENTS);
     const created = await agent.post("/api/v1/books").set("Origin", ORIGIN).send(brief()).expect(201);
     const bookId = created.body.book.id;
     await outlineService.process(created.body.job.id);

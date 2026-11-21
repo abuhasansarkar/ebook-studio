@@ -35,6 +35,19 @@ model User {
   payments      Payment[]
   entitlements  Entitlement[]
 
+  // S13 operations
+  adminRoles      AdminRole[]
+  auditEntries    AdminAuditEntry[]
+  supportRequests SupportRequest[]
+
+  // S14 distribution
+  packages          DistributionPackage[]
+  publishingStatus  PublishingStatus[]
+  // S15 marketing
+  marketingDrafts   MarketingDraft[]
+  marketingGraphics MarketingGraphic[]
+  marketingSamples  MarketingSample[]
+
   @@map("user")
 }
 
@@ -106,33 +119,40 @@ model Project {
 }
 
 model Book {
-  id              String              @id @default(cuid())
-  userId          String
-  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  projectId       String?
-  project         Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  title           String
-  subtitle        String              @default("")
-  language        String              @default("en")
-  bookType        String              @default("guide")
+  id                String                @id @default(cuid())
+  userId            String
+  user              User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId         String?
+  project           Project?              @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  title             String
+  subtitle          String                @default("")
+  language          String                @default("en")
+  bookType          String                @default("guide")
   /// draft | outline_ready | generating | written | failed
-  status          String              @default("draft")
-  brief           BookBrief?
-  outlines        Outline[]
-  chapters        Chapter[]
-  jobs            GenerationJob[]
-  exports         Export[]
-  assetReferences AssetReference[]
-  coverDesigns    CoverDesign[]
-  designs         BookDesign[]
-  contexts        BookContext[]
-  qualityReports  QualityReport[]
-  sources         ResearchSource[]
-  sourceLinks     ChapterSourceLink[]
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  archivedAt      DateTime?
-  deletedAt       DateTime?
+  status            String                @default("draft")
+  brief             BookBrief?
+  outlines          Outline[]
+  chapters          Chapter[]
+  jobs              GenerationJob[]
+  exports           Export[]
+  assetReferences   AssetReference[]
+  coverDesigns      CoverDesign[]
+  designs           BookDesign[]
+  contexts          BookContext[]
+  qualityReports    QualityReport[]
+  sources           ResearchSource[]
+  sourceLinks       ChapterSourceLink[]
+  // S14 distribution
+  packages          DistributionPackage[]
+  publishingStatus  PublishingStatus[]
+  // S15 marketing
+  marketingDrafts   MarketingDraft[]
+  marketingGraphics MarketingGraphic[]
+  marketingSamples  MarketingSample[]
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  archivedAt        DateTime?
+  deletedAt         DateTime?
 
   @@index([userId, deletedAt, updatedAt])
   @@index([userId, deletedAt, archivedAt, createdAt, id], map: "books_owner_archive_created_idx")
@@ -751,4 +771,329 @@ model ChapterSourceLink {
   @@unique([sourceId, chapterId])
   @@index([chapterId])
   @@map("chapter_source_links")
+}
+
+/// S13 — the role an account holds.
+///
+/// A role is the *only* thing that grants an operator a capability. The
+/// backend checks it on every privileged route; the admin navigation in the
+/// browser is a convenience, never the control.
+model AdminRole {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// support | finance | administrator
+  role         String
+  /// Why this role was granted, and who granted it.
+  reason       String    @default("")
+  grantedBy    String?
+  grantedAt    DateTime  @default(now())
+  revokedAt    DateTime?
+  revokedBy    String?
+  revokeReason String?
+
+  @@unique([userId, role])
+  @@index([role])
+  @@map("admin_roles")
+}
+
+/// S13 — an immutable record of a privileged action.
+///
+/// Audit entries are written, never edited or deleted. The row records who
+/// acted, what they acted on, why, and what happened, so a credit adjustment
+/// or a job intervention can be explained afterwards.
+model AdminAuditEntry {
+  id         String   @id @default(cuid())
+  /// The operator's user id. Null for a system action.
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  /// The role the actor held at the time.
+  actorRole  String?
+  /// The action, for example `credits.adjust` or `job.cancel`.
+  action     String
+  /// The kind of thing acted on, for example `user` or `generation_job`.
+  targetType String
+  targetId   String
+  /// Why the operator did it. Required for anything that changes value.
+  reason     String   @default("")
+  /// What the action changed, in a safe summary form.
+  outcome    String   @default("ok")
+  /// The before and after state, without secrets or personal content.
+  details    Json     @default("{}")
+  /// The request id that produced the action, so it can be correlated.
+  requestId  String?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([actorId])
+  @@index([action])
+  @@index([targetType, targetId])
+  @@index([createdAt])
+  @@map("admin_audit_entries")
+}
+
+/// S13 — an operational incident worth an operator's attention.
+///
+/// An incident records a failure that the product noticed: a queue that grew
+/// old, a delivery that failed permanently, a payment that failed, a
+/// reconciliation gap. It is a record, not a repair: nothing here changes
+/// product state on its own.
+model OperationalIncident {
+  id          String    @id @default(cuid())
+  /// The kind of incident, for example `queue_backlog` or `payment_failed`.
+  kind        String
+  severity    String    @default("warning")
+  /// A short, safe summary. Never contains credentials or message content.
+  summary     String
+  /// The thing the incident is about.
+  subjectType String?
+  subjectId   String?
+  /// Whether an operator has looked at it.
+  resolvedAt  DateTime?
+  resolvedBy  String?
+  resolution  String?
+  createdAt   DateTime  @default(now())
+
+  @@index([kind])
+  @@index([resolvedAt])
+  @@index([createdAt])
+  @@map("operational_incidents")
+}
+
+/// S13 — a backup manifest and the evidence that it can be restored.
+///
+/// The manifest records what was captured and its checksums. The restore
+/// evidence records a rehearsal: what was restored, into where, and whether
+/// the recovered data was intact.
+model BackupManifest {
+  id              String    @id @default(cuid())
+  /// A stable identifier for this backup.
+  name            String    @unique
+  /// The database dump and the asset archive.
+  databaseFile    String
+  assetsFile      String?
+  bytes           Int       @default(0)
+  /// SHA-256 of each artefact.
+  databaseSha256  String
+  assetsSha256    String?
+  /// Whether the backup was encrypted, and with which key identifier.
+  encrypted       Boolean   @default(false)
+  keyId           String?
+  /// The counts that prove the backup holds something.
+  counts          Json      @default("{}")
+  /// A rehearsal of the restore, when one has been done.
+  restoredAt      DateTime?
+  restoredInto    String?
+  restoreVerified Boolean   @default(false)
+  restoreNotes    String?
+  createdAt       DateTime  @default(now())
+
+  @@map("backup_manifests")
+}
+
+/// S13 — a support request from a customer.
+///
+/// The submission is stored with a correlation id so a support agent can find
+/// the workflow the customer was in. No message is sent anywhere without a
+/// separately configured authorization.
+model SupportRequest {
+  id            String    @id @default(cuid())
+  userId        String?
+  user          User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  /// The correlation id shared with the client's logs.
+  correlationId String
+  category      String    @default("question")
+  subject       String
+  message       String
+  /// The route or feature the customer was on.
+  context       String?
+  email         String?
+  status        String    @default("open")
+  /// The operator's reply.
+  response      String?
+  respondedBy   String?
+  respondedAt   DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("support_requests")
+}
+
+/// S13 — a record of an alert being delivered.
+///
+/// An alert that was never delivered is a failed alert, and this is where
+/// that is recorded rather than assumed.
+model AlertDelivery {
+  id          String   @id @default(cuid())
+  /// The alert that was raised.
+  kind        String
+  severity    String   @default("warning")
+  summary     String
+  /// Where it was sent.
+  destination String
+  /// delivered | failed
+  status      String
+  /// The failure reason, when it failed.
+  error       String?
+  /// The incident the alert was raised for.
+  incidentId  String?
+  createdAt   DateTime @default(now())
+
+  @@index([kind])
+  @@index([status])
+  @@map("alert_deliveries")
+}
+
+/// S14 — a distribution package prepared for one destination.
+///
+/// The package records what it holds and which rules version it was checked
+/// against, so a download can be traced back to the manuscript it came from.
+/// It is a file the author uploads to a store themselves: the product never
+/// publishes on the author's behalf.
+model DistributionPackage {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookId          String
+  book            Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  /// The destination this package was prepared for.
+  destination     String
+  /// assembling | ready | blocked | failed
+  status          String   @default("assembling")
+  /// The destination rules the package was checked against.
+  rulesVersion    String   @default("")
+  /// The files the package holds.
+  files           Json
+  /// The total size in bytes.
+  bytes           Int      @default(0)
+  /// The checks that were run against the package.
+  checks          Json
+  /// The metadata the author supplied.
+  metadata        Json
+  /// The chapter versions captured when the package was made.
+  chapterVersions Json
+  /// The storage key of the assembled ZIP.
+  storageKey      String?
+  /// The reason the package failed or was blocked.
+  error           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId, bookId, createdAt])
+  @@index([status])
+  @@map("distribution_packages")
+}
+
+/// S14 — the author's own publishing status for a destination.
+///
+/// The author sets this. The product records it and never changes it, because
+/// only the author knows whether a store accepted the book.
+model PublishingStatus {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookId            String
+  book              Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  destination       String
+  /// not_prepared | in_progress | submitted | published
+  state             String   @default("not_prepared")
+  /// The store's own reference for the listing.
+  externalReference String?
+  note              String?
+  updatedAt         DateTime @updatedAt
+  createdAt         DateTime @default(now())
+
+  @@unique([userId, bookId, destination])
+  @@index([bookId])
+  @@map("publishing_statuses")
+}
+
+/// S15 — a marketing draft.
+///
+/// The draft stays editable and is never published by the product. The
+/// chapter versions it was written from are kept, so a draft that no longer
+/// matches the manuscript is visible as stale.
+model MarketingDraft {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookId          String
+  book            Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  /// The kind of material this is.
+  outputType      String
+  /// draft | edited | approved
+  status          String   @default("draft")
+  /// The text, which the author may edit.
+  content         String   @default("")
+  tone            String   @default("clear")
+  audience        String?
+  instruction     String?
+  /// The chapter versions the draft was written from.
+  chapterVersions Json
+  /// The rules version the draft was produced under.
+  rulesVersion    String   @default("")
+  /// The claims the author should look at.
+  flags           Json
+  /// The credits the draft cost.
+  creditsCharged  Int      @default(0)
+  /// The version, used to refuse a lost edit.
+  version         Int      @default(1)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId, bookId, createdAt])
+  @@index([bookId, outputType])
+  @@map("marketing_drafts")
+}
+
+/// S15 — a composed promotional graphic.
+model MarketingGraphic {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookId          String
+  book            Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  template        String
+  width           Int
+  height          Int
+  headline        String
+  subhead         String?
+  callToAction    String?
+  textColor       String   @default("#1b1b1f")
+  backgroundColor String   @default("#f5f1e8")
+  usedCover       Boolean  @default(false)
+  /// The storage key of the rendered image.
+  storageKey      String?
+  /// Whether the image was rendered and verified.
+  ready           Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId, bookId, createdAt])
+  @@map("marketing_graphics")
+}
+
+/// S15 — the sample chapters an author chose to hand out.
+model MarketingSample {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookId          String
+  book            Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  /// The chapters included, in order.
+  chapterIds      Json
+  /// The format the sample was produced in.
+  format          String   @default("pdf")
+  /// The manuscript versions the sample was taken from.
+  chapterVersions Json
+  /// The storage key of the assembled sample.
+  storageKey      String?
+  ready           Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId, bookId, createdAt])
+  @@map("marketing_samples")
 }

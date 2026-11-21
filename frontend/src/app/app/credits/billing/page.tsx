@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Coins, CreditCard, Sparkles } from "lucide-react";
-import type { EntitlementKey, Plan, SubscriptionStatus } from "@ebook/shared";
+import { FREE_TIER_ENTITLEMENTS, type EntitlementKey, type Plan, type SubscriptionStatus } from "@ebook/shared";
 import { PageHeader } from "@/components/app/app-shell";
 import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
@@ -44,6 +44,21 @@ const ENTITLEMENT_LABEL: Record<EntitlementKey, string> = {
   sourceImports: "Source imports",
 };
 
+/**
+ * The capabilities the product publishes as free.
+ *
+ * They are in every author's billing state because every author has them, so
+ * the page separates them from what a plan actually added. Listing a free
+ * capability as something a plan unlocks would be a false claim.
+ */
+const FREE_LABEL: Record<EntitlementKey, string> = {
+  maxBooks: "Books",
+  maxChaptersPerBook: "Chapters per book",
+  priorityJobs: "Priority jobs",
+  exports: "PDF, EPUB and DOCX export",
+  sourceImports: "Private source import",
+};
+
 /** Formats a minor-unit amount as money. */
 function formatPrice(amountMinor: number, currency: string) {
   return new Intl.NumberFormat("en", { style: "currency", currency }).format(amountMinor / 100);
@@ -73,6 +88,9 @@ function PlanCard({ plan, busy, onBuy }: { plan: Plan; busy: boolean; onBuy: () 
           ))}
         </ul>
       )}
+      <p className="mt-4 text-xs text-muted-foreground">
+        Export and private source import are included on every plan, free.
+      </p>
       <Button className="mt-6 w-full" loading={busy} onClick={onBuy} data-testid={`buy-plan-${plan.id}`}>
         Buy plan
       </Button>
@@ -93,6 +111,9 @@ export default function BillingPage() {
   const state = billingQuery.data;
   const catalog = plansQuery.data;
   const entitlements = Object.entries(state?.entitlements ?? {}) as [EntitlementKey, string | number | boolean][];
+  // The free-tier capabilities are in every author's state, so only the ones a
+  // plan actually added belong under "What your plan unlocks".
+  const paidEntitlements = entitlements.filter(([key]) => !(key in FREE_TIER_ENTITLEMENTS));
   const subscription = state?.subscription ?? null;
 
   const busyPlanId = checkout.isPending ? (checkout.variables ?? null) : null;
@@ -195,9 +216,9 @@ export default function BillingPage() {
           )}
 
           <h2 className="mb-3 mt-10 text-lg font-semibold">What your plan unlocks</h2>
-          {entitlements.length > 0 ? (
-            <Card className="divide-y divide-border">
-              {entitlements.map(([key, value]) => (
+          {paidEntitlements.length > 0 ? (
+            <Card className="divide-y divide-border" data-testid="paid-entitlements">
+              {paidEntitlements.map(([key, value]) => (
                 <div key={key} className="flex items-center justify-between gap-4 px-5 py-3.5">
                   <p className="text-sm font-medium">{ENTITLEMENT_LABEL[key] ?? key}</p>
                   <Badge tone="success">{typeof value === "boolean" ? (value ? "Included" : "—") : String(value)}</Badge>
@@ -205,10 +226,20 @@ export default function BillingPage() {
               ))}
             </Card>
           ) : (
-            <Card className="p-6 text-sm text-muted-foreground">
+            <Card className="p-6 text-sm text-muted-foreground" data-testid="paid-entitlements">
               No paid capabilities are unlocked yet. Entitlements are added only when a payment is confirmed.
             </Card>
           )}
+
+          <h2 className="mb-3 mt-10 text-lg font-semibold">Included on every plan</h2>
+          <Card className="divide-y divide-border" data-testid="free-entitlements">
+            {(Object.keys(FREE_TIER_ENTITLEMENTS) as EntitlementKey[]).map((key) => (
+              <div key={key} className="flex items-center justify-between gap-4 px-5 py-3.5">
+                <p className="text-sm font-medium">{FREE_LABEL[key] ?? key}</p>
+                <Badge tone="neutral">Free</Badge>
+              </div>
+            ))}
+          </Card>
 
           <h2 className="mb-3 mt-10 text-lg font-semibold">Payment history</h2>
           {state && state.payments.length > 0 ? (

@@ -47,7 +47,7 @@ export const DEFAULT_PLANS: Plan[] = [
     priceMinor: 1200,
     currency: "USD",
     credits: 500,
-    entitlements: { maxBooks: 5, maxChaptersPerBook: 30, exports: true, sourceImports: true },
+    entitlements: { maxBooks: 5, maxChaptersPerBook: 30 },
     active: true,
     recurring: true,
   },
@@ -58,7 +58,7 @@ export const DEFAULT_PLANS: Plan[] = [
     priceMinor: 3900,
     currency: "USD",
     credits: 2000,
-    entitlements: { maxBooks: 25, maxChaptersPerBook: 60, priorityJobs: true, exports: true, sourceImports: true },
+    entitlements: { maxBooks: 25, maxChaptersPerBook: 60, priorityJobs: true },
     active: true,
     recurring: true,
   },
@@ -69,7 +69,7 @@ export const DEFAULT_PLANS: Plan[] = [
     priceMinor: 9900,
     currency: "USD",
     credits: 6000,
-    entitlements: { maxBooks: 100, maxChaptersPerBook: 120, priorityJobs: true, exports: true, sourceImports: true },
+    entitlements: { maxBooks: 100, maxChaptersPerBook: 120, priorityJobs: true },
     active: true,
     recurring: true,
   },
@@ -124,7 +124,15 @@ export const billingService = {
     return rows.map(toPlan);
   },
 
-  /** Seeds the catalog. Existing plans are left alone so a price change is deliberate. */
+  /**
+   * Seeds the catalog.
+   *
+   * A seeded plan's entitlement set is kept in step with the code, because the
+   * entitlements describe what the product *does* rather than what it charges:
+   * a capability the product publishes as free must not be advertised as a
+   * paid unlock. The price, credits and name are left alone, so a price change
+   * is still a deliberate act rather than a side effect of a restart.
+   */
   async seedPlans(plans: Plan[] = DEFAULT_PLANS) {
     for (const plan of plans) {
       await prisma.plan.upsert({
@@ -140,7 +148,7 @@ export const billingService = {
           active: plan.active,
           recurring: plan.recurring,
         },
-        update: {},
+        update: { entitlements: plan.entitlements as object },
       });
     }
   },
@@ -214,28 +222,39 @@ export const billingService = {
    * The signature is checked against the raw body before anything is recorded.
    * An invalid signature is refused and nothing is written.
    */
-  async handleWebhook(rawBody: string, signature: string | undefined, timestamp: number | null) {
-    const provider = getProvider();
-    const now = Date.now();
-
-    // The timestamp is part of the signed material, so a captured body cannot
-    // be replayed indefinitely.
-    const stamp = timestamp ?? Math.floor(now / 1000);
-    const valid = verifyWebhookSignature(
-      rawBody,
-      env.PAYMENT_WEBHOOK_SECRET,
-      signature,
-      stamp,
-      env.PAYMENT_WEBHOOK_TOLERANCE_SECONDS,
-      now,
-    );
-    if (!valid) {
-      logger.warn({ provider: provider.name }, "Refused a webhook with an invalid signature");
-      throw badRequest("The webhook signature is not valid.");
+  async handleWebhook(
+    rawBody: string,
+    signature: string | undefined,
+    timestamp: number | null,
+    provider = getProvider(),
+  ) {
+    // The provider owns its signature scheme. The local provider signs the
+    // body and a timestamp with the shared secret; Stripe signs the body and
+    // the timestamp with the endpoint's signing secret and the Stripe SDK
+    // checks the tolerance. Both are verified against the *raw* body before
+    // the payload is parsed, and both refuse to return an event they cannot
+    // vouch for.
+    if (provider.name === "local") {
+      const now = Date.now();
+      // The timestamp is part of the signed material, so a captured body
+      // cannot be replayed indefinitely.
+      const stamp = timestamp ?? Math.floor(now / 1000);
+      const valid = verifyWebhookSignature(
+        rawBody,
+        env.PAYMENT_WEBHOOK_SECRET,
+        signature,
+        stamp,
+        env.PAYMENT_WEBHOOK_TOLERANCE_SECONDS,
+        now,
+      );
+      if (!valid) {
+        logger.warn({ provider: provider.name }, "Refused a webhook with an invalid signature");
+        throw badRequest("The webhook signature is not valid.");
+      }
     }
 
     const event = provider.verifyWebhook(rawBody, signature);
-    if (!event) throw badRequest("The webhook payload could not be read.");
+    if (!event) throw badRequest("The webhook signature is not valid.");
 
     return this.applyEvent(event, rawBody, signature ?? "");
   },
@@ -278,7 +297,7 @@ export const billingService = {
     }
 
     try {
-      const outcome = await this.applyEventBody(event);
+      const outcome = await this.applyEventBody(await this.withResolvedCheckout(event));
       await prisma.paymentEvent.update({
         where: { id: inboxId },
         data: { status: outcome.status, processedAt: new Date(), error: outcome.reason ?? null },
@@ -293,12 +312,76 @@ export const billingService = {
     }
   },
 
+  /**
+   * Completes an event with the checkout it settles, when the event did not
+   * name one.
+   *
+   * A provider may name a checkout and a payment differently, so a settled
+   * event often carries only the payment. The pending record is written
+   * against the checkout, so the payment cannot be matched until the checkout
+   * is known. The provider is asked, and a provider that cannot answer leaves
+   * the event unmatched: a payment is never credited to a guess.
+   */
+  async withResolvedCheckout(event: ProviderEvent) {
+    if (event.providerCheckoutId || !event.providerPaymentId) return event;
+    const resolve = getProvider().resolveCheckoutSession?.bind(getProvider());
+    if (!resolve) return event;
+    const sessionId = await resolve(event.providerPaymentId);
+    if (!sessionId) return event;
+    return { ...event, providerCheckoutId: sessionId };
+  },
+
+  /**
+   * The user an event belongs to.
+   *
+   * The event's own customer reference is the first answer, but a processor is
+   * free to omit the metadata we attached to the checkout — a payment intent
+   * created outside our checkout session, or a provider that does not copy the
+   * session's metadata onto the intent, carries none of it. The pending
+   * payment record is then the authoritative link: it was written by us, it
+   * holds the customer reference, and it is matched by payment id or checkout
+   * session id.
+   *
+   * Falling back this way is safe because it never widens the grant: the
+   * reference still has to resolve to a user we know, and the settlement still
+   * has to land on that user's pending payment.
+   */
+  async userForEvent(event: ProviderEvent) {
+    const direct = await userForReference(event.customerReference);
+    if (direct) return direct;
+    if (event.customerReference) return null;
+
+    // The event named no customer, so the checkout it settles is the only
+    // thing that can say whose money it was. The pending record holds the
+    // reference we wrote when the checkout was opened.
+    //
+    // The two identifiers are looked up separately: a processor may name the
+    // session, the payment, or both, and a record matches if either one is
+    // the one we wrote.
+    const candidates = [
+      event.providerPaymentId ? { providerPaymentId: event.providerPaymentId } : null,
+      event.providerCheckoutId ? { providerCheckoutId: event.providerCheckoutId } : null,
+    ].filter((where): where is { providerPaymentId: string } | { providerCheckoutId: string } => where !== null);
+
+    for (const where of candidates) {
+      const pending = await prisma.payment.findFirst({
+        where: { status: "pending", ...where },
+        orderBy: { createdAt: "desc" },
+      });
+      if (!pending) continue;
+      const owner = await userForReference(pending.providerCustomerReference);
+      if (owner) return owner;
+    }
+    return null;
+  },
+
   /** The effect of one verified event. */
   async applyEventBody(event: ProviderEvent) {
-    const user = await userForReference(event.customerReference);
+    const user = await this.userForEvent(event);
     if (!user) {
-      // The provider named a customer this product does not have. The event is
-      // recorded but grants nothing.
+      // The provider named a customer this product does not have, and no local
+      // checkout claims the payment either. The event is recorded but grants
+      // nothing.
       return { status: "ignored" as const, reason: "Unknown customer." };
     }
 
@@ -343,6 +426,46 @@ export const billingService = {
   },
 
   /**
+   * Finds the pending payment an event settles.
+   *
+   * A provider names a checkout and a payment differently. A checkout session
+   * has one identifier and the payment that settles it has another, and the
+   * pending record is written against the checkout. The payment is therefore
+   * looked up by either identifier, and the payment identifier is written back
+   * onto the record so the next event finds it directly.
+   *
+   * Only the signed-in author's own pending payments are considered, so one
+   * author's event can never settle another's checkout.
+   */
+  async findPendingPayment(userId: string, event: ProviderEvent) {
+    const providerPaymentId = event.providerPaymentId;
+    const providerCheckoutId = event.providerCheckoutId;
+
+    const payment =
+      (providerPaymentId
+        ? await prisma.payment.findFirst({ where: { providerPaymentId, userId, status: "pending" } })
+        : null) ??
+      (providerCheckoutId
+        ? await prisma.payment.findFirst({ where: { providerCheckoutId, userId, status: "pending" } })
+        : null);
+
+    if (!payment) return null;
+
+    // The payment identifier is now known, so it is recorded. A later event
+    // about the same payment then finds the record directly. The identifier is
+    // unique, so it is only written when no other payment already holds it.
+    if (providerPaymentId && payment.providerPaymentId !== providerPaymentId) {
+      const holder = await prisma.payment.findUnique({ where: { providerPaymentId } });
+      if (holder) return payment;
+      return prisma.payment.update({
+        where: { id: payment.id },
+        data: { providerPaymentId },
+      });
+    }
+    return payment;
+  },
+
+  /**
    * Grants the credits and entitlements a settled payment bought.
    *
    * The credit grant carries an idempotency key derived from the payment, so a
@@ -350,16 +473,30 @@ export const billingService = {
    */
   async grantForPayment(userId: string, event: ProviderEvent) {
     const providerPaymentId = event.providerPaymentId!;
-    const payment = await prisma.payment.findUnique({ where: { providerPaymentId } });
+    const payment = await this.findPendingPayment(userId, event);
     if (!payment) {
-      // The provider paid for something this product has no record of. It is
-      // recorded for an operator rather than credited blindly.
+      // The provider paid for something this product has no record of, or for a
+      // checkout that belongs to another author. It is recorded for an
+      // operator rather than credited blindly. The checkout identifier is
+      // unique, so a checkout that already exists is never written twice.
+      //
+      // A record is only written when the event names a checkout. A placeholder
+      // built from the payment id would be a fiction: it would look like a
+      // second checkout for the same money and would leave the real one
+      // unsettled.
+      if (!event.providerCheckoutId) {
+        return { status: "ignored" as const, reason: "No local checkout matched this payment." };
+      }
+      const existing = await prisma.payment.findUnique({ where: { providerCheckoutId: event.providerCheckoutId } });
+      if (existing) {
+        return { status: "ignored" as const, reason: "That checkout belongs to another customer." };
+      }
       await prisma.payment.create({
         data: {
           userId,
           provider: getProvider().name,
           providerPaymentId,
-          providerCheckoutId: `unknown_${providerPaymentId}`,
+          providerCheckoutId: event.providerCheckoutId,
           providerCustomerReference: event.customerReference,
           amountMinor: event.amountMinor ?? 0,
           currency: event.currency ?? "USD",

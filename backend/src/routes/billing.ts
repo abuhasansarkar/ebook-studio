@@ -5,7 +5,7 @@ import { userId } from "../middleware/requireAuth.js";
 import { validateBody } from "../middleware/validate.js";
 import { logger } from "../utils/logger.js";
 import { billingService } from "../services/billing/billingService.js";
-import { getProvider, SIGNATURE_HEADER } from "../services/billing/provider.js";
+import { getProvider, SIGNATURE_HEADER, STRIPE_SIGNATURE_HEADER } from "../services/billing/provider.js";
 import { badRequest } from "../utils/errors.js";
 
 /**
@@ -28,13 +28,16 @@ billingWebhookRouter.post("/billing/webhook", raw({ type: "application/json", li
   const body = Buffer.isBuffer(req.body) ? req.body.toString("utf8") : String(req.body ?? "");
   if (!body) throw badRequest("The webhook body is empty.");
 
-  const signature = req.get(SIGNATURE_HEADER) ?? undefined;
+  // The signature scheme belongs to the provider, so the header it signs with
+  // is read here but verified inside the provider boundary.
+  const provider = getProvider();
+  const signature = req.get(provider.signatureHeader) ?? undefined;
   const timestampHeader = req.get("x-ebookstudio-timestamp");
   const timestamp = timestampHeader ? Number.parseInt(timestampHeader, 10) : null;
   if (timestampHeader && !Number.isFinite(timestamp)) throw badRequest("The webhook timestamp is not a number.");
 
   try {
-    const outcome = await billingService.handleWebhook(body, signature, timestamp);
+    const outcome = await billingService.handleWebhook(body, signature, timestamp, provider);
     // The provider only needs to know the event was accepted.
     res.status(200).json({ received: true, status: outcome.status, duplicate: outcome.duplicate });
   } catch (err) {

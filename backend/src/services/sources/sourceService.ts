@@ -9,6 +9,7 @@ import {
 import { prisma } from '../../database/prisma.js';
 import { badRequest, conflict, notFound } from '../../utils/errors.js';
 import { storage } from '../storage/storage.js';
+import { requireEntitlement, assertChapterQuota } from '../billing/entitlements.js';
 import { getOwnedBook } from '../books/bookService.js';
 import {
   assertAcceptableSource,
@@ -106,6 +107,9 @@ export const sourceService = {
    */
   async create(userId: string, bookId: string, input: { title: string; format: SourceFormat; provenance: string; license: string }, body: Buffer, mime: string) {
     await getOwnedBook(userId, bookId);
+    // Importing a source is a paid capability. The check is on the server, so
+    // it holds for a direct API call as well as for the upload form.
+    await requireEntitlement(userId, 'sourceImports');
     assertAcceptableSource(body, mime, input.format);
 
     const sha256 = sourceDigest(body);
@@ -224,6 +228,11 @@ export const sourceService = {
     const { lockBook } = await import('../generation/jobRuntime.js');
     const { markdownToTiptap, countWords, tiptapToText } = await import('../editor/markdownToTiptap.js');
     const { Prisma } = await import('../../generated/prisma/client.js');
+
+    // The chapter quota is checked before the transaction, so a refusal leaves
+    // the manuscript untouched. Appending to an existing chapter adds no
+    // chapters, so only the created ones count.
+    await assertChapterQuota(userId, source.bookId, input.chapters.length);
 
     return prisma.$transaction(async (tx) => {
       await lockBook(tx, source.bookId, userId);

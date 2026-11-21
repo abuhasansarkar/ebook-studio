@@ -5,6 +5,7 @@ import { dispatchPending, persistDispatch } from "../../queues/index.js";
 import { conflict, notFound } from "../../utils/errors.js";
 import { logger } from "../../utils/logger.js";
 import { aiService } from "../ai/aiService.js";
+import { assertChapterQuota, hasEntitlement } from "../billing/entitlements.js";
 import { getOwnedBook } from "../books/bookService.js";
 import { reserveInTransaction, type Tx } from "../credits/creditService.js";
 import { assertIdle, claimJob, fence, finishJob, finishOwned, GenerationCancelled, heartbeat, LeaseLost, lockBook } from "../generation/jobRuntime.js";
@@ -18,6 +19,9 @@ export const outlineService = {
   async requestGeneration(userId: string, bookId: string) {
     await getOwnedBook(userId, bookId);
     await assertRuntimeAvailable();
+    // A plan with the `priorityJobs` entitlement puts its work ahead of
+    // ordinary work in the queue.
+    const paid = await hasEntitlement(userId, 'priorityJobs');
     const job = await prisma.$transaction(async tx => {
       await lockBook(tx, bookId, userId);
       await assertIdle(tx, bookId);
@@ -25,7 +29,7 @@ export const outlineService = {
       const brief = bookBriefSchema.parse((await tx.bookBrief.findUniqueOrThrow({ where: { bookId } })).data);
       const created = await tx.generationJob.create({ data: { userId, bookId, type: 'outline', total: 1, creditsReserved: CREDIT_COSTS.outline, inputSnapshot: { schema: 1, brief } } });
       await reserveInTransaction(tx, userId, CREDIT_COSTS.outline, `job:${created.id}`);
-      await persistDispatch(tx, 'outline', created.id);
+      await persistDispatch(tx, 'outline', created.id, paid);
       return created;
     });
     await dispatchPending().catch(() => undefined);
@@ -105,6 +109,9 @@ export const outlineService = {
   /** Approval gate: materialize chapters from the latest outline. */
   async approve(userId: string, bookId: string, version: number) {
     await getOwnedBook(userId, bookId);
+    // The chapter count is a paid quota. The outline is checked before the
+    // transaction so a refusal leaves no partial write behind.
+    await assertChapterQuota(userId, bookId, undefined);
     return prisma.$transaction(async (tx) => {
       await lockBook(tx, bookId, userId);
       await assertIdle(tx, bookId);
@@ -114,6 +121,7 @@ export const outlineService = {
       if (latest.approvedAt) return latest;
       await assertNotWritten(tx, bookId);
       const outline = outlineSchema.parse(latest.data);
+      await assertChapterQuota(userId, bookId, outline.chapters.length, tx);
       await tx.chapter.deleteMany({ where: { bookId } });
       await tx.chapter.createMany({
         data: outline.chapters.map((c, i) => ({

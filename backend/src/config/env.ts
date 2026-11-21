@@ -53,6 +53,27 @@ const envSchema = z.object({
   PAYMENT_WEBHOOK_SECRET: z.string().min(16, "PAYMENT_WEBHOOK_SECRET must be at least 16 chars"),
   /** How old a webhook signature may be, in seconds. */
   PAYMENT_WEBHOOK_TOLERANCE_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
+  /** Which payment processor this build talks to: `stripe` or `local`. */
+  PAYMENT_PROVIDER: z.preprocess(
+    (value) => (typeof value === "string" ? value.trim().toLowerCase() : value),
+    z.enum(["stripe", "local"]),
+  ).default("local"),
+  /** Stripe's secret API key. Test mode keys start with `sk_test_`. */
+  STRIPE_SECRET_KEY: z.string().optional().default(""),
+  /** Stripe's publishable key, used by the browser to open the checkout page. */
+  STRIPE_PUBLISHABLE_KEY: z.string().optional().default(""),
+  /** Stripe's webhook endpoint signing secret (`whsec_...`). */
+  STRIPE_WEBHOOK_SECRET: z.string().optional().default(""),
+
+  // ---------- Operations (S13) ----------
+  /** Where an operational alert is delivered. Empty means alerts are refused
+   *  rather than silently dropped somewhere nobody reads. */
+  ALERT_DESTINATION: z.string().optional().default(""),
+  /** Where a backup is written. */
+  BACKUP_DIR: z.string().optional().default(""),
+  /** The container that holds PostgreSQL, used when the client tools are not
+   *  on the host. */
+  PG_CONTAINER: z.string().optional().default(""),
 });
 
 const parsed = envSchema.safeParse(process.env);

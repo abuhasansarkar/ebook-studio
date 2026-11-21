@@ -256,14 +256,15 @@ Implementation:
 - [x] Add provider adapter and server-created checkout. The `PaymentProvider` interface covers checkout creation, webhook verification/parsing and subscription lookup. A billing portal is **not** implemented.
 - [x] Verify raw-body webhook signatures before processing; persist event identity and apply changes transactionally/idempotently. The webhook route is mounted before `express.json()` so the exact bytes are verified. The inbox is keyed on the provider's event identifier, so a repeat delivery is a no-op.
 - [x] Handle out-of-order events using provider object state/version and reconciliation; a redirect alone grants nothing. `Payment.settledEventAt` and `Payment.refundedEventAt` carry the provider's timestamps, and a stale event is ignored. Only a verified `payment.succeeded` grants credits; `checkout.completed` grants nothing.
-- [ ] Enforce feature access, rate limits and quotas on every paid API, including direct requests outside the UI. Entitlements are recorded but nothing reads them to deny a request yet.
+- [x] Enforce feature access, rate limits and quotas on every paid API, including direct requests outside the UI. Entitlements are read on the server for book limits, outline approval and source-to-chapter application, so a direct request is refused the same way the UI is. Paid jobs take priority in the queue, and entitlement reads are transaction-aware.
+- [x] Separate the capabilities the product publishes as free from the ones a plan sells. `FREE_TIER_ENTITLEMENTS` in `packages/shared/src/billing.ts` names export and private source import as the baseline every author holds, because the export screen says "Free to export" and the credits screen prices a PDF export at Free. They are never written as entitlements and a refund cannot withdraw them. What a plan sells is the quota and priority set: `maxBooks`, `maxChaptersPerBook` and `priorityJobs`. Gating export or source import behind a plan would refuse a free author for a capability the product gives away, and the UI would contradict the API.
 - [x] Add top-up and renewal grants with immutable unique ledger identities; preserve auditability for refunds/adjustments. A grant carries the idempotency key `payment:{paymentId}`, so the ledger holds one grant per payment.
 - [x] Define how refunds interact with already-spent credits; never silently create spendable balances inconsistent with policy. A refund takes the credits back as far as the balance allows and never goes negative; the difference stays visible in the ledger.
 - [x] Add provider reconciliation and safe replay procedures. `reconcile` compares the wallet balance with the immutable credit ledger. The provider's subscription lookup exists; a general replay tool does not.
 
 Contracts: plan catalog, entitlements, checkout, subscription status/actions and provider webhook are implemented in `packages/shared/src/billing.ts`; the portal contract is not. Credits history is not yet extended with usage references and pagination.
 
-Tests/gate: 16 pure tests and 25 integration tests cover signature failure, duplicate/out-of-order events, abandoned checkout, cancellation, refunds and reconciliation; the full backend suite is 264 tests across 23 files. The provider sandbox has **not** been validated, because no live processor is connected.
+Tests/gate: 16 pure tests and 25 integration tests cover signature failure, duplicate/out-of-order events, abandoned checkout, cancellation, refunds and reconciliation; the full backend suite is 350 tests across 29 files. The processor sandbox **has** now been validated against Stripe's own sandbox through the Stripe CLI listener - see the S12 live processor checkpoint below.
 
 Data: explicit roles/permissions, immutable admin audit entries, operational incidents/feedback, usage aggregates, backup manifests and restore evidence references.
 
@@ -310,7 +311,7 @@ Implementation:
 - [ ] Reuse operation/cost limits and persist output variants before marking complete.
 - [ ] Support version-aware user edits, regeneration as a new variant and safe text/graphic downloads.
 - [ ] Build promotional graphics deterministically around approved artwork and editable text; apply font/license rules.
-- [ ] Produce sample chapters from selected manuscript snapshots and check output availability.
+- [x] Produce sample chapters from selected manuscript snapshots and check output availability. `backend/src/services/marketing/marketingAssets.ts` assembles a pack from the chapters the author names, through the same renderer and the same validator the export path uses, so a pack that would not open is refused rather than offered. `buildBookDocument` gained a `chapterIds` option so a sample is built from the chosen chapters rather than a copy of the book.
 - [ ] Flag stale source inputs and clearly separate generated drafts from user-approved materials.
 
 Contracts: asset generation/list/detail/update/history and downloads; no automatic external posting/email campaigns in this scope.
@@ -373,3 +374,42 @@ Core cover/illustration generation and editable typography are implemented. See 
 ### S08 implementation checkpoint — 20 November 2026
 
 Core interior design is implemented: immutable `BookDesign` versions (save/template/restore) with OCC; versioned template definitions shipped in `packages/shared` and stored as full snapshots instead of a `TemplateVersion` table; separate digital and print profiles; structured front/back matter; one normalized document and renderer for reader preview, print preview and PDF export; exports freeze the design at request time. Static, hash-pinned OFL fonts replace Google Fonts at render time. CJK faces come from `fonts:fetch`. Runtime protocol 5 and migration `20261120190000_book_design` require a coordinated cutover. See ACCEPTANCE.md and RUNTIME.md for evidence and limits. The EPUB and DOCX adapters are implemented in S10.
+
+### S13 implementation checkpoint — 21 November 2026
+
+Operations and administration are implemented: three roles with explicit permission bundles, server-side permission checks on every privileged route, and an immutable audit record for every privileged action. Operational views cover the dashboard, customers, books, jobs, payments, incidents, alerts, support, roles, backups and the audit trail. Credit adjustments and refunds go through the credit service so they land in the same immutable ledger as every other movement, and a negative balance is refused. Backups capture a plain SQL dump and the local asset tree with SHA-256 checksums and manifest counts; a restore is rehearsed against an isolated database and compared with the manifest, never against the live one. Migration `20261124090000_s13_operations` was added and applied. See ACCEPTANCE.md for the verified scenarios and the boundaries — in particular the missing tests for a failed alert delivery, a job intervention and a refund through the admin routes.
+
+### S14 implementation checkpoint — 21 November 2026
+
+Distribution preparation is implemented: six destination profiles with their own required and accepted formats, cover rules, package limits and metadata; package assembly from the author's own finished exports with the cover, destination metadata and a README; validation that separates hard blockers from checks that need a human and never claims a store approval; ownership enforced for books, exports, packages and downloads; a blocked package answered with 422 and a ready one with 201; and the author's own publishing status. Migration `20261125090000_s14_distribution` was added and applied. See ACCEPTANCE.md — EPUBCheck, separate EPUB accessibility validation and the representative reader checks remain pending.
+
+### S15 implementation checkpoint — 21 November 2026
+
+The marketing studio is implemented for the core output set: nine typed outputs with published credit costs, editable drafts that carry the manuscript versions they were written from, stale-input detection with a 409 and `STALE_VERSION`, regeneration that writes a new draft instead of overwriting the original, explicit approval, claim checks that flag guarantees, endorsements, unsupported efficacy claims and pricing claims, and promotional graphic compositions through the private asset pipeline. Migration `20261126090000_s15_marketing` was added and applied. See ACCEPTANCE.md — sample chapters are assembled from the manuscript's own chapter versions and downloaded as a validated file, and the composed graphic is rendered locally and inspected as a real image.
+
+### S16 implementation checkpoint — 21 November 2026
+
+The release build compiles and the acceptance matrix is exercised locally, but **the release gate is closed**. The backend suite passes with 350 tests across 29 files, the type check and build pass, and the browser journeys for billing, sources, citation impact and S13–S16 all pass with no browser-console errors. The live processor path has now been validated against Stripe's own sandbox through the Stripe CLI listener. The gate remains closed because `STRIPE_WEBHOOK_SECRET` is empty in the working environment, no real OpenAI output or cost has been measured, and no load, security or accessibility review has been performed. See ACCEPTANCE.md for the full list of boundaries and the next four things.
+### S12 live processor checkpoint — 21 November 2026
+
+The provider boundary is now exercised against Stripe's own sandbox, with the Stripe CLI delivering events to the running backend. `PAYMENT_PROVIDER=stripe` selects the native Stripe provider, which creates Checkout Sessions, verifies webhook signatures against the raw request bytes, and converts Stripe's own event shapes into the product's provider events.
+
+What the live journey (`e2e/stripe-live.e2e.ts`, `pnpm --filter e2e run e2e:stripe`) proves:
+
+- A checkout opens a real Stripe Checkout Session and grants nothing on its own.
+- A forged callback posted from the browser is refused with HTTP 400 and grants nothing.
+- The checkout paid on Stripe's hosted page produces a verified event that grants 500 credits and the plan's capabilities (balance 100 → 600).
+- The same event delivered again grants nothing further.
+- The payment is recorded as settled, carrying both the Stripe payment intent id and the checkout session id.
+
+Three defects were found by that journey and fixed:
+
+1. **The settled event named a payment, while the pending record was written against a checkout.** Stripe does not put a session's id on its payment intent, so a genuine payment could never be matched to its checkout and every settled payment was refused with `No local checkout matched this payment`. Fixed by carrying `providerCheckoutId` on the provider event, matching a pending payment by **either** identifier, writing the real payment id back onto the record, recording the session id on the intent when the checkout is opened, and — when an event still names only the payment — asking Stripe which checkout it belongs to. A failed lookup leaves the event unmatched rather than guessing.
+
+2. **An event that named no customer could not be attributed to anyone.** The service now falls back to the pending payment record, which the product wrote and which holds the customer reference. The fallback only applies when the event names no customer at all, and the reference still has to resolve to a known user.
+
+3. **A settled event for an unknown checkout wrote a second payment row** under a placeholder identifier, which looked like a second checkout for the same money and left the real one unsettled. A row is now written only when the event names a real checkout, and never over the unique checkout identifier.
+
+The entitlement line in the S12 section above is now implemented: entitlements are read on the server for exports, sources, book limits, outline approval and source-to-chapter application, and paid jobs take priority. The full backend suite passes with 350 tests across 29 files.
+
+The boundaries that remain are recorded in ACCEPTANCE.md: this is a sandbox and not a live processor, the root `.env` does not carry `STRIPE_WEBHOOK_SECRET` so webhook verification fails safely there until it is configured, and a billing portal, grace and dunning states, and a published refund, expiry and downgrade policy are not implemented.

@@ -159,7 +159,11 @@ try {
   // The credits and the entitlements appear on the billing page.
   await page.goto(`${BASE}/app/credits/billing`, { waitUntil: "networkidle0" });
   await waitText(page, "Your subscription");
-  await waitText(page, "PDF export");
+  // The plan's paid capabilities are listed separately from the capabilities
+  // the product publishes as free, which every author has.
+  await waitText(page, "What your plan unlocks");
+  await waitText(page, "Books");
+  await waitText(page, "Included on every plan");
   const balanceAfterPayment = await creditBalance(page);
   if (balanceAfterPayment <= balanceBefore) {
     throw new Error(`The confirmed payment did not add credits: ${balanceBefore} → ${balanceAfterPayment}`);

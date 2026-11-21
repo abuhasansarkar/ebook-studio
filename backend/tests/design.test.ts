@@ -10,12 +10,14 @@ import { exportService } from '../src/services/exports/exportService.js';
 import { closeBrowser } from '../src/services/exports/pdfRenderer.js';
 import { cssString } from '../src/services/exports/bookHtml.js';
 import { markdownToTiptap } from '../src/services/editor/markdownToTiptap.js';
-import { brief, createUser, ORIGIN } from './helpers.js';
+import { brief, createUser, grantEntitlements, ORIGIN, PAID_ENTITLEMENTS } from './helpers.js';
 
 afterAll(async () => { await closeBrowser(); await closeQueues(); await prisma.$disconnect(); });
 
 async function setup(language = 'en', chapters = 2) {
   const user = await createUser('design');
+  // Exporting is a paid capability, so the test says it is assuming a paid plan.
+  await grantEntitlements(user.user.id, PAID_ENTITLEMENTS);
   const book = await bookService.create(user.user.id, bookBriefSchema.parse(brief({ language, authorName: 'Rina Das' }).brief));
   for (let i = 0; i < chapters; i++) {
     await prisma.chapter.create({ data: { bookId: book.id, position: i, title: `Chapter ${i + 1}`, status: 'done', wordCount: 20, contentJson: markdownToTiptap(`Paragraph for chapter ${i + 1}.`) as object } });

@@ -4,6 +4,10 @@ import { designRouter } from './design.js';
 import { qualityRouter } from './quality.js';
 import { sourceRouter } from './sources.js';
 import { assetRouter } from './assets.js';
+import { adminRouter } from './admin.js';
+import { supportRouter } from './support.js';
+import { distributionRouter } from './distribution.js';
+import { marketingRouter } from './marketing.js';
 import { outlineService } from "../services/outline/outlineService.js";
 import { libraryQuerySchema, projectSchema, bookOrganizationSchema } from "@ebook/shared";
 import { libraryService } from "../services/books/libraryService.js";
@@ -38,11 +42,15 @@ apiRouter.get("/config", accountController.publicConfig);
 // ---- Everything below requires a verified session ----
 apiRouter.use(requireAuth);
 apiRouter.use(assetRouter);
+apiRouter.use(adminRouter);
+apiRouter.use(supportRouter);
 apiRouter.use(billingRouter);
 apiRouter.use(coverRouter);
 apiRouter.use(designRouter);
 apiRouter.use(qualityRouter);
 apiRouter.use(sourceRouter);
+apiRouter.use(distributionRouter);
+apiRouter.use(marketingRouter);
 
 apiRouter.get("/operations/:operationId", async (req, res) => {
   res.json({ operation: await operationService.get(userId(req), String(req.params.operationId)) });

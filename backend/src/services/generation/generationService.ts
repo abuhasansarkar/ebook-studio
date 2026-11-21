@@ -1,6 +1,7 @@
 import { bookBriefSchema, chapterCredits, documentError, type BookBrief } from '@ebook/shared';
 import { prisma } from '../../database/prisma.js';
 import { dispatchPending, persistDispatch } from '../../queues/index.js';
+import { hasEntitlement } from '../billing/entitlements.js';
 import { conflict, notFound } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 import { aiService } from '../ai/aiService.js';
@@ -33,6 +34,10 @@ export const generationService = {
   async start(userId: string, bookId: string) {
     await getOwnedBook(userId, bookId);
     await assertRuntimeAvailable();
+    // A plan with the `priorityJobs` entitlement puts its work ahead of
+    // ordinary work in the queue. The decision is recorded on the dispatch
+    // row, so the dispatcher does not have to re-read the entitlement later.
+    const paid = await hasEntitlement(userId, 'priorityJobs');
     const job = await prisma.$transaction(async tx => {
       await lockBook(tx, bookId, userId);
       await assertIdle(tx, bookId);
@@ -50,7 +55,7 @@ export const generationService = {
       // Protect queued chapters from edits until their fixed inputs are processed.
       await tx.chapter.updateMany({ where: { id: { in: pending.map(c => c.id) } }, data: { status: 'generating', error: null } });
       await tx.book.update({ where: { id: bookId }, data: { status: 'generating' } });
-      await persistDispatch(tx, 'chapters', created.id);
+      await persistDispatch(tx, 'chapters', created.id, paid);
       return created;
     });
     // Broker availability cannot undo the committed job. Dispatcher owns retries.

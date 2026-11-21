@@ -1,7 +1,8 @@
 import { lockProject } from "./libraryService.js";
 import { bookBriefSchema, type BookBrief } from "@ebook/shared";
 import { prisma } from "../../database/prisma.js";
-import { notFound } from "../../utils/errors.js";
+import { notFound, forbidden } from "../../utils/errors.js";
+import { entitlementHeadroom } from "../billing/entitlements.js";
 
 export const ACTIVE_JOB_STATUSES = ["queued", "running"];
 
@@ -19,6 +20,21 @@ export async function getBrief(bookId: string): Promise<BookBrief> {
 
 export const bookService = {
   async create(userId: string, brief: BookBrief, projectId?: string) {
+    // The book count is a paid quota. A plan that carries `maxBooks: 5`
+    // allows five live books; the sixth is refused rather than silently
+    // allowed. The count excludes archived and deleted books, so archiving
+    // frees a slot, and the check is on the server so a direct API call is
+    // subject to it too.
+    const headroom = await entitlementHeadroom(userId, "maxBooks");
+    if (headroom !== null) {
+      const live = await prisma.book.count({ where: { userId, deletedAt: null, archivedAt: null } });
+      if (live >= headroom) {
+        throw forbidden(
+          `This plan includes ${headroom} ${headroom === 1 ? "book" : "books"}. Archive or delete a book, or upgrade your plan to add more.`,
+          { entitlement: "maxBooks", limit: headroom, used: live },
+        );
+      }
+    }
     return prisma.$transaction(async tx => {
       if (projectId) await lockProject(tx, userId, projectId, true);
       return tx.book.create({ data: { userId, projectId: projectId ?? null, title: brief.title || 'Untitled book', language: brief.language, bookType: brief.bookType, brief: { create: { data: brief } } } });

@@ -23,7 +23,7 @@ const PLAN: Plan = {
   priceMinor: 1200,
   currency: 'USD',
   credits: 500,
-  entitlements: { maxBooks: 5, exports: true },
+  entitlements: { maxBooks: 5, maxChaptersPerBook: 30 },
   active: true,
   recurring: false,
 };
@@ -57,6 +57,7 @@ function eventBody(event: {
   type: string;
   customerReference: string;
   providerPaymentId?: string;
+  providerCheckoutId?: string;
   planId?: string;
   amountMinor?: number;
   credits?: number;
@@ -70,6 +71,7 @@ function eventBody(event: {
     occurred_at: event.occurredAt ?? Date.now(),
     customer_reference: event.customerReference,
     provider_payment_id: event.providerPaymentId,
+    provider_checkout_id: event.providerCheckoutId,
     provider_subscription_id: event.providerSubscriptionId,
     plan_id: event.planId,
     amount_minor: event.amountMinor,
@@ -181,7 +183,7 @@ describe('a verified payment grants credits and entitlements', () => {
     expect(wallet.balance).toBeGreaterThanOrEqual(PLAN.credits);
 
     const entitlements = await prisma.entitlement.findMany({ where: { userId: user.user.id } });
-    expect(entitlements.map((e) => e.key).sort()).toEqual(['exports', 'maxBooks']);
+    expect(entitlements.map((e) => e.key).sort()).toEqual(['maxBooks', 'maxChaptersPerBook']);
 
     const payment = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
     expect(payment.status).toBe('succeeded');
@@ -224,6 +226,124 @@ describe('a verified payment grants credits and entitlements', () => {
     const wallet = await prisma.creditWallet.findUnique({ where: { userId: user.user.id } });
     expect(wallet?.balance ?? 0).toBe(before?.balance ?? 0);
     expect(await prisma.entitlement.count({ where: { userId: user.user.id } })).toBe(0);
+  });
+
+  /**
+   * A provider names a checkout and a payment differently, and the pending
+   * record is written against the checkout. A real Stripe payment names the
+   * payment intent, so the event has to carry the session as well or the
+   * settled payment can never find the checkout that bought it.
+   */
+  it('matches a settled payment by the checkout session when the payment id differs', async () => {
+    const user = await createUser('pay-by-session');
+    const checkout = await user.agent.post('/api/v1/billing/checkout').set('Origin', ORIGIN).send({ planId: PLAN.id }).expect(201);
+    const paymentId = checkout.body.checkout.id;
+
+    const record = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
+    expect(record.status).toBe('pending');
+
+    const res = await sendWebhook(eventBody({
+      id: `evt_by_session_${paymentId}`,
+      type: 'payment.succeeded',
+      customerReference: customerReference(user.user.id),
+      // The provider knows the payment under a different identifier than the
+      // checkout it settles.
+      providerPaymentId: 'pi_a_different_identifier',
+      providerCheckoutId: record.providerCheckoutId,
+      planId: PLAN.id,
+      amountMinor: PLAN.priceMinor,
+      credits: PLAN.credits,
+    }));
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('processed');
+
+    const wallet = await prisma.creditWallet.findUniqueOrThrow({ where: { userId: user.user.id } });
+    expect(wallet.balance).toBeGreaterThanOrEqual(PLAN.credits);
+    expect(await prisma.entitlement.count({ where: { userId: user.user.id } })).toBeGreaterThan(0);
+
+    // The payment is settled, and the payment identifier the provider used is
+    // the one on the record.
+    const settled = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
+    expect(settled.status).toBe('succeeded');
+    expect(settled.providerPaymentId).toBe(record.providerPaymentId);
+  });
+
+  /**
+   * A processor is free to omit the metadata the product attached to the
+   * checkout. A payment intent created outside the checkout session, or a
+   * provider that does not copy the session's metadata onto the intent,
+   * carries no customer reference at all. The pending checkout record was
+   * written by us and holds the reference, so it is the only thing that can say
+   * whose money settled.
+   */
+  it('attributes a settled payment to its checkout when the event names no customer', async () => {
+    const user = await createUser('pay-no-ref');
+    const checkout = await user.agent.post('/api/v1/billing/checkout').set('Origin', ORIGIN).send({ planId: PLAN.id }).expect(201);
+    const paymentId = checkout.body.checkout.id;
+    const record = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
+
+    const res = await sendWebhook(eventBody({
+      id: `evt_no_customer_${paymentId}`,
+      type: 'payment.succeeded',
+      // The provider delivered no customer reference of its own.
+      customerReference: '',
+      providerPaymentId: 'pi_without_a_customer',
+      providerCheckoutId: record.providerCheckoutId,
+      planId: PLAN.id,
+      amountMinor: PLAN.priceMinor,
+      credits: PLAN.credits,
+    }));
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('processed');
+
+    const wallet = await prisma.creditWallet.findUniqueOrThrow({ where: { userId: user.user.id } });
+    expect(wallet.balance).toBeGreaterThanOrEqual(PLAN.credits);
+    expect(await prisma.entitlement.count({ where: { userId: user.user.id } })).toBeGreaterThan(0);
+  });
+
+  /**
+   * The fallback must not turn into a grant for an event that belongs to
+   * nobody: without a customer reference and without a pending checkout to
+   * match, there is no user to credit, so the event grants nothing.
+   */
+  it('grants nothing for an event that names no customer and matches no checkout', async () => {
+    const res = await sendWebhook(eventBody({
+      id: `evt_nobody_${Date.now()}`,
+      type: 'payment.succeeded',
+      customerReference: '',
+      providerPaymentId: 'pi_belonging_to_nobody',
+      providerCheckoutId: 'cs_belonging_to_nobody',
+      planId: PLAN.id,
+      amountMinor: PLAN.priceMinor,
+      credits: PLAN.credits,
+    }));
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('ignored');
+  });
+
+  it("does not let one author settle another author's checkout", async () => {
+    const buyer = await createUser('pay-owner');
+    const other = await createUser('pay-other');
+    const checkout = await buyer.agent.post('/api/v1/billing/checkout').set('Origin', ORIGIN).send({ planId: PLAN.id }).expect(201);
+    const paymentId = checkout.body.checkout.id;
+    const record = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
+    const before = await prisma.creditWallet.findUnique({ where: { userId: other.user.id } });
+
+    const res = await sendWebhook(eventBody({
+      id: `evt_cross_owner_${paymentId}`,
+      type: 'payment.succeeded',
+      customerReference: customerReference(other.user.id),
+      providerPaymentId: 'pi_cross_owner',
+      providerCheckoutId: record.providerCheckoutId,
+      planId: PLAN.id,
+      amountMinor: PLAN.priceMinor,
+      credits: PLAN.credits,
+    }));
+    expect(res.status).toBe(200);
+
+    const after = await prisma.creditWallet.findUnique({ where: { userId: other.user.id } });
+    expect(after?.balance ?? 0).toBe(before?.balance ?? 0);
+    expect(await prisma.entitlement.count({ where: { userId: other.user.id } })).toBe(0);
   });
 });
 
@@ -382,8 +502,8 @@ describe('billing state and isolation', () => {
     const res = await user.agent.get('/api/v1/billing').set('Origin', ORIGIN).expect(200);
     expect(res.body.plans.length).toBeGreaterThan(0);
     expect(res.body.payments.length).toBeGreaterThan(0);
-    expect(res.body.entitlements.exports).toBe(true);
     expect(res.body.entitlements.maxBooks).toBe(5);
+    expect(res.body.entitlements.maxChaptersPerBook).toBe(30);
   });
 
   it('does not show one customer the payments of another', async () => {
@@ -489,7 +609,7 @@ describe('a recurring plan starts a subscription', () => {
     expect(res.body.subscription.status).toBe('active');
     // The subscription carries a period, so the author can see when it renews.
     expect(res.body.subscription.currentPeriodEnd).toBeTruthy();
-    expect(res.body.entitlements.exports).toBe(true);
+    expect(res.body.entitlements.maxBooks).toBe(5);
   });
 
   it('withdraws the capabilities when the subscription is cancelled', async () => {
@@ -511,7 +631,7 @@ describe('a recurring plan starts a subscription', () => {
 
     const res = await user.agent.get('/api/v1/billing').set('Origin', ORIGIN).expect(200);
     expect(res.body.subscription).toBeNull();
-    expect(res.body.entitlements.exports).toBeUndefined();
+    expect(res.body.entitlements.maxBooks).toBeUndefined();
   });
 });
 

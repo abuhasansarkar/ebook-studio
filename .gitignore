@@ -18,9 +18,13 @@ backend/assets/fonts/fetched
 
 # Isolated E2E run artifacts (runtime only, never committed)
 .env.e2e
+.env.e2e.*
 backend/storage-e2e
 e2e-shots
 e2e-shots-*
 backend/e2e-exports-check.sql
 .tmp-logs
 .tmp-e2e
+
+# Backup and restore rehearsals (runtime only, never committed)
+backend/backups

@@ -14,6 +14,7 @@ import { prisma } from '../../database/prisma.js';
 import { enqueueExport } from '../../queues/index.js';
 import { conflict, notFound } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
+import { requireEntitlement } from '../billing/entitlements.js';
 import { getOwnedBook } from '../books/bookService.js';
 import { assertRenderable, buildBookDocument, documentDiagnostics, type BookDocument } from '../design/bookDocument.js';
 import { designService } from '../design/designService.js';
@@ -42,7 +43,7 @@ export function parseExportOptions(format: ExportFormat, raw: unknown): ExportOp
 }
 
 /** The pinned image bytes and cover of one export, read from storage. */
-async function loadPinnedImages(userId: string, assetIds: string[], coverAssetId: string | null): Promise<{ images: PinnedImages; cover: PinnedImage | null }> {
+export async function loadPinnedImages(userId: string, assetIds: string[], coverAssetId: string | null): Promise<{ images: PinnedImages; cover: PinnedImage | null }> {
   const images: PinnedImages = new Map();
   const ids = [...new Set([...assetIds, ...(coverAssetId ? [coverAssetId] : [])])];
   for (const id of ids) {
@@ -67,7 +68,7 @@ async function loadPinnedImages(userId: string, assetIds: string[], coverAssetId
 }
 
 /** The cover asset of a book, when one has been chosen and it is still stored. */
-async function findCoverAsset(userId: string, bookId: string): Promise<string | null> {
+export async function findCoverAsset(userId: string, bookId: string): Promise<string | null> {
   const cover = await prisma.coverDesign.findFirst({
     where: { bookId },
     orderBy: { version: 'desc' },
@@ -80,7 +81,7 @@ async function findCoverAsset(userId: string, bookId: string): Promise<string | 
 }
 
 /** The image asset ids referenced by the manuscript. */
-function referencedAssetIds(doc: BookDocument): string[] {
+export function referencedAssetIds(doc: BookDocument): string[] {
   const ids = new Set<string>();
   const pending: unknown[] = doc.chapters.map((c) => c.content);
   while (pending.length) {
@@ -114,6 +115,10 @@ export const exportService = {
    */
   async request(userId: string, bookId: string, format: ExportFormat, rawOptions?: unknown) {
     const book = await getOwnedBook(userId, bookId);
+    // The export capability is a paid entitlement. The check is here, on the
+    // server, so it applies to a direct API call as well as to the button in
+    // the export screen.
+    await requireEntitlement(userId, 'exports');
     await assertRuntimeAvailable();
     const options = parseExportOptions(format, rawOptions);
     const support = languageSupport(book.language, await fontRegistry.available());

@@ -10,7 +10,7 @@ import { exportService } from '../src/services/exports/exportService.js';
 import { closeBrowser } from '../src/services/exports/pdfRenderer.js';
 import { readZip, zipEntry } from '../src/services/exports/zip.js';
 import { markdownToTiptap } from '../src/services/editor/markdownToTiptap.js';
-import { brief, createUser, ORIGIN } from './helpers.js';
+import { brief, createUser, grantEntitlements, ORIGIN, PAID_ENTITLEMENTS } from './helpers.js';
 
 afterAll(async () => { await closeBrowser(); await closeQueues(); await prisma.$disconnect(); });
 
@@ -25,6 +25,8 @@ afterAll(async () => { await closeBrowser(); await closeQueues(); await prisma.$
 async function setup(options: { language?: string; chapters?: number; title?: string } = {}) {
   const language = options.language ?? 'en';
   const user = await createUser('export');
+  // Exporting is a paid capability, so the test says it is assuming a paid plan.
+  await grantEntitlements(user.user.id, PAID_ENTITLEMENTS);
   const book = await bookService.create(user.user.id, bookBriefSchema.parse(brief({ language, authorName: 'Rina Das', title: options.title ?? 'Meal Prep Manual' }).brief));
   for (let i = 0; i < (options.chapters ?? 2); i++) {
     const content = `Chapter ${i + 1} talks about batch cooking. Visit https://example.com for notes.`;

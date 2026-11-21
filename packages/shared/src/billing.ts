@@ -138,6 +138,33 @@ export function planEntitlements(plan: Plan): Partial<Record<EntitlementKey, str
 }
 
 /**
+ * The capabilities every author holds, whether or not they have paid.
+ *
+ * The product publishes these as free: the export screen says "Free to
+ * export", and the credits screen prices "PDF export" at Free. Private source
+ * import is part of the research workspace, which every author can reach.
+ *
+ * These are therefore **not** paid entitlements. A plan cannot withdraw them,
+ * and a refund does not take them away, because they were never bought.
+ *
+ * What a plan adds is on top of this: more books, more chapters per book,
+ * priority job handling, and the extra credits that buy more AI work.
+ */
+export const FREE_TIER_ENTITLEMENTS: Partial<Record<EntitlementKey, string | number | boolean>> = {
+  exports: true,
+  sourceImports: true,
+};
+
+/**
+ * The capabilities a paid plan can grant on top of the free tier.
+ *
+ * These are the entitlements that a plan may write and a refund may withdraw.
+ */
+export const PAID_ENTITLEMENT_KEYS: readonly EntitlementKey[] = ENTITLEMENT_KEYS.filter(
+  (key) => !(key in FREE_TIER_ENTITLEMENTS),
+);
+
+/**
  * Whether an entitlement allows a given use.
  *
  * A missing entitlement denies the use. The free tier therefore has no

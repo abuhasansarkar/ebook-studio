@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
-import { BookOpen, Coins, LayoutDashboard, LogOut, Menu, PlusCircle, Settings, X } from "lucide-react";
+import { BookOpen, Coins, LayoutDashboard, LogOut, Menu, PlusCircle, Settings, Shield, X } from "lucide-react";
 import { Logo } from "@/components/app/logo";
 import { PageLoader } from "@/components/ui/misc";
 import { signOut, useSession } from "@/lib/auth-client";
 import { useCredits } from "@/lib/queries";
+import { useAdminAuthority } from "@/lib/studio-queries";
+import { useMounted } from "@/lib/use-mounted";
 import { cn, formatNumber } from "@/lib/utils";
 
 const NAV = [
@@ -22,9 +24,22 @@ const NAV = [
 
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  // The operations console only appears for accounts that hold an operator
+  // role. The API checks the permission on every route regardless, so this is
+  // a convenience rather than the control.
+  const authority = useAdminAuthority();
+  // The link is added once the browser has mounted, so the server markup and
+  // the first client render agree and the page hydrates without a mismatch.
+  const mounted = useMounted();
+  const isOperator = mounted && (authority.data?.roles.length ?? 0) > 0;
+
+  const items = isOperator
+    ? [...NAV, { href: "/app/admin", label: "Operations", icon: Shield }]
+    : NAV;
+
   return (
     <nav className="space-y-1" aria-label="App">
-      {NAV.map(({ href, label, icon: Icon }) => {
+      {items.map(({ href, label, icon: Icon }) => {
         const active = pathname === href || (href !== "/app/dashboard" && pathname.startsWith(href));
         return (
           <Link

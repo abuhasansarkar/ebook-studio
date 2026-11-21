@@ -232,10 +232,13 @@ Tasks:
 - [x] Start checkout with a server-created session; show pending confirmation after returning until verified server state arrives. The billing page starts a server-created checkout and sends the customer to the provider's own payment page; until the server has seen a verified payment the payment is listed as `pending` and no capabilities are shown.
 - [x] Handle abandoned checkout, failure, renewal/grace, cancellation and top-up states with clear next actions. Pending, succeeded, failed and refunded payments each get their own badge, and the subscription card offers cancellation and says the period still runs. Grace and dunning states are not implemented.
 - [ ] Add billing portal access and subscription actions only where the provider/backend supports them. Cancellation is implemented; there is no billing portal, because the provider boundary does not offer one.
-- [ ] Keep restricted feature prompts consistent with entitlements; preserve readable/exportable user work according to published downgrade policy. The billing page lists the entitlements the author holds, but no restricted feature prompt reads them yet, and no downgrade policy is published.
-- [x] Add paginated credit/usage history and accessible receipts/provider links where available. The billing page lists the author's payments with their state, amount, date and the credits each one granted. The credits history is not paginated.
+- [ ] Keep restricted feature prompts consistent with entitlements; preserve readable/exportable user work according to published downgrade policy. The billing page separates what the plan adds from what every author has: the paid capabilities are under "What your plan unlocks" and the free ones under "Included on every plan", so a plan never appears to unlock something the product already gives away. No restricted feature prompt reads the entitlement list yet, and no downgrade policy is published.
+- [ ] Add paginated credit/usage history and accessible receipts/provider links where available. The billing page lists the author's payments with their state, amount, date and the credits each one granted. The credits history is not paginated.
 
 Gate: browser redirects cannot unlock features by themselves; billing and wallet views reconcile with verified backend events. The browser journey `e2e/billing-flow.e2e.ts` proves the first half: a forged callback sent from the browser is refused with a 400 and grants nothing, and a checkout alone grants nothing. The second half is enforced on the server, and the same journey shows the wallet and the entitlement list agreeing with the verified payment.
+The same gate is now also proven against Stripe's own sandbox. The journey e2e/stripe-live.e2e.ts (pnpm --filter e2e run e2e:stripe) opens a real Stripe Checkout Session, refuses a forged callback posted from the browser with a 400, pays the checkout on Stripe's hosted page, and then shows the wallet moving from 100 to 600 with the plan's capabilities arriving. The same event delivered again grants nothing further, and the billing page shows the settled plan. The browser never grants itself anything: it starts a checkout and shows a state, and the credits appear only after the server has verified the provider's signed event.
+
+The billing screens are the same screens in both journeys - the plan catalog at /app/credits/billing, the checkout handoff, the author's subscription, entitlements and payment history - so the live path exercises the same UI as the local one.
 
 ## S13 — Administration, support and operations
 
@@ -279,7 +282,7 @@ Tasks:
 - [ ] Allow preview/edit/save/copy/download and regeneration into a new variant; preserve manual edits.
 - [ ] Flag stale book inputs and distinguish generated draft from user-approved material.
 - [ ] Add promotional graphic templates using saved covers and editable text, then preview actual exported graphics.
-- [ ] Add sample-chapter selection/download tied to a manuscript snapshot.
+- [x] Add sample-chapter selection/download tied to a manuscript snapshot. The marketing studio's "Sample chapters" panel lets the author choose up to five written chapters, pick the file format, build the pack and download it. The panel says the product never emails or posts it, and the pack is tied to the chapter versions it was taken from.
 - [ ] Flag unsupported endorsements/claims for review and avoid claiming performance guarantees.
 - [ ] Keep external posting/email sending outside this scope; downloading a draft must not trigger a campaign.
 
@@ -335,3 +338,16 @@ Core cover/illustration generation and editable typography are implemented. See 
 ### S08 implementation checkpoint — 20 November 2026
 
 The design studio is at **My eBooks → a book → Design**, not a global `/app/templates` page, so it keeps book context and avoids another sidebar item. Its sections are template gallery with preview-before-apply, an affected-settings diff and undo; typography/reader defaults; print layout with a live text-block readout; front and back matter; and version history with preview and restore. The reader preview is a script-less sandboxed iframe with phone/tablet/desktop widths, scaled to fit, plus a reader text size control. The print sample is an actual PDF from the export renderer. Drafts are recovered per tab, conflicts offer keep-draft/load-saved, and the export history shows the design version and font/overflow findings. See ACCEPTANCE.md for evidence.
+
+### S12–S16 implementation checkpoint — 21 November 2026
+
+The billing, administration, distribution and marketing screens are implemented and reachable.
+
+- **Billing** — the plan catalog at `/app/credits/billing`, the checkout at `/app/credits/checkout`, and the author's subscription, entitlements and payment history. A pending or failed payment is shown as such and grants nothing on its own.
+- **Administration** — `/app/admin`, with panels for the overview, customers, books, jobs, payments, incidents and alerts, support, roles, backups and the audit trail. Each panel is filtered by the caller's permissions, so a support agent sees the overview, customers, jobs, incidents and support but not payments or audit. The Operations link appears in the navigation only when the signed-in account holds an operator role.
+- **Distribution** — `/app/distribution` and the book-scoped `/app/books/[bookId]/distribution`. Destination requirements, metadata, export selection, cover inclusion, package creation, the blockers and the human-review checks, the ZIP download, and the publishing status. The screen states that the author uploads packages manually.
+- **Marketing** — `/app/marketing?bookId=...` and the book-scoped `/app/books/[bookId]/marketing`. Output selection with its visible credit cost, tone and audience, draft editing, save, approve, regeneration, the claim flags and the stale state, and the graphic composition. The screen states that the outputs are downloadable and are never published automatically.
+
+The `Operations` navigation item and the admin screen use a mounted-state guard, because the roles come from the browser's query cache and the server markup and the first client render would otherwise disagree — that was a real hydration mismatch on `/app/admin` and in the navigation, and it is fixed.
+
+The console reads the operational dashboard from the API, and the figures it shows are pinned by a backend test so a renamed field breaks the build rather than the screen. See ACCEPTANCE.md for the verified journeys and the boundaries.

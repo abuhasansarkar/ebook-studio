@@ -17,7 +17,7 @@ export interface BookDocument {
 }
 export interface DocumentDiagnostics { support: ReturnType<typeof languageSupport>; glyphs: GlyphFinding[]; emptyChapters: number }
 
-export async function buildBookDocument(userId: string, bookId: string, design: { version: number; data: BookDesign }, options: { chapterLimit?: number } = {}): Promise<BookDocument> {
+export async function buildBookDocument(userId: string, bookId: string, design: { version: number; data: BookDesign }, options: { chapterLimit?: number; chapterIds?: string[] } = {}): Promise<BookDocument> {
   const book = await getOwnedBook(userId, bookId);
   const [brief, chapters] = await Promise.all([
     getBrief(bookId),
@@ -29,11 +29,17 @@ export async function buildBookDocument(userId: string, bookId: string, design: 
   }
   const limit = options.chapterLimit ?? chapters.length;
   const language = getLanguage(book.language);
+  // A named subset selects the chapters the caller asked for, in the book's own
+  // order rather than the order they were named. A sample chapter pack is
+  // assembled from the manuscript the author chose, not from a copy of it.
+  const selected = options.chapterIds
+    ? chapters.filter(c => options.chapterIds!.includes(c.id))
+    : chapters;
   return {
     book: { id: book.id, title: book.title, subtitle: book.subtitle, author: brief.authorName ?? '', language: language.code, dir: language.dir },
     design: { version: design.version, data: bookDesignSchema.parse(design.data) },
-    chapters: chapters.slice(0, limit).map(c => ({ id: c.id, position: c.position, version: c.version, title: c.title, content: c.contentJson })),
-    partial: chapters.length > limit,
+    chapters: selected.slice(0, limit).map(c => ({ id: c.id, position: c.position, version: c.version, title: c.title, content: c.contentJson })),
+    partial: selected.length > limit,
   };
 }
 

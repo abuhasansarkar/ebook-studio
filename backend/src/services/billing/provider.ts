@@ -5,6 +5,7 @@ import {
   type PaymentCurrency,
 } from "@ebook/shared";
 import { env } from "../../config/env.js";
+import { StripeProvider } from "./stripeProvider.js";
 
 /**
  * S12 payment provider boundary.
@@ -63,6 +64,16 @@ export interface ProviderEvent {
   customerReference: string;
   /** The provider's identifier for the payment, when the event is about one. */
   providerPaymentId?: string;
+  /**
+   * The provider's identifier for the checkout the payment belongs to.
+   *
+   * A checkout and a payment are different things and a provider names them
+   * differently: a checkout session carries the session id, while the payment
+   * event carries the payment intent id. The event has to carry both, because
+   * the local record of a pending payment is written against the checkout that
+   * was opened, and the payment that settles it is named by the other id.
+   */
+  providerCheckoutId?: string;
   /** The provider's identifier for the subscription, when the event is about one. */
   providerSubscriptionId?: string;
   /** The plan the payment bought. */
@@ -84,12 +95,23 @@ export interface PaymentProvider {
   readonly name: string;
   /** Whether this provider can actually take money. */
   readonly live: boolean;
+  /** The header a webhook's signature arrives in. */
+  readonly signatureHeader: string;
   /** Creates a checkout the customer can pay at. */
   createCheckout(request: CheckoutRequest): Promise<CheckoutResult>;
   /** Verifies a webhook signature and returns the event it carries. */
   verifyWebhook(rawBody: string, signature: string | undefined): ProviderEvent | null;
   /** The provider's current view of a subscription, for reconciliation. */
   fetchSubscription(providerSubscriptionId: string): Promise<{ status: string; currentPeriodEnd: Date | null } | null>;
+  /**
+   * The checkout a payment belongs to, when the event did not name it.
+   *
+   * A provider may name a checkout and a payment differently, so an event may
+   * carry only the payment. A provider that can look the checkout up answers
+   * here; one that cannot returns nothing, and the event goes unmatched
+   * rather than being credited to a guess.
+   */
+  resolveCheckoutSession?(providerPaymentId: string): Promise<string | undefined>;
 }
 
 /**
@@ -102,6 +124,7 @@ export interface PaymentProvider {
 export class LocalProvider implements PaymentProvider {
   readonly name = "local";
   readonly live = false;
+  readonly signatureHeader = SIGNATURE_HEADER;
 
   async createCheckout(request: CheckoutRequest): Promise<CheckoutResult> {
     // The checkout id is derived from the idempotency key, so a repeated
@@ -138,6 +161,7 @@ export class LocalProvider implements PaymentProvider {
       occurred_at: event.occurredAt.getTime(),
       customer_reference: event.customerReference,
       provider_payment_id: event.providerPaymentId,
+      provider_checkout_id: event.providerCheckoutId,
       provider_subscription_id: event.providerSubscriptionId,
       plan_id: event.planId,
       amount_minor: event.amountMinor,
@@ -169,6 +193,7 @@ function parseEvent(rawBody: string): ProviderEvent | null {
     occurredAt: new Date(occurredAt),
     customerReference: body.customer_reference,
     providerPaymentId: typeof body.provider_payment_id === "string" ? body.provider_payment_id : undefined,
+    providerCheckoutId: typeof body.provider_checkout_id === "string" ? body.provider_checkout_id : undefined,
     providerSubscriptionId: typeof body.provider_subscription_id === "string" ? body.provider_subscription_id : undefined,
     planId: typeof body.plan_id === "string" ? body.plan_id : undefined,
     amountMinor: typeof body.amount_minor === "number" ? body.amount_minor : undefined,
@@ -181,9 +206,10 @@ function parseEvent(rawBody: string): ProviderEvent | null {
 
 /** The provider this build talks to. */
 export function getProvider(): PaymentProvider {
-  // There is one provider today. A real payment processor would be selected
-  // here, behind the same interface, with its own secret and its own
-  // signature scheme.
+  // The processor is selected here, behind the same interface, with its own
+  // secret and its own signature scheme. Nothing outside this file knows
+  // which one is in use.
+  if (env.PAYMENT_PROVIDER === "stripe") return new StripeProvider();
   return new LocalProvider();
 }
 
@@ -199,6 +225,15 @@ export function customerReference(userId: string): string {
 
 /** The signature header a provider's webhook carries. */
 export const SIGNATURE_HEADER = WEBHOOK_SIGNATURE_HEADER;
+
+/**
+ * The header Stripe signs its webhooks with.
+ *
+ * Stripe uses its own scheme — `t=<timestamp>,v1=<hmac>` — verified by the
+ * Stripe SDK against the endpoint's signing secret, so it does not use the
+ * local provider's header or signature format.
+ */
+export const STRIPE_SIGNATURE_HEADER = "stripe-signature";
 
 /** A random identifier for a local checkout. */
 export function newLocalId(prefix: string): string {

@@ -24,6 +24,32 @@ export interface ExportJobData {
   protocol: number;
 }
 
+/**
+ * The queue priority a job is dispatched at.
+ *
+ * A plan with the `priorityJobs` entitlement puts its work ahead of ordinary
+ * work in the queue. BullMQ treats a *lower* priority number as more urgent,
+ * so a paid job is dispatched at 1 and everything else at 10.
+ */
+export const JOB_PRIORITY = {
+  /** The priority of a job whose author holds the `priorityJobs` entitlement. */
+  paid: 1,
+  /** The priority of every other job. */
+  standard: 10,
+} as const;
+
+/**
+ * The priority a dispatch row is dispatched at.
+ *
+ * The flag is recorded on the dispatch row rather than looked up at dispatch
+ * time, because the entitlement may have been withdrawn between the job
+ * being created and the dispatcher picking it up. Recording the decision at
+ * the moment the job was made keeps the two consistent.
+ */
+export function priorityFor(paid: boolean): number {
+  return paid ? JOB_PRIORITY.paid : JOB_PRIORITY.standard;
+}
+
 const defaultJobOptions = {
   // Retries happen inside the AI client; job-level failures are finalized by the processor.
   attempts: 1,
@@ -45,8 +71,8 @@ export function getQueues() {
 }
 
 /** Can be called inside the same transaction as domain creation and credit reservation. */
-export function persistDispatch(tx: Tx, queue: keyof typeof QUEUE_NAMES, jobId: string) {
-  const payload = { ...(queue === 'exports' ? { exportId: jobId } : { generationJobId: jobId }), fingerprint: runtimeFingerprint, protocol: PROTOCOL_VERSION };
+export function persistDispatch(tx: Tx, queue: keyof typeof QUEUE_NAMES, jobId: string, paid = false) {
+  const payload = { ...(queue === 'exports' ? { exportId: jobId } : { generationJobId: jobId }), fingerprint: runtimeFingerprint, protocol: PROTOCOL_VERSION, priority: priorityFor(paid) };
   return tx.queueDispatch.upsert({
     where: { namespace_queue_jobId: { namespace: queueNamespace, queue, jobId } },
     create: { namespace: queueNamespace, queue, jobId, fingerprint: runtimeFingerprint, payload }, update: {},
@@ -55,7 +81,7 @@ export function persistDispatch(tx: Tx, queue: keyof typeof QUEUE_NAMES, jobId: 
 
 /** Legacy callers persist first; generation creates its dispatch transactionally. */
 async function enqueue(queue: keyof typeof QUEUE_NAMES, jobId: string) {
-  const payload = { ...(queue === "exports" ? { exportId: jobId } : { generationJobId: jobId }), fingerprint: runtimeFingerprint, protocol: PROTOCOL_VERSION };
+  const payload = { ...(queue === "exports" ? { exportId: jobId } : { generationJobId: jobId }), fingerprint: runtimeFingerprint, protocol: PROTOCOL_VERSION, priority: JOB_PRIORITY.standard };
   const dispatch = await prisma.queueDispatch.upsert({
     where: { namespace_queue_jobId: { namespace: queueNamespace, queue, jobId } },
     create: { namespace: queueNamespace, queue, jobId, fingerprint: runtimeFingerprint, payload }, update: {},
@@ -77,7 +103,8 @@ export async function dispatchPending(id?: string) {
       if (!queue) throw new Error("Unknown queue");
       // Bound Redis waits so an unavailable broker does not hang the HTTP response.
       const timeout = new Promise<never>((_, reject) => { const t = setTimeout(() => reject(new Error("Dispatch timed out")), 2000); t.unref(); });
-      await Promise.race([queue.add(row.queue, row.payload as unknown as GenerationJobData & ExportJobData, { jobId: row.jobId }), timeout]);
+      const payload = row.payload as unknown as GenerationJobData & ExportJobData & { priority?: number };
+      await Promise.race([queue.add(row.queue, payload, { jobId: row.jobId, priority: payload.priority ?? JOB_PRIORITY.standard }), timeout]);
       await prisma.queueDispatch.update({ where: { id: row.id }, data: { dispatchedAt: new Date(), attempts: { increment: 1 } } });
     } catch {
       await prisma.queueDispatch.update({ where: { id: row.id }, data: { attempts: { increment: 1 }, nextAttemptAt: new Date(Date.now() + Math.min(60_000, 1000 * 2 ** Math.min(row.attempts, 6))) } });

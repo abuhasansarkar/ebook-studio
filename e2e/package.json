@@ -6,7 +6,9 @@
     "e2e": "tsx ui-flow.e2e.ts",
     "e2e:sources": "tsx sources-flow.e2e.ts",
     "e2e:citations": "tsx citation-impact-flow.e2e.ts",
-    "e2e:billing": "tsx billing-flow.e2e.ts"
+    "e2e:billing": "tsx billing-flow.e2e.ts",
+    "e2e:studio": "tsx studio-flow.e2e.ts",
+    "e2e:stripe": "tsx stripe-live.e2e.ts"
   },
   "devDependencies": {
     "puppeteer": "^25.18.1",
