@@ -271,7 +271,7 @@ export function Distribution({ bookId }: { bookId: string }) {
 
         <div className="mt-5">
           <p className="text-xs font-medium text-muted-foreground">Files to include</p>
-          {bookExports.isLoading ? (
+          {bookExports.isPending ? (
             <PageLoader label="Loading your exports…" />
           ) : readyExports.length === 0 ? (
             <Alert tone="info" className="mt-2">

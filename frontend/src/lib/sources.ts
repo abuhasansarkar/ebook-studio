@@ -118,7 +118,28 @@ export const sourceKeys = {
   preview: (sourceId: string, version?: number) => ["source-preview", sourceId, version ?? "latest"] as const,
   links: (sourceId: string) => ["source-links", sourceId] as const,
   chapterCitations: (chapterId: string) => ["chapter-citations", chapterId] as const,
+  formats: ["source-formats"] as const,
 };
+
+/**
+ * The formats this server can extract, with the types and size each accepts.
+ *
+ * The catalog comes from the server rather than the shared constants, because
+ * the server is what actually decides whether an upload is accepted. The
+ * shared list would let the screen offer a format this build cannot read.
+ */
+export function useSourceFormats() {
+  return useQuery({
+    queryKey: sourceKeys.formats,
+    queryFn: () =>
+      api
+        .get<{
+          formats: { format: SourceFormat; contentTypes: string[]; maxBytes: number }[];
+        }>("/sources/formats")
+        .then((r) => r.formats),
+    staleTime: 60_000,
+  });
+}
 
 /** Every source of a book, newest first. */
 export function useSources(bookId: string) {

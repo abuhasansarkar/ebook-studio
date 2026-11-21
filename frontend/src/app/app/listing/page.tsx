@@ -14,6 +14,7 @@ import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader } from "@/compon
 import { Button } from "@/components/ui/button";
 import { errorMessage } from "@/lib/api";
 import {
+  useListingGaps,
   useListingDestinations,
   useListings,
   usePrepareListing,
@@ -192,6 +193,10 @@ function RoyaltyPanel({
 /** One prepared listing. */
 function ListingEditor({ listing, onCopied }: { listing: ListingCopy; onCopied: () => void }) {
   const save = useUpdateListing();
+  // The server decides which required fields are still missing and whether
+  // the listing has fallen behind the manuscript. The screen does not
+  // second-guess that, so it shows what the store's own form will accept.
+  const gaps = useListingGaps(listing.id);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [confirmed, setConfirmed] = useState<Record<string, boolean>>({});
   const [price, setPrice] = useState(listing.royalty.priceInMinorUnits);
@@ -207,7 +212,7 @@ function ListingEditor({ listing, onCopied }: { listing: ListingCopy; onCopied: 
     Object.keys(confirmed).length > 0 ||
     price !== listing.royalty.priceInMinorUnits;
 
-  const missing = listing.fields.filter((field) => field.required && !value(field.key).trim());
+  const missing = gaps.data?.missing ?? [];
   const overLimit = listing.fields.filter((field) => {
     const spec = listing.fields.find((f) => f.key === field.key)!;
     return spec.maxLength !== undefined && value(field.key).length > spec.maxLength;
@@ -261,6 +266,18 @@ function ListingEditor({ listing, onCopied }: { listing: ListingCopy; onCopied: 
         <Alert tone="warning" className="mt-4">
           {missing.length} required field{missing.length === 1 ? "" : "s"} still need a value before the
           store&apos;s own form will accept this listing.
+          <ul className="mt-2 list-inside list-disc space-y-0.5">
+            {missing.map((field) => (
+              <li key={field.key}>{field.label}</li>
+            ))}
+          </ul>
+        </Alert>
+      ) : null}
+
+      {gaps.data?.stale ? (
+        <Alert tone="warning" className="mt-3">
+          Your manuscript has changed since this listing was drafted. Read it through again before you
+          use it, and re-draft it if the content no longer matches.
         </Alert>
       ) : null}
 

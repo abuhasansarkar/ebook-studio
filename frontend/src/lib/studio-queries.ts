@@ -64,6 +64,9 @@ export const studioQk = {
   listingDestinations: ["listing-destinations"] as const,
   listings: (bookId: string) => ["listings", bookId] as const,
   listing: (listingId: string) => ["listing", listingId] as const,
+  listingGaps: (listingId: string) => ["listing-gaps", listingId] as const,
+  marketingGraphic: (graphicId: string) => ["marketing-graphic", graphicId] as const,
+  backup: (name: string) => ["admin-backup", name] as const,
 };
 
 // ---------- S13 administration ----------
@@ -308,6 +311,38 @@ export function useCreateBackup() {
 }
 
 /**
+ * One backup, by name.
+ *
+ * The list carries the manifest, so this is used when a single backup is
+ * opened on its own.
+ */
+export function useBackup(name: string | null, enabled = true) {
+  return useQuery({
+    queryKey: studioQk.backup(name ?? ""),
+    queryFn: () => api.get<{ backup: BackupManifest }>(`/admin/backups/${name}`).then((r) => r.backup),
+    enabled: enabled && Boolean(name),
+    retry: false,
+  });
+}
+
+/**
+ * Removes a backup.
+ *
+ * The manifest is deleted, so the operation is audited by the server rather
+ * than by the screen.
+ */
+export function useDeleteBackup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => api.delete(`/admin/backups/${name}`),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: studioQk.backups });
+      void qc.invalidateQueries({ queryKey: studioQk.audit() });
+    },
+  });
+}
+
+/**
  * Rehearses a restore.
  *
  * The rehearsal loads the dump into a separate database. It never touches the
@@ -540,6 +575,23 @@ export function useListing(listingId: string | null) {
 }
 
 /**
+ * The fields a listing is still missing, and whether it is stale.
+ *
+ * The server decides this, because the store's own requirements are the
+ * authority on what a listing needs. The screen does not second-guess it.
+ */
+export function useListingGaps(listingId: string | null) {
+  return useQuery({
+    queryKey: studioQk.listingGaps(listingId ?? ""),
+    queryFn: () =>
+      api
+        .get<{ missing: { key: string; label: string }[]; stale: boolean }>(`/listings/${listingId}/gaps`)
+        .then((r) => r),
+    enabled: Boolean(listingId),
+  });
+}
+
+/**
  * Prepares a listing for a destination.
  *
  * The listing is drafted from the manuscript and is not submitted anywhere.
@@ -581,6 +633,21 @@ export function useUpdateListing() {
       void qc.invalidateQueries({ queryKey: studioQk.listing(input.listingId) });
       void qc.invalidateQueries({ queryKey: studioQk.listings(result.listing.bookId) });
     },
+  });
+}
+
+/**
+ * One promotional graphic.
+ *
+ * The list already carries the fields the gallery needs, so this is used when
+ * a single graphic is opened on its own.
+ */
+export function useMarketingGraphic(graphicId: string | null) {
+  return useQuery({
+    queryKey: studioQk.marketingGraphic(graphicId ?? ""),
+    queryFn: () =>
+      api.get<{ graphic: import("@ebook/shared").MarketingGraphic }>(`/marketing/graphics/${graphicId}`).then((r) => r.graphic),
+    enabled: Boolean(graphicId),
   });
 }
 

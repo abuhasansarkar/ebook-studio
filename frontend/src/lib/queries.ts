@@ -1,9 +1,10 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { BookBriefInput, Outline } from "@ebook/shared";
+import type { BookBriefInput, Operation, Outline } from "@ebook/shared";
 import { operationRequest } from "./operation-request";
 import { api } from "./api";
+import { useSession } from "./auth-client";
 import type { BillingState, BookDetail, BookSummary, ChapterFull, ChapterMeta, CheckoutSession, CreditTransaction, Dashboard, ExportRecord, ExportFormat, GenerationJob, PlanCatalog } from "./types";
 
 export const qk = {
@@ -17,7 +18,37 @@ export const qk = {
   plans: ["billing-plans"] as const,
   billing: ["billing"] as const,
   config: ["config"] as const,
+  operation: (id: string) => ["operation", id] as const,
 };
+
+/**
+ * Whether the signed-in account is known.
+ *
+ * Every account-scoped query waits for this. A query that runs before the
+ * session is known fetches without a session on the server, so it fails there
+ * and succeeds in the browser: the two render different markup and the page
+ * reports a hydration mismatch. Waiting for the session makes both renders
+ * agree, because the query only starts once the account is known.
+ */
+export function useIsSignedIn(): boolean {
+  const { data: session, isPending } = useSession();
+  return !isPending && Boolean(session?.user);
+}
+
+/**
+ * One operation, by id.
+ *
+ * The list is enough for the activity strip, but a support reference the
+ * customer quotes is looked up on its own so the state shown is the live one.
+ */
+export function useOperation(operationId: string | null) {
+  const signedIn = useIsSignedIn();
+  return useQuery({
+    queryKey: qk.operation(operationId ?? "none"),
+    queryFn: () => api.get<{ operation: Operation }>(`/operations/${operationId}`).then((r) => r.operation),
+    enabled: signedIn && Boolean(operationId),
+  });
+}
 
 export function usePublicConfig() {
   return useQuery({
@@ -28,38 +59,50 @@ export function usePublicConfig() {
 }
 
 export function useDashboard() {
-  return useQuery({ queryKey: qk.dashboard, queryFn: () => api.get<Dashboard>("/users/me/dashboard") });
+  const signedIn = useIsSignedIn();
+  return useQuery({
+    queryKey: qk.dashboard,
+    queryFn: () => api.get<Dashboard>("/users/me/dashboard"),
+    enabled: signedIn,
+  });
 }
 
 export function useBooks(search?: string) {
+  const signedIn = useIsSignedIn();
   return useQuery({
     queryKey: qk.books(search),
     queryFn: () => api.get<{ books: BookSummary[] }>(`/books${search ? `?search=${encodeURIComponent(search)}` : ""}`).then((r) => r.books),
+    enabled: signedIn,
   });
 }
 
 /** Polls while a job is active so progress is live. */
 export function useBook(bookId: string) {
+  const signedIn = useIsSignedIn();
   return useQuery({
     queryKey: qk.book(bookId),
     queryFn: () => api.get<{ book: BookDetail }>(`/books/${bookId}`).then((r) => r.book),
     refetchInterval: (q) => (q.state.data?.activeJob ? 1500 : false),
+    enabled: signedIn && Boolean(bookId),
   });
 }
 
 export function useChapters(bookId: string, poll = false) {
+  const signedIn = useIsSignedIn();
   return useQuery({
     queryKey: qk.chapters(bookId),
     queryFn: () => api.get<{ chapters: ChapterMeta[] }>(`/books/${bookId}/chapters`).then((r) => r.chapters),
     refetchInterval: poll ? 3000 : false,
+    enabled: signedIn && Boolean(bookId),
   });
 }
 
 export function useChapter(chapterId: string | null) {
+  const signedIn = useIsSignedIn();
   return useQuery({
     queryKey: qk.chapter(chapterId ?? "none"),
     queryFn: () => api.get<{ chapter: ChapterFull }>(`/chapters/${chapterId}`).then((r) => r.chapter),
-    enabled: Boolean(chapterId),
+    enabled: signedIn && Boolean(chapterId),
     // The editor owns the document while open; never clobber it with a background refetch.
     staleTime: Infinity,
     refetchOnWindowFocus: false,
@@ -67,17 +110,24 @@ export function useChapter(chapterId: string | null) {
 }
 
 export function useExports(bookId: string) {
+  const signedIn = useIsSignedIn();
   return useQuery({
     queryKey: qk.exports(bookId),
     queryFn: () => api.get<{ exports: ExportRecord[] }>(`/books/${bookId}/exports`).then((r) => r.exports),
     refetchInterval: (q) => (q.state.data?.some((e) => e.status === "queued" || e.status === "processing") ? 1500 : false),
+    // The screen can be opened before a book is chosen. Asking for the
+    // exports of no book would be a request to a path with no id in it, so
+    // the query waits until there is a book to ask about.
+    enabled: signedIn && Boolean(bookId),
   });
 }
 
 export function useCredits() {
+  const signedIn = useIsSignedIn();
   return useQuery({
     queryKey: qk.credits,
     queryFn: () => api.get<{ wallet: { balance: number; reserved: number }; transactions: CreditTransaction[] }>("/credits"),
+    enabled: signedIn,
   });
 }
 
@@ -92,9 +142,11 @@ export function usePlans() {
 }
 
 export function useBilling() {
+  const signedIn = useIsSignedIn();
   return useQuery({
     queryKey: qk.billing,
     queryFn: () => api.get<BillingState>("/billing"),
+    enabled: signedIn,
   });
 }
 

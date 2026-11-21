@@ -3,7 +3,20 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
-import { BookOpen, Coins, LayoutDashboard, LogOut, Menu, PlusCircle, Settings, Shield, X } from "lucide-react";
+import {
+  BookOpen,
+  Coins,
+  FolderKanban,
+  Images,
+  LayoutDashboard,
+  LifeBuoy,
+  LogOut,
+  Menu,
+  PlusCircle,
+  Settings,
+  Shield,
+  X,
+} from "lucide-react";
 import { Logo } from "@/components/app/logo";
 import { PageLoader } from "@/components/ui/misc";
 import { signOut, useSession } from "@/lib/auth-client";
@@ -16,9 +29,10 @@ const NAV = [
   { href: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/app/create", label: "Create eBook", icon: PlusCircle },
   { href: "/app/books", label: "My eBooks", icon: BookOpen },
-  { href: "/app/projects", label: "Projects", icon: BookOpen },
-  { href: "/app/image-studio", label: "Image library", icon: BookOpen },
+  { href: "/app/projects", label: "Projects", icon: FolderKanban },
+  { href: "/app/image-studio", label: "Image library", icon: Images },
   { href: "/app/credits", label: "Credits", icon: Coins },
+  { href: "/app/support", label: "Support", icon: LifeBuoy },
   { href: "/app/settings", label: "Settings", icon: Settings },
 ];
 

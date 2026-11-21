@@ -12,11 +12,11 @@ import { formatNumber, timeAgo } from "@/lib/utils";
 const TYPE_LABEL = { grant: "Added", reserve: "Reserved", charge: "Used", release: "Returned", refund: "Refunded" } as const;
 
 export default function CreditsPage() {
-  const { data, isLoading, error, refetch } = useCredits();
+  const { data, isPending, error, refetch } = useCredits();
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-8">
       <PageHeader title="Credits" description="Credits pay for AI work. You're only charged for what's actually generated." />
-      {isLoading ? (
+      {isPending ? (
         <PageLoader />
       ) : error ? (
         <ErrorState message={errorMessage(error)} onRetry={() => void refetch()} />

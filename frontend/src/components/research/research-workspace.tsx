@@ -28,6 +28,7 @@ import {
   useChapterCitations,
   useDeleteSource,
   useLinkSource,
+  useSourceFormats,
   useSourceLinks,
   useSourcePassages,
   useSourcePreview,
@@ -61,6 +62,19 @@ const FORMAT_HINT: Record<SourceFormat, string> = {
 };
 
 const MAX_BYTES = 5 * 1024 * 1024;
+
+/**
+ * The file extensions a MIME type is offered under.
+ *
+ * The server publishes the MIME types it accepts; the browser filters on
+ * extensions, so the two are mapped from each other rather than restated.
+ */
+const EXTENSION_BY_MIME: Record<string, string> = {
+  "text/plain": ".txt",
+  "text/markdown": ".md",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+  "application/pdf": ".pdf",
+};
 
 export function ResearchWorkspace({ params }: { params: Promise<{ bookId: string }> }) {
   const { bookId } = use(params);
@@ -131,6 +145,9 @@ export function ResearchWorkspace({ params }: { params: Promise<{ bookId: string
 /** The upload form. The file itself is the request body. */
 function ImportPanel({ bookId, onImported }: { bookId: string; onImported: (id: string) => void }) {
   const upload = useUploadSource(bookId);
+  // The server publishes the formats it can read and the size it accepts, so
+  // the form never offers a file this build would refuse.
+  const formats = useSourceFormats();
   const [format, setFormat] = useState<SourceFormat>("notes");
   const [title, setTitle] = useState("");
   const [provenance, setProvenance] = useState("");
@@ -138,13 +155,31 @@ function ImportPanel({ bookId, onImported }: { bookId: string; onImported: (id: 
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState("");
 
+  const offered = formats.data?.length
+    ? formats.data
+    : (Object.keys(SOURCE_FORMAT_LABELS) as SourceFormat[]).map((f) => ({
+        format: f,
+        contentTypes: [] as string[],
+        maxBytes: MAX_BYTES,
+      }));
+  const selected = offered.find((entry) => entry.format === format) ?? offered[0];
+  const maxBytes = selected?.maxBytes ?? MAX_BYTES;
+  const accept =
+    selected && selected.contentTypes.length > 0
+      ? selected.contentTypes
+          .map((mime) => EXTENSION_BY_MIME[mime])
+          .filter((extension): extension is string => Boolean(extension))
+          .concat(selected.contentTypes)
+          .join(",")
+      : FORMAT_ACCEPT[format];
+
   const submit = async () => {
     if (!file) {
       setError("Choose a file to import.");
       return;
     }
-    if (file.size > MAX_BYTES) {
-      setError(`That file is ${formatBytes(file.size)}. The limit is ${formatBytes(MAX_BYTES)}.`);
+    if (file.size > maxBytes) {
+      setError(`That file is ${formatBytes(file.size)}. The limit is ${formatBytes(maxBytes)}.`);
       return;
     }
     setError("");
@@ -178,9 +213,9 @@ function ImportPanel({ bookId, onImported }: { bookId: string; onImported: (id: 
         <div>
           <Label htmlFor="source-format">Format</Label>
           <Select id="source-format" value={format} onChange={(e) => setFormat(e.target.value as SourceFormat)}>
-            {(Object.keys(SOURCE_FORMAT_LABELS) as SourceFormat[]).map((f) => (
-              <option key={f} value={f}>
-                {SOURCE_FORMAT_LABELS[f]}
+            {offered.map((entry) => (
+              <option key={entry.format} value={entry.format}>
+                {SOURCE_FORMAT_LABELS[entry.format] ?? entry.format}
               </option>
             ))}
           </Select>
@@ -192,12 +227,12 @@ function ImportPanel({ bookId, onImported }: { bookId: string; onImported: (id: 
           <input
             id="source-file"
             type="file"
-            accept={FORMAT_ACCEPT[format]}
+            accept={accept}
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             className="block w-full text-sm text-muted-foreground file:me-3 file:rounded-xl file:border file:border-border file:bg-surface file:px-3 file:py-2 file:text-sm file:font-semibold file:text-foreground hover:file:bg-muted"
           />
           <p className="mt-1 text-xs text-muted-foreground">
-            Up to {formatBytes(MAX_BYTES)}. The file is stored privately and read for text only.
+            Up to {formatBytes(maxBytes)}. The file is stored privately and read for text only.
           </p>
         </div>
 

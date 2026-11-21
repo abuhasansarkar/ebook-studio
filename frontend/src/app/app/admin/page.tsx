@@ -5,11 +5,13 @@ import {
   Activity,
   Archive,
   Bell,
+  BookOpen,
   Coins,
   FileClock,
   LifeBuoy,
   ScrollText,
   ShieldAlert,
+  Trash2,
   Users,
 } from "lucide-react";
 import type { AdminPermission } from "@ebook/shared";
@@ -25,9 +27,11 @@ import {
   useBackups,
   useCreateBackup,
   useCreditAdjustment,
+  useDeleteBackup,
   useIncidents,
   useJobIntervention,
   useOpsDashboard,
+  useOpsBooks,
   useOpsJobs,
   useOpsPayments,
   useOpsUsers,
@@ -51,11 +55,22 @@ import { formatNumber, timeAgo } from "@/lib/utils";
  * it refuses the same actions on its own.
  */
 
-type Panel = "overview" | "users" | "jobs" | "payments" | "incidents" | "support" | "roles" | "backups" | "audit";
+type Panel =
+  | "overview"
+  | "users"
+  | "books"
+  | "jobs"
+  | "payments"
+  | "incidents"
+  | "support"
+  | "roles"
+  | "backups"
+  | "audit";
 
 const PANELS: { id: Panel; label: string; icon: typeof Activity; permission?: AdminPermission }[] = [
   { id: "overview", label: "Overview", icon: Activity, permission: "ops.read" },
   { id: "users", label: "Customers", icon: Users, permission: "ops.read" },
+  { id: "books", label: "Books", icon: BookOpen, permission: "ops.read" },
   { id: "jobs", label: "Jobs", icon: FileClock, permission: "ops.read" },
   { id: "payments", label: "Payments", icon: Coins, permission: "billing.read" },
   { id: "incidents", label: "Incidents and alerts", icon: ShieldAlert, permission: "ops.read" },
@@ -150,6 +165,7 @@ export default function AdminPage() {
 
           {panel === "overview" && <OverviewPanel />}
           {panel === "users" && <UsersPanel />}
+          {panel === "books" && <BooksPanel />}
           {panel === "jobs" && <JobsPanel />}
           {panel === "payments" && <PaymentsPanel />}
           {panel === "incidents" && <IncidentsPanel />}
@@ -823,6 +839,7 @@ function BackupsPanel() {
   const backups = useBackups();
   const create = useCreateBackup();
   const rehearse = useRehearseRestore();
+  const remove = useDeleteBackup();
   const [problem, setProblem] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
 
@@ -889,11 +906,87 @@ function BackupsPanel() {
               >
                 Rehearse restore
               </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  if (!window.confirm(`Delete the backup “${backup.name}”? The dump on disk is removed. This cannot be undone.`)) return;
+                  setProblem(null);
+                  remove.mutate(backup.name, {
+                    onSuccess: () => {
+                      setResult(`The backup “${backup.name}” was deleted.`);
+                      void backups.refetch();
+                    },
+                    onError: (err) => setProblem(errorMessage(err)),
+                  });
+                }}
+                data-testid="delete-backup"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete
+              </Button>
             </div>
           </div>
         ))}
         {(backups.data ?? []).length === 0 && (
           <p className="px-5 py-6 text-center text-sm text-muted-foreground">No backups have been taken yet.</p>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+/**
+ * Every book on the platform.
+ *
+ * The list is deliberately read-only: an operator can see what a customer
+ * has written, but the manuscript itself is the customer's, and the API
+ * offers no way for an operator to edit it.
+ */
+function BooksPanel() {
+  const books = useOpsBooks();
+  const [search, setSearch] = useState("");
+
+  if (books.isLoading) return <PageLoader />;
+  if (books.error) return <ErrorState message={errorMessage(books.error)} onRetry={() => void books.refetch()} />;
+
+  const rows = books.data ?? [];
+  const needle = search.trim().toLowerCase();
+  const visible = needle
+    ? rows.filter(
+        (book) =>
+          book.title.toLowerCase().includes(needle) || book.ownerEmail.toLowerCase().includes(needle),
+      )
+    : rows;
+
+  return (
+    <div className="space-y-4">
+      <input
+        className="w-full max-w-sm rounded-xl border border-border bg-background px-3 py-2 text-sm"
+        placeholder="Search by title or owner"
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+        aria-label="Search books"
+        data-testid="admin-book-search"
+      />
+      <Card className="divide-y divide-border">
+        {visible.map((book) => (
+          <div key={book.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium">{book.title}</p>
+              <p className="truncate text-xs text-muted-foreground">{book.ownerEmail}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {book.chapterCount} chapter{book.chapterCount === 1 ? "" : "s"} · {book.exportCount} export
+                {book.exportCount === 1 ? "" : "s"} · {timeAgo(book.createdAt)}
+              </p>
+            </div>
+            <Badge tone={book.status === "failed" ? "danger" : "neutral"}>{book.status.replace(/_/g, " ")}</Badge>
+          </div>
+        ))}
+        {visible.length === 0 && (
+          <p className="px-5 py-6 text-center text-sm text-muted-foreground">
+            {rows.length === 0 ? "No books yet." : "No books match that search."}
+          </p>
         )}
       </Card>
     </div>

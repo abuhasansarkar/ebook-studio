@@ -13,7 +13,7 @@ import { formatNumber } from "@/lib/utils";
 
 export default function DashboardPage() {
   const { data: session } = useSession();
-  const { data, isLoading, error, refetch } = useDashboard();
+  const { data, isPending, error, refetch } = useDashboard();
   const firstName = session?.user.name?.split(" ")[0];
 
   return (
@@ -28,7 +28,7 @@ export default function DashboardPage() {
         }
       />
 
-      {isLoading ? (
+      {isPending ? (
         <PageLoader />
       ) : error ? (
         <ErrorState message={errorMessage(error)} onRetry={() => void refetch()} />
