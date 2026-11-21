@@ -434,6 +434,32 @@ export async function sampleForDownload(
   };
 }
 
+/**
+ * The rendered file for a promotional graphic, ready to download.
+ *
+ * The lookup is scoped to the owner, so one author cannot download another's
+ * graphic. The graphic is the file the author made the graphic for, so it is
+ * served the same way the sample packs are.
+ */
+export async function graphicForDownload(
+  userId: string,
+  graphicId: string,
+): Promise<{ stream: NodeJS.ReadableStream; size: number; filename: string; contentType: string }> {
+  const row = await prisma.marketingGraphic.findFirst({
+    where: { id: graphicId, userId, book: { deletedAt: null } },
+    include: { book: { select: { title: true } } },
+  });
+  if (!row) throw notFound("Graphic");
+  if (!row.ready || !row.storageKey) throw badRequest("This graphic is not ready yet.");
+  const { stream, size } = await storage.getStream(row.storageKey);
+  return {
+    stream,
+    size: size ?? 0,
+    filename: `${slugify(row.book.title)}-${row.template.replace(/_/g, "-")}.png`,
+    contentType: "image/png",
+  };
+}
+
 /** A filename-safe version of a title. */
 function slugify(value: string): string {
   return (

@@ -15,6 +15,7 @@ import { getLanguage } from "@ebook/shared";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Alert } from "@/components/ui/misc";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { qk } from "@/lib/queries";
 import type { ChapterFull, ChapterMeta } from "@/lib/types";
 import { formatNumber } from "@/lib/utils";
@@ -30,6 +31,7 @@ export function ChapterEditor({ ownerId, chapter, bookId, language, findingId }:
   const [title, setTitle] = useState(chapter.title);
   const [imagesOpen, setImagesOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [discardDraftsOpen, setDiscardDraftsOpen] = useState(false);
 
   const onSaved = useCallback(
     (saved: SavedChapter, payload: ChapterPatch) => {
@@ -110,9 +112,22 @@ export function ChapterEditor({ ownerId, chapter, bookId, language, findingId }:
             if (patch.title !== undefined) setTitle(patch.title);
             if (patch.contentJson) editor?.commands.setContent(patch.contentJson, { emitUpdate: false });
           }}>Recover {new Date(draft.updatedAt).toLocaleString()} (v{draft.baseVersion})</Button>)}
-          <Button variant="secondary" size="sm" onClick={() => { if (window.confirm('Discard these browser drafts and keep the server version?')) void save.discardDrafts(); }}>Discard browser drafts</Button>
+          <Button variant="secondary" size="sm" onClick={() => setDiscardDraftsOpen(true)}>Discard browser drafts</Button>
         </div>
       </Alert>}
+      <ConfirmDialog
+        open={discardDraftsOpen}
+        onClose={() => setDiscardDraftsOpen(false)}
+        onConfirm={() => {
+          setDiscardDraftsOpen(false);
+          void save.discardDrafts();
+        }}
+        title="Discard these browser drafts?"
+        description="The version saved on the server will be kept."
+        confirmLabel="Discard drafts"
+      >
+        <p>Unsaved changes kept only in this browser will be lost. This cannot be undone.</p>
+      </ConfirmDialog>
       <div className="mx-auto w-full max-w-3xl flex-1 px-5 py-10 sm:px-10" style={{ fontFamily: lang.fontFamily }}>
         <p className="mb-2 text-sm font-bold text-primary">Chapter {chapter.position + 1}</p>
         <input

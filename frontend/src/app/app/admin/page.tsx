@@ -17,6 +17,8 @@ import {
 import type { AdminPermission } from "@ebook/shared";
 import { PageHeader } from "@/components/app/app-shell";
 import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader } from "@/components/ui/misc";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
 import { errorMessage } from "@/lib/api";
 import { useMounted } from "@/lib/use-mounted";
@@ -269,29 +271,29 @@ function UsersPanel() {
         <Card className="p-5">
           <h3 className="text-sm font-semibold">Adjust credits for {target.name}</h3>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <label className="block">
-              <span className="text-xs font-medium text-muted-foreground">
-                Credits (a negative number takes credits away)
-              </span>
-              <input
+            <Field label="Credits (a negative number takes credits away)" htmlFor="adjust-amount">
+              <Input
+                id="adjust-amount"
                 type="number"
-                className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+                className="bg-background"
                 value={credits}
                 onChange={(event) => setCredits(event.target.value)}
                 data-testid="adjust-amount"
               />
-            </label>
-            <label className="block sm:col-span-2">
-              <span className="text-xs font-medium text-muted-foreground">
-                Reason (at least ten characters — it is written into the audit trail)
-              </span>
-              <textarea
-                className="mt-1.5 min-h-[80px] w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+            </Field>
+            <Field
+              label="Reason (at least ten characters — it is written into the audit trail)"
+              htmlFor="adjust-reason"
+              className="sm:col-span-2"
+            >
+              <Textarea
+                id="adjust-reason"
+                className="min-h-[80px] bg-background"
                 value={reason}
                 onChange={(event) => setReason(event.target.value)}
                 data-testid="adjust-reason"
               />
-            </label>
+            </Field>
           </div>
           <div className="mt-4 flex gap-2">
             <Button
@@ -466,15 +468,15 @@ function PaymentsPanel() {
           <p className="mt-1 text-xs text-muted-foreground">
             The credits are taken back and the capabilities the payment granted are withdrawn.
           </p>
-          <label className="mt-4 block">
-            <span className="text-xs font-medium text-muted-foreground">Reason (at least ten characters)</span>
-            <textarea
-              className="mt-1.5 min-h-[80px] w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+          <Field label="Reason (at least ten characters)" htmlFor="refund-reason" className="mt-4">
+            <Textarea
+              id="refund-reason"
+              className="min-h-[80px] bg-background"
               value={reason}
               onChange={(event) => setReason(event.target.value)}
               data-testid="refund-reason"
             />
-          </label>
+          </Field>
           <div className="mt-4 flex gap-2">
             <Button
               loading={refund.isPending}
@@ -529,15 +531,17 @@ function IncidentsPanel() {
           The alert goes to the configured destination and is recorded whether or not it arrived.
         </p>
         <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_auto]">
-          <input
-            className="rounded-xl border border-border bg-background px-3 py-2 text-sm"
+          <Input
+            id="alert-summary"
+            className="bg-background"
             value={summary}
             placeholder="Queue backlog is growing"
             onChange={(event) => setSummary(event.target.value)}
             data-testid="alert-summary"
           />
-          <select
-            className="rounded-xl border border-border bg-background px-3 py-2 text-sm"
+          <Select
+            id="alert-severity"
+            className="bg-background"
             value={severity}
             onChange={(event) => setSeverity(event.target.value as typeof severity)}
             data-testid="alert-severity"
@@ -545,7 +549,7 @@ function IncidentsPanel() {
             <option value="info">Info</option>
             <option value="warning">Warning</option>
             <option value="critical">Critical</option>
-          </select>
+          </Select>
         </div>
         <Button
           className="mt-4"
@@ -678,8 +682,9 @@ function SupportPanel() {
             </div>
           )}
           <div className="mt-4 flex flex-wrap gap-2">
-            <textarea
-              className="min-h-[80px] flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm"
+            <Textarea
+              id={`reply-${request.id}`}
+              className="min-h-[80px] flex-1 bg-background"
               placeholder="Write your reply…"
               value={drafts[request.id] ?? ""}
               onChange={(event) => setDrafts((current) => ({ ...current, [request.id]: event.target.value }))}
@@ -772,20 +777,20 @@ function RolesPanel() {
       <Card className="p-5">
         <h3 className="text-sm font-semibold">Grant a role</h3>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="block">
-            <span className="text-xs font-medium text-muted-foreground">Customer</span>
-            <input
-              className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+          <Field label="Customer" htmlFor="role-user-id">
+            <Input
+              id="role-user-id"
+              className="bg-background"
               placeholder="User id"
               value={target?.userId ?? ""}
               onChange={(event) => setTarget({ userId: event.target.value, name: event.target.value })}
               data-testid="role-user-id"
             />
-          </label>
-          <label className="block">
-            <span className="text-xs font-medium text-muted-foreground">Role</span>
-            <select
-              className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+          </Field>
+          <Field label="Role" htmlFor="role-select">
+            <Select
+              id="role-select"
+              className="bg-background"
               value={role}
               onChange={(event) => setRole(event.target.value)}
               data-testid="role-select"
@@ -795,17 +800,17 @@ function RolesPanel() {
                   {value}
                 </option>
               ))}
-            </select>
-          </label>
-          <label className="block sm:col-span-2">
-            <span className="text-xs font-medium text-muted-foreground">Reason (at least ten characters)</span>
-            <textarea
-              className="mt-1.5 min-h-[80px] w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+            </Select>
+          </Field>
+          <Field label="Reason (at least ten characters)" htmlFor="role-reason" className="sm:col-span-2">
+            <Textarea
+              id="role-reason"
+              className="min-h-[80px] bg-background"
               value={reason}
               onChange={(event) => setReason(event.target.value)}
               data-testid="role-reason"
             />
-          </label>
+          </Field>
         </div>
         <Button
           className="mt-4"
@@ -842,6 +847,7 @@ function BackupsPanel() {
   const remove = useDeleteBackup();
   const [problem, setProblem] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
+  const [deletingBackup, setDeletingBackup] = useState<string | null>(null);
 
   if (backups.isLoading) return <PageLoader />;
   if (backups.error) return <ErrorState message={errorMessage(backups.error)} onRetry={() => void backups.refetch()} />;
@@ -850,6 +856,29 @@ function BackupsPanel() {
     <div className="space-y-4">
       {problem && <Alert tone="danger">{problem}</Alert>}
       {result && <Alert tone="info">{result}</Alert>}
+      <ConfirmDialog
+        open={Boolean(deletingBackup)}
+        onClose={() => setDeletingBackup(null)}
+        onConfirm={() => {
+          if (!deletingBackup) return;
+          const name = deletingBackup;
+          setDeletingBackup(null);
+          setProblem(null);
+          remove.mutate(name, {
+            onSuccess: () => {
+              setResult(`The backup “${name}” was deleted.`);
+              void backups.refetch();
+            },
+            onError: (err) => setProblem(errorMessage(err)),
+          });
+        }}
+        title="Delete this backup?"
+        description={deletingBackup ? `“${deletingBackup}” will be removed from disk.` : undefined}
+        confirmLabel="Delete backup"
+        busy={remove.isPending}
+      >
+        <p>The dump on disk is removed. This cannot be undone.</p>
+      </ConfirmDialog>
 
       <div className="flex justify-end">
         <Button
@@ -909,17 +938,7 @@ function BackupsPanel() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => {
-                  if (!window.confirm(`Delete the backup “${backup.name}”? The dump on disk is removed. This cannot be undone.`)) return;
-                  setProblem(null);
-                  remove.mutate(backup.name, {
-                    onSuccess: () => {
-                      setResult(`The backup “${backup.name}” was deleted.`);
-                      void backups.refetch();
-                    },
-                    onError: (err) => setProblem(errorMessage(err)),
-                  });
-                }}
+                onClick={() => setDeletingBackup(backup.name)}
                 data-testid="delete-backup"
               >
                 <Trash2 className="h-4 w-4" />
@@ -961,8 +980,8 @@ function BooksPanel() {
 
   return (
     <div className="space-y-4">
-      <input
-        className="w-full max-w-sm rounded-xl border border-border bg-background px-3 py-2 text-sm"
+      <Input
+        className="w-full max-w-sm bg-background"
         placeholder="Search by title or owner"
         value={search}
         onChange={(event) => setSearch(event.target.value)}

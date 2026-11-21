@@ -2,7 +2,7 @@
 
 import { useParams, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
-import { AlertTriangle, Download, Package, Send, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, Download, Package, Send, ShieldCheck } from "lucide-react";
 import {
   DISTRIBUTION_LABELS as DEST_LABELS,
   type DistributionDestination,
@@ -14,6 +14,7 @@ import {
 import { PageHeader } from "@/components/app/app-shell";
 import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
+import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { errorMessage } from "@/lib/api";
 import { useExports } from "@/lib/queries";
 import {
@@ -148,9 +149,28 @@ export function Distribution({ bookId }: { bookId: string }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [metadata, setMetadata] = useState<DistributionMetadata>({ title: "", author: "", language: "en" });
   const [includeCover, setIncludeCover] = useState(true);
+  const [showStoreDetails, setShowStoreDetails] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [blocked, setBlocked] = useState<DistributionPackage | null>(null);
+
+  /**
+   * The keyword and category fields are edited as free text and split into
+   * lists when the package is prepared.
+   *
+   * Splitting on every keystroke would rewrite the text under the cursor: the
+   * comma and space the author just typed would be replaced by a comma with no
+   * space, so "food safety, storage" could never be typed.
+   */
+  const [keywordText, setKeywordText] = useState("");
+  const [categoryText, setCategoryText] = useState("");
+
+  const splitList = (value: string, limit: number) =>
+    value
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, limit);
 
   const profile = useMemo(
     () => destinations.data?.find((item) => item.destination === destination),
@@ -192,10 +212,9 @@ export function Distribution({ bookId }: { bookId: string }) {
         <h2 className="text-sm font-semibold">Prepare a package</h2>
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="block">
-            <span className="text-xs font-medium text-muted-foreground">Destination</span>
-            <select
-              className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+          <Field label="Destination" htmlFor="distribution-destination">
+            <Select
+              id="distribution-destination"
               value={destination}
               onChange={(event) => {
                 setDestination(event.target.value as DistributionDestination);
@@ -208,8 +227,8 @@ export function Distribution({ bookId }: { bookId: string }) {
                   {DEST_LABELS[item.destination]}
                 </option>
               ))}
-            </select>
-          </label>
+            </Select>
+          </Field>
 
           <div className="rounded-xl border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
             {profile ? (
@@ -228,45 +247,108 @@ export function Distribution({ bookId }: { bookId: string }) {
             )}
           </div>
 
-          <label className="block">
-            <span className="text-xs font-medium text-muted-foreground">Title</span>
-            <input
-              className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+          <Field label="Title" htmlFor="metadata-title">
+            <Input
+              id="metadata-title"
               value={metadata.title}
-              maxLength={300}
+              maxLength={200}
               onChange={(event) => setMetadata({ ...metadata, title: event.target.value })}
               data-testid="metadata-title"
             />
-          </label>
-          <label className="block">
-            <span className="text-xs font-medium text-muted-foreground">Author or pen name</span>
-            <input
-              className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+          </Field>
+          <Field label="Author or pen name" htmlFor="metadata-author">
+            <Input
+              id="metadata-author"
               value={metadata.author}
               maxLength={200}
               onChange={(event) => setMetadata({ ...metadata, author: event.target.value })}
               data-testid="metadata-author"
             />
-          </label>
-          <label className="block">
-            <span className="text-xs font-medium text-muted-foreground">Language</span>
-            <input
-              className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+          </Field>
+          <Field label="Language" htmlFor="metadata-language">
+            <Input
+              id="metadata-language"
               value={metadata.language}
               maxLength={10}
               onChange={(event) => setMetadata({ ...metadata, language: event.target.value })}
               data-testid="metadata-language"
             />
-          </label>
-          <label className="block">
-            <span className="text-xs font-medium text-muted-foreground">Subtitle (optional)</span>
-            <input
-              className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+          </Field>
+          <Field label="Subtitle (optional)" htmlFor="metadata-subtitle">
+            <Input
+              id="metadata-subtitle"
               value={metadata.subtitle ?? ""}
               maxLength={300}
               onChange={(event) => setMetadata({ ...metadata, subtitle: event.target.value || undefined })}
             />
-          </label>
+          </Field>
+
+          <div className="sm:col-span-2">
+            <button
+              type="button"
+              onClick={() => setShowStoreDetails((v) => !v)}
+              aria-expanded={showStoreDetails}
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-primary-hover hover:underline"
+            >
+              {showStoreDetails ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+              {showStoreDetails ? "Hide store listing details" : "Add store listing details"}
+            </button>
+            <p className="mt-1 text-xs text-muted-foreground">
+              These fields go into the metadata file that travels with the package. Fill in what your store&apos;s listing form asks for.
+            </p>
+          </div>
+
+          {showStoreDetails && (
+            <>
+              <Field label="Description" htmlFor="metadata-description" hint="The blurb your store shows on the listing page." className="sm:col-span-2">
+                <Textarea
+                  id="metadata-description"
+                  rows={5}
+                  value={metadata.description ?? ""}
+                  maxLength={5000}
+                  onChange={(event) => setMetadata({ ...metadata, description: event.target.value || undefined })}
+                />
+              </Field>
+              <Field label="Publisher" htmlFor="metadata-publisher">
+                <Input
+                  id="metadata-publisher"
+                  value={metadata.publisher ?? ""}
+                  maxLength={200}
+                  onChange={(event) => setMetadata({ ...metadata, publisher: event.target.value || undefined })}
+                />
+              </Field>
+              <Field label="Publication date" htmlFor="metadata-publication-date" hint="For example 2026-01-31.">
+                <Input
+                  id="metadata-publication-date"
+                  value={metadata.publicationDate ?? ""}
+                  maxLength={40}
+                  onChange={(event) => setMetadata({ ...metadata, publicationDate: event.target.value || undefined })}
+                />
+              </Field>
+              <Field label="ISBN" htmlFor="metadata-isbn" hint="The book's own identifier, when it has one.">
+                <Input
+                  id="metadata-isbn"
+                  value={metadata.isbn ?? ""}
+                  maxLength={20}
+                  onChange={(event) => setMetadata({ ...metadata, isbn: event.target.value || undefined })}
+                />
+              </Field>
+              <Field label="Store identifier" htmlFor="metadata-asin" hint="The store's own identifier for the book, when you have one.">
+                <Input
+                  id="metadata-asin"
+                  value={metadata.asin ?? ""}
+                  maxLength={20}
+                  onChange={(event) => setMetadata({ ...metadata, asin: event.target.value || undefined })}
+                />
+              </Field>
+              <Field label="Keywords" htmlFor="metadata-keywords" hint="Up to seven, separated by commas.">
+                <Input id="metadata-keywords" value={keywordText} onChange={(event) => setKeywordText(event.target.value)} />
+              </Field>
+              <Field label="Categories" htmlFor="metadata-categories" hint="Up to three, separated by commas.">
+                <Input id="metadata-categories" value={categoryText} onChange={(event) => setCategoryText(event.target.value)} />
+              </Field>
+            </>
+          )}
         </div>
 
         <div className="mt-5">
@@ -317,7 +399,16 @@ export function Distribution({ bookId }: { bookId: string }) {
             setProblem(null);
             setBlocked(null);
             prepare.mutate(
-              { destination, exportIds: selected, metadata, includeCover },
+              {
+                destination,
+                exportIds: selected,
+                includeCover,
+                metadata: {
+                  ...metadata,
+                  ...(keywordText.trim() ? { keywords: splitList(keywordText, 7) } : {}),
+                  ...(categoryText.trim() ? { categories: splitList(categoryText, 3) } : {}),
+                },
+              },
               {
                 onSuccess: (result) => {
                   if (result.package.status === "blocked") {
@@ -430,8 +521,8 @@ function PublishingStatusRow({
         <Badge tone={STATE_TONE[current?.state ?? "not_prepared"]}>
           {STATE_LABEL[current?.state ?? "not_prepared"]}
         </Badge>
-        <select
-          className="rounded-lg border border-border bg-background px-2 py-1.5 text-xs"
+        <Select
+          className="h-9 w-auto py-0 text-xs"
           value={state}
           aria-label={`Publishing status for ${DEST_LABELS[destination]}`}
           onChange={(event) => {
@@ -446,7 +537,7 @@ function PublishingStatusRow({
               {STATE_LABEL[value]}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
     </div>
   );

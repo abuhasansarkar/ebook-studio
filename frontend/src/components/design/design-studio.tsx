@@ -9,6 +9,7 @@ import { useSession } from '@/lib/auth-client';
 import { useBook } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { Alert, Badge, ErrorState, PageLoader } from '@/components/ui/misc';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { cn } from '@/lib/utils';
 import { HistoryPanel, MatterControls, PrintControls, TemplateGallery, TextControls } from './design-controls';
 import { DesignPreview } from './design-preview';
@@ -40,6 +41,8 @@ function DesignWorkspace({ bookId, ownerId, language, written, initial, template
   const [notice, setNotice] = useState('');
   const [undoVersion, setUndoVersion] = useState<number | null>(null);
   const [conflict, setConflict] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const [discardConflict, setDiscardConflict] = useState(false);
   const [recovery, setRecovery] = useState<{ version: number; data: BookDesign } | null>(null);
   const [ready, setReady] = useState(false);
   const [storageWarning, setStorageWarning] = useState('');
@@ -119,7 +122,7 @@ function DesignWorkspace({ bookId, ownerId, language, written, initial, template
         <span role="status" className="text-sm text-muted-foreground">{dirty ? 'Unsaved changes' : saved.version ? `Saved version ${saved.version}` : 'Default design (not saved yet)'}</span>
         {templateName && <Badge tone="primary">{templateName} template</Badge>}
         {support && <Badge tone={support.level === 'full' ? 'success' : 'danger'}>{getLanguage(language).name}: {support.level === 'full' ? 'fonts installed' : 'fonts unavailable'}</Badge>}
-        <Button variant="secondary" disabled={disabled || !dirty} onClick={() => { if (window.confirm('Discard unsaved design changes?')) { setDraft(saved.data); forgetDraft(); setNotice('Changes discarded.'); } }}>Discard</Button>
+        <Button variant="secondary" disabled={disabled || !dirty} onClick={() => setDiscardOpen(true)}>Discard</Button>
         <Button loading={busy} disabled={disabled || conflict || !dirty || !validation.success} onClick={() => void save()}>Save design</Button>
       </div>
     </div>
@@ -128,7 +131,35 @@ function DesignWorkspace({ bookId, ownerId, language, written, initial, template
     {error && <Alert tone="danger">{error}</Alert>}
     {notice && <Alert tone="success"><span>{notice}</span>{undoVersion !== null && <Button size="sm" variant="link" className="ms-2" disabled={busy} onClick={() => void restore(undoVersion, 'Template undone.')}>Undo template</Button>}</Alert>}
     {storageWarning && <Alert tone="warning">{storageWarning}</Alert>}
-    {conflict && <Alert tone="warning"><p>This design was changed elsewhere. Choose how to continue:</p><div className="mt-2 flex flex-wrap gap-2"><Button size="sm" disabled={busy} onClick={() => void reloadLatest(true)}>Keep my draft and review latest</Button><Button size="sm" variant="secondary" disabled={busy} onClick={() => { if (window.confirm('Discard your draft and load the saved design?')) void reloadLatest(false); }}>Load saved design</Button></div></Alert>}
+    {conflict && <Alert tone="warning"><p>This design was changed elsewhere. Choose how to continue:</p><div className="mt-2 flex flex-wrap gap-2"><Button size="sm" disabled={busy} onClick={() => void reloadLatest(true)}>Keep my draft and review latest</Button><Button size="sm" variant="secondary" disabled={busy} onClick={() => setDiscardConflict(true)}>Load saved design</Button></div></Alert>}
+    <ConfirmDialog
+      open={discardOpen}
+      onClose={() => setDiscardOpen(false)}
+      onConfirm={() => {
+        setDiscardOpen(false);
+        setDraft(saved.data);
+        forgetDraft();
+        setNotice('Changes discarded.');
+      }}
+      title="Discard unsaved design changes?"
+      description="Your edits to this design will be thrown away."
+      confirmLabel="Discard changes"
+    >
+      <p>The last saved design stays as it is. This cannot be undone.</p>
+    </ConfirmDialog>
+    <ConfirmDialog
+      open={discardConflict}
+      onClose={() => setDiscardConflict(false)}
+      onConfirm={() => {
+        setDiscardConflict(false);
+        void reloadLatest(false);
+      }}
+      title="Discard your draft and load the saved design?"
+      description="The saved design replaces the version currently on screen."
+      confirmLabel="Load saved design"
+    >
+      <p>Your unsaved changes will be thrown away. This cannot be undone.</p>
+    </ConfirmDialog>
     {support?.level === 'unavailable' && <Alert tone="danger">{support.notes[0]} Previews use fallback fonts and exports are blocked until an operator installs the approved fonts.</Alert>}
     {written === 0 && <Alert tone="info">No chapters have content yet. Previews show front and back matter only. <Link className="font-semibold underline" href={`/app/books/${bookId}/generate`}>Write chapters</Link></Alert>}
 

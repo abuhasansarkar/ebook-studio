@@ -9,6 +9,7 @@ import { AlertTriangle, CheckCircle2, Download, FileText, Loader2 } from "lucide
 import { getLanguage, type ExportFormat } from "@ebook/shared";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader } from "@/components/ui/misc";
+import { Input, Select } from "@/components/ui/form";
 import { errorMessage } from "@/lib/api";
 import { useBook, useCreateExport, useExports, useExportFormats } from "@/lib/queries";
 import { formatBytes, formatNumber, timeAgo } from "@/lib/utils";
@@ -168,25 +169,25 @@ export function ExportScreen({ params }: { params: Promise<{ bookId: string }> }
                       />
                     )}
                     {option.type === "choice" && (
-                      <select
+                      <Select
                         data-option={option.key}
+                        className="h-9 w-auto py-0"
                         value={String(value)}
                         onChange={(e) => setOptions((o) => ({ ...o, [option.key]: e.target.value }))}
-                        className="rounded-lg border border-border bg-surface px-2 py-1 text-sm"
                       >
                         {option.choices?.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-                      </select>
+                      </Select>
                     )}
                     {option.type === "number" && (
-                      <input
+                      <Input
                         type="number"
                         data-option={option.key}
+                        className="h-9 w-24 py-0"
                         value={Number(value)}
                         step={option.step}
                         min={option.min}
                         max={option.max}
                         onChange={(e) => setOptions((o) => ({ ...o, [option.key]: Number(e.target.value) }))}
-                        className="w-20 rounded-lg border border-border bg-surface px-2 py-1 text-sm"
                       />
                     )}
                   </label>

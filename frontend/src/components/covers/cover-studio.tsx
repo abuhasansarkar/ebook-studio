@@ -8,14 +8,17 @@ import { operationRequest } from '@/lib/operation-request';
 import { useSession } from '@/lib/auth-client';
 import { qk } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Dialog } from '@/components/ui/dialog';
+import { Field, Input, Select, Textarea } from '@/components/ui/form';
+import { Alert } from '@/components/ui/misc';
+import { PageHeader } from '@/components/app/app-shell';
 import { AssetLibrary, imageUrl } from '@/components/assets/asset-library';
 
 type SavedCover = { version: number; data: CoverDesign };
 type ImageJob = { id: string; status: string; cancelRequested: boolean; assetId: string | null; creditsReserved: number; creditsCharged: number; error: string | null; input: { request: { purpose: string; prompt: string }; visual: CoverDesign['visual'] } };
 const layerKeys = ['title', 'subtitle', 'author'] as const;
 type LayerKey = typeof layerKeys[number];
-const fieldClass = 'mt-1 w-full rounded border border-border bg-surface p-2 text-sm';
 function contrastAgainstBackground(text: string, background: string, shade: number) {
   const luminance = (hex: string, multiplier: number) => {
     const rgb = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255 * multiplier).map(c => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4);
@@ -46,6 +49,7 @@ function CoverWorkspace({ bookId, ownerId, initial }: { bookId: string; ownerId:
   const [notice, setNotice] = useState('');
   const [storageWarning, setStorageWarning] = useState('');
   const [conflict, setConflict] = useState(false);
+  const [discardConflict, setDiscardConflict] = useState(false);
   const [comparison, setComparison] = useState<SavedCover | null>(null);
   const [picker, setPicker] = useState(false);
   const [ready, setReady] = useState(false);
@@ -122,10 +126,25 @@ function CoverWorkspace({ bookId, ownerId, initial }: { bookId: string; ownerId:
   const disabled = busy || !ready || !!recovery;
   return <div className="mx-auto max-w-6xl space-y-6 p-6">
     <style>{COVER_FONTS.map(font => `@font-face{font-family:${font};src:url('/api/v1/cover-fonts/${font}') format('truetype');font-weight:100 900;font-display:block}`).join('\n')}</style>
-    <div><h1 className="text-2xl font-bold">Cover & illustration studio</h1><p className="mt-2 text-sm text-muted-foreground">Artwork and editable typography are separate. Changing text costs no image credits. Front cover only; print spine and back-cover layouts come later.</p></div>
-    {error && <p role="alert" className="text-danger">{error}</p>}{notice && <p role="status">{notice}</p>}{storageWarning && <p role="alert">{storageWarning}</p>}
-    {recovery && <div className="rounded border border-border p-4"><p>Unsaved cover draft found (version {recovery.version}).</p><Button onClick={() => { setSteps([recovery.data]); setPosition(0); setBaseVersion(recovery.version); setRecovery(null); }}>Recover cover draft</Button> <Button variant="secondary" onClick={() => { forgetDraft(); setRecovery(null); }}>Discard cover draft</Button></div>}
-    {conflict && <div className="space-x-2"><Button disabled={busy} onClick={() => void resolve(true)}>Keep draft and review latest version</Button><Button disabled={busy} variant="secondary" onClick={() => { if (window.confirm('Discard your cover edits and load the saved cover?')) void resolve(false); }}>Load saved cover</Button></div>}
+    <div><PageHeader title="Cover & illustration studio" description="Artwork and editable typography are separate. Changing text costs no image credits. Front cover only; print spine and back-cover layouts come later." /></div>
+    {error && <Alert tone="danger">{error}</Alert>}
+    {notice && <Alert tone="success">{notice}</Alert>}
+    {storageWarning && <Alert tone="warning">{storageWarning}</Alert>}
+    {recovery && <Alert tone="info" className="flex flex-wrap items-center gap-2"><span>Unsaved cover draft found (version {recovery.version}).</span><Button size="sm" onClick={() => { setSteps([recovery.data]); setPosition(0); setBaseVersion(recovery.version); setRecovery(null); }}>Recover cover draft</Button> <Button size="sm" variant="secondary" onClick={() => { forgetDraft(); setRecovery(null); }}>Discard cover draft</Button></Alert>}
+    {conflict && <Alert tone="warning" className="flex flex-wrap items-center gap-2"><span>This cover was changed elsewhere. Choose how to continue.</span><Button size="sm" disabled={busy} onClick={() => void resolve(true)}>Keep draft and review latest version</Button><Button size="sm" variant="secondary" disabled={busy} onClick={() => setDiscardConflict(true)}>Load saved cover</Button></Alert>}
+    <ConfirmDialog
+      open={discardConflict}
+      onClose={() => setDiscardConflict(false)}
+      onConfirm={() => {
+        setDiscardConflict(false);
+        void resolve(false);
+      }}
+      title="Discard your cover edits?"
+      description="The saved cover will be loaded and your browser draft will be dropped."
+      confirmLabel="Load saved cover"
+    >
+      <p>The cover you saved earlier replaces the version currently on screen. This cannot be undone.</p>
+    </ConfirmDialog>
     {comparison && <aside className="rounded border border-border p-4"><p className="font-semibold">Latest saved text (version {comparison.version})</p>{layerKeys.map(key => <p key={key} className="mt-2 text-sm"><strong>{key}:</strong> {comparison.data[key].text || '(empty)'} · {comparison.data[key].font} · position {Math.round(comparison.data[key].x * 100)}%, {Math.round(comparison.data[key].y * 100)}%</p>)}<p className="mt-2 text-sm">Your editable draft remains below. Saving creates a new version; the existing version is retained.</p></aside>}
     <div className="flex flex-wrap gap-2">
       <Button disabled={disabled || conflict || (!dirty && saved.version > 0)} onClick={() => void save()}>Save cover</Button>
@@ -148,22 +167,53 @@ function CoverWorkspace({ bookId, ownerId, initial }: { bookId: string; ownerId:
       </div><p className="mt-2 text-xs text-muted-foreground">Drag text or use arrow keys/numeric fields. Dashed selection guides are not exported. Artwork is cropped to fill. Check the downloaded cover for typography and image quality.</p></div>
       <fieldset disabled={disabled} className="min-w-0 space-y-4">
         <div className="flex gap-2"><Button variant="secondary" disabled={disabled} onClick={() => setPicker(true)}>Choose artwork</Button><Button variant="secondary" disabled={disabled || !data.artworkId} onClick={() => change({ ...data, artworkId: null })}>Remove artwork</Button></div>
-        <div className="grid grid-cols-2 gap-3"><label>Background<input aria-label="Cover background" type="color" className={fieldClass} value={data.background} onChange={e => change({ ...data, background: e.target.value })} /></label><label>Dark overlay<input aria-label="Dark overlay" type="range" min="0" max="0.85" step="0.05" value={data.shade} onChange={e => change({ ...data, shade: Number(e.target.value) })} className={fieldClass} /></label></div>
-        <label className="block">Text layer<select className={fieldClass} value={layer} onChange={e => setLayer(e.target.value as LayerKey)}>{layerKeys.map(key => <option key={key}>{key}</option>)}</select></label>
-        <label className="block">{layer} text<textarea aria-label={`${layer} text`} maxLength={300} className={fieldClass} value={data[layer].text} onChange={e => changeLayer({ text: e.target.value })} /></label>
         <div className="grid grid-cols-2 gap-3">
-          <label>Font<select className={fieldClass} value={data[layer].font} onChange={e => changeLayer({ font: e.target.value as CoverText['font'] })}>{COVER_FONTS.map(font => <option key={font}>{font}</option>)}</select></label>
-          <label>Text color<input aria-label="Text color" type="color" className={fieldClass} value={data[layer].color} onChange={e => changeLayer({ color: e.target.value })} /></label>
-          <label>Weight<select className={fieldClass} value={data[layer].weight} onChange={e => changeLayer({ weight: e.target.value as CoverText['weight'] })}><option value="400">Regular</option><option value="700">Bold</option></select></label>
-          <label>Alignment<select className={fieldClass} value={data[layer].align} onChange={e => changeLayer({ align: e.target.value as CoverText['align'] })}>{['left', 'center', 'right'].map(value => <option key={value}>{value}</option>)}</select></label>
-          <label>Direction<select className={fieldClass} value={data[layer].direction} onChange={e => changeLayer({ direction: e.target.value as CoverText['direction'] })}><option value="ltr">Left to right</option><option value="rtl">Right to left</option></select></label>
-          {(['x', 'y', 'width', 'height', 'size'] as const).map(key => <label key={key}>{key} (%)<input aria-label={`${key} percent`} className={fieldClass} type="number" min={key === 'size' ? 1.2 : key === 'width' ? 10 : key === 'x' ? 4 : key === 'y' ? 2.5 : 3} max={key === 'size' ? 15 : key === 'height' ? 50 : 96} step="0.1" value={Math.round(data[layer][key] * 1000) / 10} onChange={e => changeLayer({ [key]: Number(e.target.value) / 100 })} /></label>)}
+          <Field label="Background" htmlFor="cover-background">
+            <Input id="cover-background" aria-label="Cover background" type="color" className="h-11 p-1" value={data.background} onChange={e => change({ ...data, background: e.target.value })} />
+          </Field>
+          <Field label="Dark overlay" htmlFor="cover-shade">
+            <Input id="cover-shade" aria-label="Dark overlay" type="range" min="0" max="0.85" step="0.05" className="mt-1 h-11 w-full accent-primary" value={data.shade} onChange={e => change({ ...data, shade: Number(e.target.value) })} />
+          </Field>
+        </div>
+        <Field label="Text layer" htmlFor="cover-layer">
+          <Select id="cover-layer" aria-label="Text layer" value={layer} onChange={e => setLayer(e.target.value as LayerKey)}>{layerKeys.map(key => <option key={key}>{key}</option>)}</Select>
+        </Field>
+        <Field label={`${layer} text`} htmlFor={`cover-${layer}-text`}>
+          <Textarea id={`cover-${layer}-text`} aria-label={`${layer} text`} maxLength={300} className="min-h-16" value={data[layer].text} onChange={e => changeLayer({ text: e.target.value })} />
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Font" htmlFor="cover-font">
+            <Select id="cover-font" aria-label="Font" value={data[layer].font} onChange={e => changeLayer({ font: e.target.value as CoverText['font'] })}>{COVER_FONTS.map(font => <option key={font}>{font}</option>)}</Select>
+          </Field>
+          <Field label="Text color" htmlFor="cover-color">
+            <Input id="cover-color" aria-label="Text color" type="color" className="h-11 p-1" value={data[layer].color} onChange={e => changeLayer({ color: e.target.value })} />
+          </Field>
+          <Field label="Weight" htmlFor="cover-weight">
+            <Select id="cover-weight" aria-label="Weight" value={data[layer].weight} onChange={e => changeLayer({ weight: e.target.value as CoverText['weight'] })}><option value="400">Regular</option><option value="700">Bold</option></Select>
+          </Field>
+          <Field label="Alignment" htmlFor="cover-align">
+            <Select id="cover-align" aria-label="Alignment" value={data[layer].align} onChange={e => changeLayer({ align: e.target.value as CoverText['align'] })}>{['left', 'center', 'right'].map(value => <option key={value}>{value}</option>)}</Select>
+          </Field>
+          <Field label="Direction" htmlFor="cover-direction">
+            <Select id="cover-direction" aria-label="Direction" value={data[layer].direction} onChange={e => changeLayer({ direction: e.target.value as CoverText['direction'] })}><option value="ltr">Left to right</option><option value="rtl">Right to left</option></Select>
+          </Field>
+          {(['x', 'y', 'width', 'height', 'size'] as const).map(key => (
+            <Field key={key} label={`${key} (%)`} htmlFor={`cover-${key}`}>
+              <Input id={`cover-${key}`} aria-label={`${key} percent`} type="number" className="h-11" min={key === 'size' ? 1.2 : key === 'width' ? 10 : key === 'x' ? 4 : key === 'y' ? 2.5 : 3} max={key === 'size' ? 15 : key === 'height' ? 50 : 96} step="0.1" value={Math.round(data[layer][key] * 1000) / 10} onChange={e => changeLayer({ [key]: Number(e.target.value) / 100 })} />
+            </Field>
+          ))}
         </div>
         <p className="text-xs text-muted-foreground">Use the matching Noto family for Bengali, Arabic or Devanagari. Other scripts need a font coverage review. Text that overflows its box is rejected at export.</p>
         <p className="text-sm" role="status">{contrastAgainstBackground(data[layer].color, data.background, data.shade) < 3 ? 'Low contrast against the flat background. Change the text color or overlay. ' : ''}Estimated flat-background contrast: {contrastAgainstBackground(data[layer].color, data.background, data.shade).toFixed(1)}:1. Review contrast over actual artwork separately.</p>
         <details><summary className="cursor-pointer font-semibold">Book visual direction</summary>
-          <label className="mt-3 block">Style<select className={fieldClass} value={data.visual.style} onChange={e => change({ ...data, visual: { ...data.visual, style: e.target.value as CoverDesign['visual']['style'] } })}>{['editorial', 'watercolor', 'photographic', 'minimal'].map(style => <option key={style}>{style}</option>)}</select></label>
-          {(['palette', 'characters', 'direction'] as const).map(key => <label key={key} className="mt-3 block">{key}<textarea className={fieldClass} maxLength={key === 'palette' ? 200 : 1000} value={data.visual[key]} onChange={e => change({ ...data, visual: { ...data.visual, [key]: e.target.value } })} /></label>)}
+          <Field label="Style" htmlFor="cover-style">
+            <Select id="cover-style" aria-label="Style" value={data.visual.style} onChange={e => change({ ...data, visual: { ...data.visual, style: e.target.value as CoverDesign['visual']['style'] } })}>{['editorial', 'watercolor', 'photographic', 'minimal'].map(style => <option key={style}>{style}</option>)}</Select>
+          </Field>
+          {(['palette', 'characters', 'direction'] as const).map(key => (
+            <Field key={key} label={key} htmlFor={`cover-visual-${key}`}>
+              <Textarea id={`cover-visual-${key}`} aria-label={key} className="min-h-16" maxLength={key === 'palette' ? 200 : 1000} value={data.visual[key]} onChange={e => change({ ...data, visual: { ...data.visual, [key]: e.target.value } })} />
+            </Field>
+          ))}
           <p className="text-xs">Save these settings before generating. Shared prompts encourage consistency but cannot guarantee identical characters or style.</p>
         </details>
       </fieldset>
@@ -183,9 +233,19 @@ function ImageGenerator({ bookId, disabled, selectArtwork }: { bookId: string; d
   const active = history.data?.jobs.some(j => ['queued', 'running'].includes(j.status));
   return <section className="space-y-4 border-t border-border pt-6"><h2 className="text-xl font-semibold">Generate artwork</h2>
     <p className="text-sm">{config.data ? `${config.data.credits} credits per image. ${config.data.mock ? 'Mock mode: produces a test image.' : `Model: ${config.data.model}.`}` : 'Loading image pricing…'} Credits are reserved when queued and charged only for a saved result. Save cover changes before generating.</p>
-    {config.error && <p role="alert">{errorMessage(config.error)}</p>}{config.data && !config.data.enabled && <p role="alert">Image generation is not configured. You can upload your own artwork.</p>}
-    <div className="grid gap-3 sm:grid-cols-2"><label>Purpose<select aria-label="Image purpose" className={fieldClass} value={purpose} onChange={e => { setPurpose(e.target.value as typeof purpose); if (e.target.value === 'cover') setAspect('portrait'); }}><option value="cover">Cover concept</option><option value="illustration">Interior illustration</option></select></label><label>Aspect<select aria-label="Image aspect" className={fieldClass} value={aspect} disabled={purpose === 'cover'} onChange={e => setAspect(e.target.value as typeof aspect)}>{['portrait', 'square', 'landscape'].map(a => <option key={a}>{a}</option>)}</select></label></div>
-    <label className="block">Artwork prompt<textarea aria-label="Artwork prompt" className={fieldClass} minLength={10} maxLength={2000} value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="Describe the scene, subject and mood. Text is added separately." /></label>
+    {config.error && <Alert tone="danger">{errorMessage(config.error)}</Alert>}
+    {config.data && !config.data.enabled && <Alert tone="warning">Image generation is not configured. You can upload your own artwork.</Alert>}
+    <div className="grid gap-3 sm:grid-cols-2">
+      <Field label="Purpose" htmlFor="image-purpose">
+        <Select id="image-purpose" aria-label="Image purpose" value={purpose} onChange={e => { setPurpose(e.target.value as typeof purpose); if (e.target.value === 'cover') setAspect('portrait'); }}><option value="cover">Cover concept</option><option value="illustration">Interior illustration</option></Select>
+      </Field>
+      <Field label="Aspect" htmlFor="image-aspect">
+        <Select id="image-aspect" aria-label="Image aspect" value={aspect} disabled={purpose === 'cover'} onChange={e => setAspect(e.target.value as typeof aspect)}>{['portrait', 'square', 'landscape'].map(a => <option key={a}>{a}</option>)}</Select>
+      </Field>
+    </div>
+    <Field label="Artwork prompt" htmlFor="artwork-prompt" hint="At least 10 characters. Describe the scene, subject and mood.">
+      <Textarea id="artwork-prompt" aria-label="Artwork prompt" className="min-h-24" minLength={10} maxLength={2000} value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="Describe the scene, subject and mood. Text is added separately." />
+    </Field>
     <Button disabled={disabled || busy || active || !config.data?.enabled || prompt.trim().length < 10} onClick={async () => {
       setBusy(true); setError(''); try { await operationRequest(`/books/${bookId}/images`, { purpose, prompt, aspect, expectedCredits: config.data!.credits }); setCursor(null); await qc.invalidateQueries({ queryKey: ['image-jobs', bookId] }); } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
     }}>Generate image{config.data ? ` · ${config.data.credits} credits` : ''}</Button>

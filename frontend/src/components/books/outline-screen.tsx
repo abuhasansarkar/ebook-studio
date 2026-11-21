@@ -11,7 +11,7 @@ import { CheckCircle2, Copy, GripVertical, Lock, Plus, RefreshCw, Sparkles, Tras
 import { CREDIT_COSTS, chapterCredits, getLanguage, outlineSchema, type Outline } from "@ebook/shared";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
-import { Input, Label, Textarea } from "@/components/ui/form";
+import { Input, Label, Select, Textarea } from "@/components/ui/form";
 import { Alert, Card, ErrorState, PageLoader, Spinner } from "@/components/ui/misc";
 import { errorMessage } from "@/lib/api";
 import { useBook, useBookAction } from "@/lib/queries";
@@ -69,12 +69,12 @@ function SortableChapter({ ch, index, dir, onChange, onRemove, onDuplicate, canR
           <div className="flex flex-wrap items-center justify-between gap-2" dir="ltr">
             <label className="flex items-center gap-2 text-xs text-muted-foreground">
               Target words
-              <select value={ch.targetWords} onChange={(e) => onChange({ ...ch, targetWords: Number(e.target.value) })} className="rounded-lg border border-border bg-surface px-2 py-1 text-xs text-foreground">
+              <Select value={ch.targetWords} onChange={(e) => onChange({ ...ch, targetWords: Number(e.target.value) })} className="h-8 w-auto py-0 text-xs">
                 {[500, 800, 1000, 1500, 2000, 2500, 3000, 4000].map((w) => (
                   <option key={w} value={w}>{w.toLocaleString()}</option>
                 ))}
                 {![500, 800, 1000, 1500, 2000, 2500, 3000, 4000].includes(ch.targetWords) && <option value={ch.targetWords}>{ch.targetWords}</option>}
-              </select>
+              </Select>
             </label>
             <div className="flex gap-1">
               <Button variant="ghost" size="sm" onClick={onDuplicate} aria-label={`Duplicate chapter ${index + 1}`}>

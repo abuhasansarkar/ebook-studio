@@ -19,12 +19,15 @@ import type { MarketingDraft, MarketingGraphic, MarketingOutputType, MarketingTo
 import { PageHeader } from "@/components/app/app-shell";
 import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
+import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { errorMessage } from "@/lib/api";
 import {
   useCreateMarketingDraft,
   useCreateMarketingGraphic,
   useCreateMarketingSample,
   useMarketingDrafts,
+  useMarketingGraphic,
   useMarketingGraphics,
   useMarketingOutputs,
   useMarketingSamples,
@@ -33,6 +36,10 @@ import {
 } from "@/lib/studio-queries";
 import { useChapters } from "@/lib/queries";
 import { formatNumber, timeAgo } from "@/lib/utils";
+
+/** The rendered promotional graphic, for the gallery and the detail dialog. */
+const graphicUrl = (id: string) => `/api/v1/marketing/graphics/${encodeURIComponent(id)}/download`;
+const graphicDownloadUrl = graphicUrl;
 
 /**
  * S15 — the marketing studio.
@@ -164,8 +171,8 @@ function DraftCard({
         </div>
       )}
 
-      <textarea
-        className="mt-4 min-h-[200px] w-full rounded-xl border border-border bg-background p-4 text-sm leading-relaxed focus:border-primary focus:outline-none"
+      <Textarea
+        className="mt-4 min-h-[200px] bg-background p-4"
         value={content}
         aria-label={`Edit ${draft.outputType.replace(/_/g, " ")}`}
         onChange={(event) => {
@@ -223,6 +230,7 @@ function GraphicStudio({ bookId }: { bookId: string }) {
   const [subhead, setSubhead] = useState("");
   const [callToAction, setCallToAction] = useState("");
   const [useCover, setUseCover] = useState(true);
+  const [openGraphicId, setOpenGraphic] = useState<string | null>(null);
 
   const submit = () => {
     create.mutate(
@@ -256,10 +264,9 @@ function GraphicStudio({ bookId }: { bookId: string }) {
       </div>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
-        <label className="block">
-          <span className="text-xs font-medium text-muted-foreground">Template</span>
-          <select
-            className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+        <Field label="Template" htmlFor="graphic-template">
+          <Select
+            id="graphic-template"
             value={template}
             onChange={(event) => setTemplate(event.target.value as typeof template)}
             data-testid="graphic-template"
@@ -269,39 +276,36 @@ function GraphicStudio({ bookId }: { bookId: string }) {
                 {option.label} ({option.size})
               </option>
             ))}
-          </select>
-        </label>
-        <label className="block">
-          <span className="text-xs font-medium text-muted-foreground">Headline</span>
-          <input
-            className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+          </Select>
+        </Field>
+        <Field label="Headline" htmlFor="graphic-headline">
+          <Input
+            id="graphic-headline"
             value={headline}
             maxLength={200}
             placeholder="The book that changes how you cook"
             onChange={(event) => setHeadline(event.target.value)}
             data-testid="graphic-headline"
           />
-        </label>
-        <label className="block">
-          <span className="text-xs font-medium text-muted-foreground">Supporting line</span>
-          <input
-            className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+        </Field>
+        <Field label="Supporting line" htmlFor="graphic-subhead">
+          <Input
+            id="graphic-subhead"
             value={subhead}
             maxLength={300}
             placeholder="A practical guide for the home kitchen"
             onChange={(event) => setSubhead(event.target.value)}
           />
-        </label>
-        <label className="block">
-          <span className="text-xs font-medium text-muted-foreground">Call to action</span>
-          <input
-            className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+        </Field>
+        <Field label="Call to action" htmlFor="graphic-cta">
+          <Input
+            id="graphic-cta"
             value={callToAction}
             maxLength={120}
             placeholder="Read the first chapter free"
             onChange={(event) => setCallToAction(event.target.value)}
           />
-        </label>
+        </Field>
       </div>
 
       <label className="mt-4 flex items-center gap-2 text-sm">
@@ -323,20 +327,147 @@ function GraphicStudio({ bookId }: { bookId: string }) {
       {graphics.data && graphics.data.length > 0 && (
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
           {graphics.data.map((graphic: MarketingGraphic) => (
-            <div key={graphic.id} className="rounded-xl border border-border p-3" data-testid="marketing-graphic">
-              <p className="text-xs font-medium">{graphic.template.replace(/_/g, " ")}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {graphic.width} × {graphic.height} · {graphic.usedCover ? "with cover" : "plain background"}
-              </p>
-              <p className="mt-2 line-clamp-2 text-sm">{graphic.headline}</p>
-              {graphic.storageKey && (
-                <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{graphic.storageKey}</p>
+            <div key={graphic.id} className="overflow-hidden rounded-xl border border-border" data-testid="marketing-graphic">
+              {graphic.ready ? (
+                <img
+                  src={graphicUrl(graphic.id)}
+                  alt={`Promotional graphic: ${graphic.headline}`}
+                  loading="lazy"
+                  className="aspect-[4/3] w-full bg-muted object-contain"
+                />
+              ) : (
+                <div className="flex aspect-[4/3] w-full items-center justify-center bg-muted text-xs text-muted-foreground">
+                  This graphic is still being rendered.
+                </div>
               )}
+              <div className="p-3">
+                <p className="text-xs font-medium">{graphic.template.replace(/_/g, " ")}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {graphic.width} × {graphic.height} · {graphic.usedCover ? "with cover" : "plain background"}
+                </p>
+                <p className="mt-2 line-clamp-2 text-sm">{graphic.headline}</p>
+                <div className="mt-3 flex items-center gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => setOpenGraphic(graphic.id)}>
+                    Details
+                  </Button>
+                  <a
+                    href={graphicDownloadUrl(graphic.id)}
+                    download
+                    data-testid="download-graphic"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-xl border border-border px-3 text-xs font-semibold hover:bg-muted"
+                  >
+                    <Download className="h-3.5 w-3.5" aria-hidden />
+                    Download
+                  </a>
+                </div>
+              </div>
             </div>
           ))}
         </div>
       )}
+
+      <GraphicDetailDialog graphicId={openGraphicId} onClose={() => setOpenGraphic(null)} />
     </Card>
+  );
+}
+
+/**
+ * One graphic, opened on its own.
+ *
+ * The gallery shows a thumbnail; this dialog shows the whole copy, the colours
+ * that were used, and the full-size image the author downloads.
+ */
+function GraphicDetailDialog({ graphicId, onClose }: { graphicId: string | null; onClose: () => void }) {
+  const graphic = useMarketingGraphic(graphicId);
+  return (
+    <Dialog open={Boolean(graphicId)} onClose={onClose} title="Promotional graphic" description="The image and the copy that was rendered.">
+      {graphic.isPending ? (
+        <PageLoader />
+      ) : graphic.error ? (
+        <ErrorState message={errorMessage(graphic.error)} onRetry={() => void graphic.refetch()} />
+      ) : graphic.data ? (
+        <div className="space-y-4">
+          {graphic.data.ready ? (
+            <img
+              src={graphicUrl(graphic.data.id)}
+              alt={`Promotional graphic: ${graphic.data.headline}`}
+              className="w-full rounded-xl border border-border bg-muted object-contain"
+            />
+          ) : (
+            <div className="rounded-xl border border-border bg-muted px-4 py-8 text-center text-sm text-muted-foreground">
+              This graphic is still being rendered.
+            </div>
+          )}
+          <dl className="grid gap-3 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-xs text-muted-foreground">Template</dt>
+              <dd>{graphic.data.template.replace(/_/g, " ")}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Size</dt>
+              <dd>
+                {graphic.data.width} × {graphic.data.height} pixels
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Headline</dt>
+              <dd>{graphic.data.headline}</dd>
+            </div>
+            {graphic.data.subhead ? (
+              <div>
+                <dt className="text-xs text-muted-foreground">Supporting line</dt>
+                <dd>{graphic.data.subhead}</dd>
+              </div>
+            ) : null}
+            {graphic.data.callToAction ? (
+              <div>
+                <dt className="text-xs text-muted-foreground">Call to action</dt>
+                <dd>{graphic.data.callToAction}</dd>
+              </div>
+            ) : null}
+            <div>
+              <dt className="text-xs text-muted-foreground">Background</dt>
+              <dd className="flex items-center gap-2">
+                <span
+                  aria-hidden
+                  className="inline-block h-4 w-4 rounded border border-border"
+                  style={{ background: graphic.data.backgroundColor }}
+                />
+                {graphic.data.backgroundColor}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Text</dt>
+              <dd className="flex items-center gap-2">
+                <span
+                  aria-hidden
+                  className="inline-block h-4 w-4 rounded border border-border"
+                  style={{ background: graphic.data.textColor }}
+                />
+                {graphic.data.textColor}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Cover</dt>
+              <dd>{graphic.data.usedCover ? "The book's cover is the background" : "Plain background"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Created</dt>
+              <dd>{timeAgo(graphic.data.createdAt)}</dd>
+            </div>
+          </dl>
+          <a
+            href={graphicDownloadUrl(graphic.data.id)}
+            download
+            data-testid="graphic-detail-download"
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary-hover"
+          >
+            <Download className="h-4 w-4" aria-hidden />
+            Download the image
+          </a>
+        </div>
+      ) : null}
+    </Dialog>
   );
 }
 
@@ -413,10 +544,9 @@ function SampleStudio({ bookId }: { bookId: string }) {
           </fieldset>
 
           <div className="mt-4 flex flex-wrap items-end gap-3">
-            <label className="block">
-              <span className="text-xs font-medium text-muted-foreground">File format</span>
-              <select
-                className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+            <Field label="File format" htmlFor="sample-format">
+              <Select
+                id="sample-format"
                 value={format}
                 onChange={(event) => setFormat(event.target.value as typeof format)}
                 data-testid="sample-format"
@@ -424,8 +554,8 @@ function SampleStudio({ bookId }: { bookId: string }) {
                 <option value="pdf">PDF</option>
                 <option value="epub">EPUB</option>
                 <option value="docx">Word (DOCX)</option>
-              </select>
-            </label>
+              </Select>
+            </Field>
             <Button
               loading={create.isPending}
               disabled={selected.length === 0}
@@ -565,10 +695,9 @@ export function MarketingStudio({ bookId }: { bookId: string }) {
         </p>
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="block">
-            <span className="text-xs font-medium text-muted-foreground">What to write</span>
-            <select
-              className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+          <Field label="What to write" htmlFor="marketing-output-type">
+            <Select
+              id="marketing-output-type"
               value={effectiveType}
               onChange={(event) => setOutputType(event.target.value as MarketingOutputType)}
               data-testid="marketing-output-type"
@@ -578,12 +707,11 @@ export function MarketingStudio({ bookId }: { bookId: string }) {
                   {item.label} ({item.credits} credits)
                 </option>
               ))}
-            </select>
-          </label>
-          <label className="block">
-            <span className="text-xs font-medium text-muted-foreground">Tone</span>
-            <select
-              className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+            </Select>
+          </Field>
+          <Field label="Tone" htmlFor="marketing-tone">
+            <Select
+              id="marketing-tone"
               value={tone}
               onChange={(event) => setTone(event.target.value as MarketingTone)}
               data-testid="marketing-tone"
@@ -593,30 +721,29 @@ export function MarketingStudio({ bookId }: { bookId: string }) {
                   {item.label}
                 </option>
               ))}
-            </select>
-          </label>
-          <label className="block sm:col-span-2">
-            <span className="text-xs font-medium text-muted-foreground">Who it is for (optional)</span>
-            <input
-              className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+            </Select>
+          </Field>
+          <Field label="Who it is for (optional)" htmlFor="marketing-audience" className="sm:col-span-2">
+            <Input
+              id="marketing-audience"
               value={audience}
               maxLength={500}
               placeholder="Home cooks who have never baked bread"
               onChange={(event) => setAudience(event.target.value)}
               data-testid="marketing-audience"
             />
-          </label>
-          <label className="block sm:col-span-2">
-            <span className="text-xs font-medium text-muted-foreground">Extra direction (optional)</span>
-            <textarea
-              className="mt-1.5 min-h-[80px] w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+          </Field>
+          <Field label="Extra direction (optional)" htmlFor="marketing-instruction" className="sm:col-span-2">
+            <Textarea
+              id="marketing-instruction"
+              className="min-h-[80px]"
               value={instruction}
               maxLength={2000}
               placeholder="Mention the sourdough starter chapter. Keep it under 150 words."
               onChange={(event) => setInstruction(event.target.value)}
               data-testid="marketing-instruction"
             />
-          </label>
+          </Field>
         </div>
 
         <div className="mt-4 flex items-center gap-3">

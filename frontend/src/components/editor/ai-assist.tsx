@@ -36,6 +36,7 @@ export function AiAssist({ editor, bookId, dir }: { editor: Editor; bookId: stri
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ text: string; content: JSONContent[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
 
   const run = async (r: Request) => {
     const sequence = ++requestSequence.current;
@@ -63,9 +64,10 @@ export function AiAssist({ editor, bookId, dir }: { editor: Editor; bookId: stri
     const text = editor.state.doc.textBetween(from, to, "\n\n").trim();
     if (!text) return;
     if (text.length > 8000) {
-      window.alert('Select up to 8,000 characters. A longer selection cannot be replaced safely.');
+      setSelectionError('Select up to 8,000 characters. A longer selection cannot be replaced safely.');
       return;
     }
+    setSelectionError(null);
     const r = { action, from, to, text, document: JSON.stringify(editor.getJSON()) };
     setReq(r);
     if (action === "custom") {
@@ -86,6 +88,7 @@ export function AiAssist({ editor, bookId, dir }: { editor: Editor; bookId: stri
     setResult(null);
     setError(null);
     setNeedsInstruction(false);
+    setSelectionError(null);
   };
 
   const accept = () => {
@@ -155,6 +158,11 @@ export function AiAssist({ editor, bookId, dir }: { editor: Editor; bookId: stri
             )}
           </div>
         </div>
+        {selectionError && (
+          <Alert tone="danger" className="mt-1 max-w-xs px-3 py-2 text-xs shadow-sm">
+            {selectionError}
+          </Alert>
+        )}
       </BubbleMenu>
 
       <Dialog open={req !== null} onClose={close} title={req ? `AI: ${ASSIST_ACTION_LABELS[req.action]}` : "AI"} description={`Review the suggestion before it replaces your text. Each request uses ${CREDIT_COSTS.assist} credit.`} className="max-w-2xl">

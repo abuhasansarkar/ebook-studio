@@ -12,6 +12,7 @@ import {
 import { PageHeader } from "@/components/app/app-shell";
 import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
+import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { errorMessage } from "@/lib/api";
 import {
   useListingGaps,
@@ -89,22 +90,22 @@ function FieldInput({
       </div>
 
       {isLong ? (
-        <textarea
+        <Textarea
           id={`listing-field-${field.key}`}
           data-testid={`listing-field-${field.key}`}
           value={field.value}
           rows={8}
+          className="bg-background"
           onChange={(event) => onChange(event.target.value)}
-          className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
         />
       ) : (
-        <input
+        <Input
           id={`listing-field-${field.key}`}
           data-testid={`listing-field-${field.key}`}
           type="text"
           value={field.value}
+          className="bg-background"
           onChange={(event) => onChange(event.target.value)}
-          className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
         />
       )}
 
@@ -306,23 +307,20 @@ function ListingEditor({ listing, onCopied }: { listing: ListingCopy; onCopied: 
       </div>
 
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
-        <div>
-          <label htmlFor="listing-price" className="text-sm font-semibold">
-            Price
-          </label>
-          <div className="mt-1 flex items-center gap-2">
+        <Field label="Price" htmlFor="listing-price">
+          <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">$</span>
-            <input
+            <Input
               id="listing-price"
               type="number"
               min={0}
               step="0.01"
               value={(price / 100).toFixed(2)}
+              className="w-28 bg-background"
               onChange={(event) => setPrice(Math.max(0, Math.round(Number(event.target.value) * 100)))}
-              className="w-28 rounded-xl border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             />
           </div>
-        </div>
+        </Field>
         <Button onClick={() => void handleSave()} loading={save.isPending} disabled={!changed} data-testid="listing-save">
           Save listing
         </Button>
@@ -403,43 +401,37 @@ export function ListingStudio({ bookId }: { bookId: string }) {
         </p>
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <div>
-            <label htmlFor="listing-destination" className="text-sm font-semibold">
-              Destination
-            </label>
-            <select
+          <Field label="Destination" htmlFor="listing-destination">
+            <Select
               id="listing-destination"
               data-testid="listing-destination"
               value={destination}
+              className="bg-background"
               onChange={(event) => setDestination(event.target.value as DistributionDestination)}
-              className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             >
               {DESTINATIONS.map((value) => (
                 <option key={value} value={value}>
                   {DEST_LABELS[value]}
                 </option>
               ))}
-            </select>
-          </div>
+            </Select>
+          </Field>
 
-          <div>
-            <label htmlFor="listing-new-price" className="text-sm font-semibold">
-              Price
-            </label>
-            <div className="mt-1 flex items-center gap-2">
+          <Field label="Price" htmlFor="listing-new-price">
+            <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">$</span>
-              <input
+              <Input
                 id="listing-new-price"
                 data-testid="listing-new-price"
                 type="number"
                 min={0}
                 step="0.01"
                 value={(price / 100).toFixed(2)}
+                className="w-28 bg-background"
                 onChange={(event) => setPrice(Math.max(0, Math.round(Number(event.target.value) * 100)))}
-                className="w-28 rounded-xl border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               />
             </div>
-          </div>
+          </Field>
         </div>
 
         {profile ? (

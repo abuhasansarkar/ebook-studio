@@ -15,6 +15,7 @@ import {
 import {
   assembleSample,
   composeGraphic,
+  graphicForDownload,
   listSamples,
   sampleForDownload,
 } from "../services/marketing/marketingAssets.js";
@@ -101,6 +102,23 @@ marketingRouter.get("/marketing/graphics/:graphicId", async (req, res) => {
   const graphic = await getGraphic(id, String(req.params.graphicId));
   if (!graphic) throw notFound("Graphic");
   res.json({ graphic });
+});
+
+/**
+ * Downloads the rendered promotional graphic.
+ *
+ * The lookup is scoped to the owner, so one author cannot download another's
+ * graphic. The image is served inline so the gallery can show it, and the
+ * filename lets the author save a copy.
+ */
+marketingRouter.get("/marketing/graphics/:graphicId/download", async (req, res) => {
+  const id = userId(req);
+  const file = await graphicForDownload(id, String(req.params.graphicId));
+  res.setHeader("Content-Type", file.contentType);
+  res.setHeader("Content-Length", String(file.size));
+  res.setHeader("Content-Disposition", `attachment; filename="${file.filename}"`);
+  res.setHeader("Cache-Control", "private, max-age=0, must-revalidate");
+  file.stream.pipe(res);
 });
 
 /**

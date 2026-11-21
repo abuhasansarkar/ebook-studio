@@ -38,11 +38,25 @@ async function shot(page: Page, name: string) {
 }
 
 async function waitText(page: Page, text: string, timeout = 30_000) {
-  await page.waitForFunction(
-    (t) => document.body.innerText.replace(/\s+/g, " ").includes(t),
-    { timeout },
-    text.replace(/\s+/g, " "),
-  );
+  const needle = text.replace(/\s+/g, " ");
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    try {
+      await page.waitForFunction(
+        (t) => document.body.innerText.replace(/\s+/g, " ").includes(t),
+        { timeout: Math.min(5_000, deadline - Date.now()) },
+        needle,
+      );
+      return;
+    } catch (err) {
+      // A route change or a reload destroys the execution context the wait ran
+      // in. The text is still what the page must show, so the wait is retried
+      // against the new context instead of failing the journey.
+      const message = (err as Error).message;
+      if (!/Waiting failed|Execution context was destroyed|detached/i.test(message)) throw err;
+    }
+  }
+  throw new Error(`Timed out after ${timeout}ms waiting for text: ${needle}`);
 }
 
 async function clickButton(page: Page, text: string) {
@@ -75,6 +89,9 @@ async function getOtp(to: string): Promise<string> {
  */
 async function grantSupportRole(target: string): Promise<boolean> {
   const container = process.env.PG_CONTAINER ?? "ebook-studio-postgres-1";
+  // The grant has to land in the database the journey's API reads. The e2e
+  // stack uses its own database, and the development stack uses another one.
+  const database = process.env.E2E_PG_DB ?? "ebook_studio";
   const script = `
     INSERT INTO admin_roles (id, "userId", role, reason, "grantedAt")
     SELECT 'e2e-role-' || substr(md5(random()::text), 1, 12), u.id, 'support',
@@ -86,7 +103,7 @@ async function grantSupportRole(target: string): Promise<boolean> {
   const file = path.join(SHOTS, "grant-role.sql");
   writeFileSync(file, script, "utf8");
   await execFileAsync("docker", ["cp", file, `${container}:/tmp/grant-role.sql`]);
-  await execFileAsync("docker", ["exec", container, "psql", "-U", "ebook", "-d", "ebook_studio_e2e", "-f", "/tmp/grant-role.sql"]);
+  await execFileAsync("docker", ["exec", container, "psql", "-U", "ebook", "-d", database, "-f", "/tmp/grant-role.sql"]);
   return true;
 }
 
@@ -139,7 +156,9 @@ try {
   await clickButton(page, "Approve outline");
   await page.waitForFunction(() => location.pathname.endsWith("/generate"), { timeout: 30_000 });
   await clickButton(page, "Write my book");
-  await waitText(page, "Your book is written", 180_000);
+  // Writing eight chapters runs one provider request per section, so the book
+  // needs several minutes before the whole run is committed.
+  await waitText(page, "Your book is written", 600_000);
   log(`the book ${bookId} was created, the outline approved and the chapters written`);
 
   // ---- The marketing studio ----------------------------------------------
@@ -192,6 +211,39 @@ try {
   await shot(page, "marketing-graphic");
   log("a promotional graphic was composed and listed as a downloadable asset");
 
+  // The graphic is a file the author takes away, so it must be visible and
+  // downloadable rather than a row of text.
+  await page.waitForSelector('[data-testid="marketing-graphic"] img', { timeout: 30_000 });
+  const graphicShown = await page.evaluate(() => {
+    const img = document.querySelector('[data-testid="marketing-graphic"] img') as HTMLImageElement | null;
+    return !!img && img.naturalWidth > 0;
+  });
+  if (!graphicShown) throw new Error("The promotional graphic image was not rendered");
+  log("the promotional graphic shows the image it composed");
+
+  // Opening the graphic shows the whole copy and the colours that were used.
+  await clickButton(page, "Details");
+  await waitText(page, "Promotional graphic", 30_000);
+  await waitText(page, "Call to action", 30_000);
+  await page.waitForSelector('[data-testid="graphic-detail-download"]', { timeout: 30_000 });
+  await shot(page, "marketing-graphic-detail");
+  log("the graphic detail shows the full copy and offers the image");
+
+  const graphicDownload = await page.evaluate(async () => {
+    const href = document.querySelector('[data-testid="graphic-detail-download"]')?.getAttribute("href");
+    if (!href) return { ok: false, reason: "no download link", size: 0 };
+    const file = await fetch(href, { credentials: "include" });
+    const blob = await file.blob();
+    return { ok: file.ok && file.headers.get("content-type") === "image/png", reason: `${file.status} ${file.headers.get("content-type")}`, size: blob.size };
+  });
+  if (!graphicDownload.ok) throw new Error(`The graphic image could not be downloaded: ${graphicDownload.reason}`);
+  if (graphicDownload.size < 100) throw new Error("The downloaded graphic image was empty");
+  log("the promotional graphic downloads as a PNG the author can use");
+
+  // The dialog is modal, so it is closed before the sample step continues.
+  await page.click('dialog[open] button[aria-label="Close"]');
+  await page.waitForFunction(() => !document.querySelector("dialog[open]"), { timeout: 10_000 });
+
   // A sample chapter pack. The author chooses the chapters; the product
   // assembles a file and never sends it anywhere.
   await page.waitForSelector('[data-testid="sample-studio"]', { timeout: 30_000 });
@@ -221,6 +273,27 @@ try {
   await waitText(page, "No packages yet");
   await shot(page, "distribution");
   log("the distribution screen opened and said the product never publishes on the author's behalf");
+
+  // The store's listing form asks for more than a title and an author. The
+  // package's metadata file must carry what the author types here.
+  await clickButton(page, "Add store listing details");
+  await page.waitForSelector("#metadata-description", { timeout: 30_000 });
+  await page.type("#metadata-description", "A practical guide to storing food safely at home.");
+  await page.type("#metadata-isbn", "9781234567897");
+  await page.type("#metadata-publisher", "eBookStudio Press");
+  await page.type("#metadata-keywords", "food safety, storage");
+  await shot(page, "distribution-store-details");
+  const storeFields = await page.evaluate(() => ({
+    description: (document.querySelector("#metadata-description") as HTMLTextAreaElement | null)?.value ?? "",
+    isbn: (document.querySelector("#metadata-isbn") as HTMLInputElement | null)?.value ?? "",
+    publisher: (document.querySelector("#metadata-publisher") as HTMLInputElement | null)?.value ?? "",
+    keywords: (document.querySelector("#metadata-keywords") as HTMLInputElement | null)?.value ?? "",
+  }));
+  if (!storeFields.description.includes("storing food safely")) throw new Error("The store description was not held");
+  if (storeFields.isbn !== "9781234567897") throw new Error("The ISBN was not held");
+  if (storeFields.publisher !== "eBookStudio Press") throw new Error("The publisher was not held");
+  if (storeFields.keywords !== "food safety, storage") throw new Error("The keywords were not held");
+  log("the distribution form accepts the store's listing details");
 
   // A package without a matching export must be refused, not assembled.
   const noExports = await page.evaluate(() => {

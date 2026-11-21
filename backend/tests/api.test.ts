@@ -145,6 +145,65 @@ describe("book pipeline", () => {
     expect(await creditService.getWallet(user.id)).toMatchObject({ balance: FREE_SIGNUP_CREDITS - CREDIT_COSTS.outline, reserved: 0 });
   });
 
+  it("keeps one section when two workers write the same section at once", async () => {
+    const { agent } = await createUser("race");
+    const bookId = await bookWithOutline(agent);
+    await agent.post(`/api/v1/books/${bookId}/outline/approve`).set("Origin", ORIGIN).send({ version: 1 }).expect(200);
+    const start = await agent.post(`/api/v1/books/${bookId}/generate`).set("Origin", ORIGIN).expect(202);
+    const jobId = start.body.job.id;
+    const chapter = await prisma.chapter.findFirstOrThrow({ where: { bookId } });
+
+    // The job lease can lapse while a provider call is in flight, so a second
+    // worker picks the job up and writes the same section. Both writes must
+    // resolve to one stored section instead of failing the run.
+    const key = { jobId, chapterId: chapter.id, kind: "section", position: 0 };
+    const insert = (text: string) =>
+      prisma.$executeRaw`
+        INSERT INTO generation_sections ("id", "jobId", "chapterId", "kind", "position", "text", "inputTokens", "outputTokens", "model", "createdAt")
+        VALUES (${crypto.randomUUID()}, ${key.jobId}, ${key.chapterId}, ${key.kind}, ${key.position}, ${text}, 0, 0, 'mock', NOW())
+        ON CONFLICT ("jobId", "chapterId", "kind", "position") DO NOTHING
+      `;
+    const results = await Promise.allSettled([insert("first"), insert("second"), insert("third")]);
+    expect(results.every((r) => r.status === "fulfilled")).toBe(true);
+    const stored = await prisma.generationSection.findMany({ where: { jobId, chapterId: chapter.id, kind: "section", position: 0 } });
+    expect(stored).toHaveLength(1);
+  });
+
+  it("reuses the sections a failed run saved and only charges for new prose", async () => {
+    const { agent, user } = await createUser("resume");
+    const bookId = await bookWithOutline(agent);
+    await agent.post(`/api/v1/books/${bookId}/outline/approve`).set("Origin", ORIGIN).send({ version: 1 }).expect(200);
+    const first = await agent.post(`/api/v1/books/${bookId}/generate`).set("Origin", ORIGIN).expect(202);
+    const failedJobId = first.body.job.id;
+    const chapter = await prisma.chapter.findFirstOrThrow({ where: { bookId, position: 0 } });
+
+    // The run stops after the first section of the first chapter was written.
+    await prisma.generationSection.create({ data: { jobId: failedJobId, chapterId: chapter.id, kind: "section", position: 0, text: "Written before the failure", model: "mock" } });
+    await prisma.generationJob.update({ where: { id: failedJobId }, data: { status: "failed", error: "provider connection lost" } });
+    // The failed run releases its reservation the same way the worker does.
+    await creditService.settle(user.id, 3 * chapterCredits(800), 0, `job:${failedJobId}`);
+
+    const retry = await agent.post(`/api/v1/books/${bookId}/generate`).set("Origin", ORIGIN).expect(202);
+    const retryJobId = retry.body.job.id;
+    const inherited = await prisma.generationSection.findFirst({ where: { jobId: retryJobId, chapterId: chapter.id, kind: "section", position: 0 } });
+    expect(inherited?.text).toBe("Written before the failure");
+
+    // Only the sections this run has to write are reserved.
+    const retryJob = await prisma.generationJob.findUniqueOrThrow({ where: { id: retryJobId } });
+    expect(retryJob.creditsReserved).toBeLessThan(3 * chapterCredits(800));
+
+    await generationService.process(retryJobId);
+    const after = await prisma.chapter.findUniqueOrThrow({ where: { id: chapter.id } });
+    expect(after.status).toBe("done");
+    expect(after.contentJson).toBeTruthy();
+    // The reused section was charged once, when it was first written.
+    const wallet = await creditService.getWallet(user.id);
+    expect(wallet.reserved).toBe(0);
+    // The retry billed only the prose it had to write.
+    const retryJobAfter = await prisma.generationJob.findUniqueOrThrow({ where: { id: retryJobId } });
+    expect(retryJobAfter.creditsCharged).toBeLessThan(3 * chapterCredits(800));
+  });
+
   it("returns 402 and leaves no job behind when credits are insufficient", async () => {
     const { agent, user } = await createUser("broke");
     const bookId = await bookWithOutline(agent, { chapterCount: 20, wordsPerChapter: 5000 });

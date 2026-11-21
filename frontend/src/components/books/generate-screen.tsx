@@ -1,8 +1,9 @@
 "use client";
 
 import { OperationActivity } from "./operation-activity";
+import { GenerationJobDetail } from "./generation-job-detail";
 import Link from "next/link";
-import { use, useEffect, useRef } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { AlertTriangle, CheckCircle2, Circle, FileDown, ListTree, PenLine, Square, Wand2 } from "lucide-react";
@@ -36,6 +37,7 @@ export function GenerateScreen({ params }: { params: Promise<{ bookId: string }>
   const credits = useCredits();
   const actions = useBookAction(bookId);
   const wasActive = useRef(false);
+  const [jobDetailId, setJobDetailId] = useState<string | null>(null);
 
   const job = book?.activeJob?.type === "chapters" ? book.activeJob : null;
 
@@ -107,14 +109,24 @@ export function GenerateScreen({ params }: { params: Promise<{ bookId: string }>
               <Square className="h-3.5 w-3.5" /> Stop
             </Button>
           </div>
-          <p className="mt-3 text-xs text-muted-foreground">Saved sections resume automatically after a worker interruption. Stopping or retrying after an error keeps finished chapters; a new run rewrites unfinished chapters.</p>
+          <p className="mt-3 text-xs text-muted-foreground">Saved sections resume automatically after a worker interruption. Stopping or retrying after an error keeps finished chapters, and a retry reuses the prose the failed run already wrote, so you are only charged for the chapters it still has to write.</p>
           <Progress className="mt-5" value={job.total ? (job.progress / job.total) * 100 : 0} />
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setJobDetailId(job.id)}>
+              Run details
+            </Button>
+          </div>
         </Card>
       ) : remaining.length > 0 ? (
         <Card className="mb-6 p-6">
           {lastFailed && (
             <Alert tone="danger" className="mb-4">
               Writing stopped: {lastFailed.error ?? "unknown error"}. Finished chapters are kept and you were only charged for them.
+              <div className="mt-3">
+                <Button variant="secondary" size="sm" onClick={() => setJobDetailId(lastFailed.id)}>
+                  See what happened
+                </Button>
+              </div>
             </Alert>
           )}
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -164,6 +176,7 @@ export function GenerateScreen({ params }: { params: Promise<{ bookId: string }>
         </ul>
       </Card>
       <OperationActivity bookId={bookId} />
+      {jobDetailId ? <GenerationJobDetail jobId={jobDetailId} onClose={() => setJobDetailId(null)} /> : null}
     </div>
   );
 }

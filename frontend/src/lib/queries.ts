@@ -19,6 +19,7 @@ export const qk = {
   billing: ["billing"] as const,
   config: ["config"] as const,
   operation: (id: string) => ["operation", id] as const,
+  generationJob: (id: string) => ["generation-job", id] as const,
 };
 
 /**
@@ -55,6 +56,22 @@ export function usePublicConfig() {
     queryKey: qk.config,
     queryFn: () => api.get<{ auth: { google: boolean } }>("/config"),
     staleTime: Infinity,
+  });
+}
+
+/**
+ * One generation job, by id.
+ *
+ * The book's own detail carries the active and last job, but a job keeps
+ * running after the page is closed, so its progress is read from the job
+ * record itself while it is being watched.
+ */
+export function useGenerationJob(jobId: string | null) {
+  const signedIn = useIsSignedIn();
+  return useQuery({
+    queryKey: qk.generationJob(jobId ?? "none"),
+    queryFn: () => api.get<{ job: GenerationJob }>(`/generation-jobs/${jobId}`).then((r) => r.job),
+    enabled: signedIn && Boolean(jobId),
   });
 }
 
