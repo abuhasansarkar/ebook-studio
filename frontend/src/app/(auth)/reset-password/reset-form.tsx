@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
-import { AuthHeader } from "@/components/auth/auth-ui";
+import { useRef, useState } from "react";
+import { AuthHeader, InboxHint, otpErrorMessage } from "@/components/auth/auth-ui";
 import { OtpInput } from "@/components/auth/otp-input";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Label } from "@/components/ui/form";
@@ -18,6 +18,7 @@ export function ResetPasswordForm() {
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const inFlight = useRef(false);
 
   return (
     <>
@@ -30,11 +31,17 @@ export function ResetPasswordForm() {
           if (otp.length !== 6) return setError("Enter the 6-digit code from your email.");
           if (password.length < 8) return setError("Your new password needs at least 8 characters.");
           if (password !== confirm) return setError("The passwords don't match.");
+          if (inFlight.current) return;
+          inFlight.current = true;
           setError(null);
           setLoading(true);
           const { error } = await authClient.emailOtp.resetPassword({ email: email.trim(), otp, password });
           setLoading(false);
-          if (error) return setError(error.message ?? "Could not reset your password");
+          inFlight.current = false;
+          if (error) {
+            if (error.code === "INVALID_OTP" || error.code === "OTP_EXPIRED" || error.code?.startsWith("TOO_MANY_ATTEMPTS")) setOtp("");
+            return setError(otpErrorMessage(error));
+          }
           router.replace("/login?reset=1");
         }}
       >
@@ -56,7 +63,8 @@ export function ResetPasswordForm() {
           Update password
         </Button>
       </form>
-      <Link href="/forgot-password" className="mt-6 block text-center text-sm font-semibold text-primary-hover hover:underline">
+      <InboxHint />
+      <Link href={`/forgot-password${email.trim() ? `?email=${encodeURIComponent(email.trim())}` : ""}`} className="mt-4 block text-center text-sm font-semibold text-primary-hover hover:underline">
         Send a new code
       </Link>
     </>

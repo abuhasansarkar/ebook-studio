@@ -22,6 +22,8 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { errorMessage } from "@/lib/api";
+import { downloadFile } from "@/lib/download";
+import { toast } from "sonner";
 import {
   useCreateMarketingDraft,
   useCreateMarketingGraphic,
@@ -329,6 +331,8 @@ function GraphicStudio({ bookId }: { bookId: string }) {
           {graphics.data.map((graphic: MarketingGraphic) => (
             <div key={graphic.id} className="overflow-hidden rounded-xl border border-border" data-testid="marketing-graphic">
               {graphic.ready ? (
+                // Private, cookie-authenticated media: the public optimizer cannot fetch it.
+                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={graphicUrl(graphic.id)}
                   alt={`Promotional graphic: ${graphic.headline}`}
@@ -387,6 +391,8 @@ function GraphicDetailDialog({ graphicId, onClose }: { graphicId: string | null;
       ) : graphic.data ? (
         <div className="space-y-4">
           {graphic.data.ready ? (
+            // Private, cookie-authenticated media: the public optimizer cannot fetch it.
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={graphicUrl(graphic.data.id)}
               alt={`Promotional graphic: ${graphic.data.headline}`}
@@ -605,14 +611,16 @@ function SampleStudio({ bookId }: { bookId: string }) {
                 </p>
               </div>
               {sample.ready ? (
-                <a
-                  href={`/api/v1/marketing/samples/${sample.id}/download`}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted"
+                <button
+                  type="button"
+                  data-href={`/api/v1/marketing/samples/${sample.id}/download`}
+                  onClick={() => downloadFile(`/api/v1/marketing/samples/${sample.id}/download`, `sample.${sample.format}`).catch((err) => toast.error(errorMessage(err)))}
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted"
                   data-testid="download-sample"
                 >
                   <Download className="h-3.5 w-3.5" />
                   Download
-                </a>
+                </button>
               ) : (
                 <Badge tone="warning">Not ready</Badge>
               )}

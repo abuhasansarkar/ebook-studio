@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { AuthHeader, safeNext } from "@/components/auth/auth-ui";
+import { AuthHeader, InboxHint, otpErrorMessage, safeNext } from "@/components/auth/auth-ui";
 import { OtpInput } from "@/components/auth/otp-input";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/misc";
@@ -20,6 +20,9 @@ export function VerifyEmailForm() {
   const [verifying, setVerifying] = useState(false);
   const [resending, setResending] = useState(false);
   const [cooldown, setCooldown] = useState(30);
+  // A ref, not state: auto-submit on the sixth digit and a press of Enter can
+  // land in the same tick, before a state update would be seen.
+  const inFlight = useRef(false);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -39,12 +42,16 @@ export function VerifyEmailForm() {
 
   const verify = async (code: string) => {
     if (code.length !== 6) return setError("Enter the 6-digit code from your email.");
+    if (inFlight.current) return;
+    inFlight.current = true;
     setError(null);
     setVerifying(true);
     const { error } = await authClient.emailOtp.verifyEmail({ email, otp: code });
     setVerifying(false);
+    inFlight.current = false;
     if (error) {
-      setError(error.message ?? "That code didn't work. Check it or request a new one.");
+      setError(otpErrorMessage(error));
+      setOtp("");
       return;
     }
     toast.success("Email verified — welcome to eBookStudio!");
@@ -85,7 +92,10 @@ export function VerifyEmailForm() {
             setResending(true);
             const { error } = await authClient.emailOtp.sendVerificationOtp({ email, type: "email-verification" });
             setResending(false);
-            if (error) return toast.error(error.message ?? "Could not resend the code");
+            if (error) {
+              if (error.status === 429) setCooldown(60);
+              return toast.error(otpErrorMessage(error));
+            }
             toast.success("A new code was requested. Use the latest code you receive.");
             setCooldown(30);
           }}
@@ -93,6 +103,7 @@ export function VerifyEmailForm() {
           {cooldown > 0 ? `Resend code in ${cooldown}s` : "Resend code"}
         </button>
       </p>
+      <InboxHint />
     </>
   );
 }

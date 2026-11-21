@@ -72,6 +72,8 @@ interface DocxContext {
   drawingCounter: number;
   /** Relationship id of the link mark currently being rendered. */
   pendingLinkId?: string;
+  /** Whether a table's header row repeats at the top of each page. */
+  repeatTableHeaders: boolean;
 }
 
 function addLink(ctx: DocxContext, href: string): string {
@@ -192,7 +194,7 @@ function renderTable(node: PMNode, ctx: DocxContext, design: RenderInput['design
       const headerProperty = header ? '<w:tcPr><w:shd w:val="clear" w:fill="f6f1ec"/></w:tcPr>' : '';
       return `<w:tc>${headerProperty}${content || '<w:p/>'}</w:tc>`;
     }).join('');
-    const headerRepeat = header ? '<w:trPr><w:tblHeader/></w:trPr>' : '';
+    const headerRepeat = header && ctx.repeatTableHeaders ? '<w:trPr><w:tblHeader/></w:trPr>' : '';
     return `<w:tr>${headerRepeat}${cells}</w:tr>`;
   }).join('');
   return `<w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/><w:tblW w:w="5000" w:type="pct"/>${borders}</w:tblPr>${body}</w:tbl><w:p/>`;
@@ -342,6 +344,7 @@ export function renderDocx(input: RenderInput, options: DocxExportOptions): Docx
     missing: [],
     linkCounter: { value: 0 },
     drawingCounter: 1,
+    repeatTableHeaders: options.repeatTableHeaders,
   };
 
   // Collect the images that the manuscript references so each is written once.

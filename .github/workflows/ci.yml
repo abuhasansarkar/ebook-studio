@@ -14,6 +14,8 @@ env:
   # A throwaway secret. CI runs against isolated services and never touches a
   # live provider, so this value only has to be unpredictable within the run.
   BETTER_AUTH_SECRET: ci-only-secret-not-used-in-production-0000000000
+  # Required by the API's schema; CI signs its own test webhooks with it.
+  PAYMENT_WEBHOOK_SECRET: ci-only-webhook-secret-not-used-in-production-00
 
 jobs:
   verify:
@@ -51,7 +53,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
@@ -99,7 +101,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
@@ -157,7 +159,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
@@ -187,6 +189,8 @@ jobs:
           QUEUE_NAMESPACE=ci-e2e \
           AI_MOCK=1 \
           BETTER_AUTH_SECRET="$BETTER_AUTH_SECRET" \
+          PAYMENT_WEBHOOK_SECRET="$PAYMENT_WEBHOOK_SECRET" \
+          PAYMENT_PROVIDER=local \
           APP_URL=http://localhost:3100 \
           BETTER_AUTH_URL=http://localhost:3100 \
           PORT=4100 \
@@ -198,6 +202,8 @@ jobs:
           QUEUE_NAMESPACE=ci-e2e \
           AI_MOCK=1 \
           BETTER_AUTH_SECRET="$BETTER_AUTH_SECRET" \
+          PAYMENT_WEBHOOK_SECRET="$PAYMENT_WEBHOOK_SECRET" \
+          PAYMENT_PROVIDER=local \
           APP_URL=http://localhost:3100 \
           BETTER_AUTH_URL=http://localhost:3100 \
           STORAGE_DIR="$GITHUB_WORKSPACE/backend/storage-e2e" \
@@ -235,13 +241,20 @@ jobs:
         env:
           BASE_URL: http://localhost:3100
           MAILPIT_URL: http://localhost:8025
+          # The journeys that need an operator role write it over TCP.
+          E2E_DATABASE_URL: postgresql://ebook:ebook@localhost:5432/ebook_studio_e2e
         run: |
           set -euo pipefail
           pnpm run e2e
+          pnpm run e2e:library
           pnpm run e2e:sources
           pnpm run e2e:citations
+          pnpm run e2e:billing
           pnpm run e2e:studio
           pnpm run e2e:listing
+          pnpm run e2e:support
+          pnpm run e2e:wiring
+          pnpm run e2e:brief-roles
 
       - name: Upload the run logs on failure
         if: failure()

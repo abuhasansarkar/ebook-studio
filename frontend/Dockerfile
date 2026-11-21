@@ -16,8 +16,10 @@ RUN pnpm --filter frontend build
 FROM node:24-bookworm-slim
 ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0 NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app
-COPY --from=build /app/frontend/.next/standalone ./
-COPY --from=build /app/frontend/.next/static ./frontend/.next/static
-COPY --from=build /app/frontend/public ./frontend/public
+COPY --from=build --chown=node:node /app/frontend/.next/standalone ./
+COPY --from=build --chown=node:node /app/frontend/.next/static ./frontend/.next/static
+COPY --from=build --chown=node:node /app/frontend/public ./frontend/public
+# Next.js only needs to write its own cache; it never needs root.
+USER node
 EXPOSE 3000
 CMD ["node", "frontend/server.js"]

@@ -146,6 +146,11 @@ async function grantSupportRole(target: string): Promise<boolean> {
   `;
   const file = path.join(SHOTS, "grant-role.sql");
   writeFileSync(file, script, "utf8");
+  // CI reaches its database service over TCP; locally the Docker container is used.
+  if (process.env.E2E_DATABASE_URL) {
+    await execFileAsync("psql", [process.env.E2E_DATABASE_URL, "-v", "ON_ERROR_STOP=1", "-f", file]);
+    return true;
+  }
   await execFileAsync("docker", ["cp", file, `${container}:/tmp/grant-role.sql`]);
   await execFileAsync("docker", ["exec", container, "psql", "-U", "ebook", "-d", database, "-f", "/tmp/grant-role.sql"]);
   return true;
@@ -311,9 +316,9 @@ try {
   await shot(page, "marketing-sample");
   // The file really downloads, and it is a PDF.
   const sampleBytes = await page.evaluate(async () => {
-    const link = document.querySelector('[data-testid="download-sample"]') as HTMLAnchorElement | null;
-    if (!link) return 0;
-    const res = await fetch(link.getAttribute("href") ?? "", { credentials: "include" });
+    const control = document.querySelector('[data-testid="download-sample"]') as HTMLElement | null;
+    if (!control) return 0;
+    const res = await fetch(control.getAttribute("data-href") ?? "", { credentials: "include" });
     const buffer = await res.arrayBuffer();
     return buffer.byteLength;
   });

@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 import {
+  COVER_HEIGHT,
+  COVER_WIDTH,
   EXPORT_CONTENT_TYPES,
   EXPORT_FORMAT_LABELS,
   exportOptionsSchema,
@@ -22,6 +24,7 @@ import { fontRegistry } from '../design/fonts.js';
 import { storage } from '../storage/storage.js';
 import { renderExport } from './renderers.js';
 import { contentHash } from './hash.js';
+import { coverService } from '../covers/coverService.js';
 import type { PinnedImage, PinnedImages } from './renderTypes.js';
 import { validateExport } from './validators.js';
 
@@ -105,6 +108,23 @@ async function assertRuntimeAvailable() {
   if (!available.size) throw conflict('This server has no book fonts installed, so it cannot produce an export. Ask the operator to install the approved fonts (pnpm --filter backend fonts:fetch).', { code: 'FONT_UNAVAILABLE' });
 }
 
+/**
+ * The cover an EPUB carries: the composed cover from the cover studio (the
+ * artwork with the title, subtitle and author set on it), rendered from the
+ * version saved when the export was requested. The bare artwork is only a
+ * fallback when the composition cannot be rendered, and that is logged.
+ */
+async function composedCover(userId: string, bookId: string, snapshot: ExportSnapshot | null, doc: BookDocument, artwork: PinnedImage | null): Promise<PinnedImage | null> {
+  if (snapshot?.coverVersion == null) return artwork;
+  try {
+    const bytes = await coverService.render(userId, bookId, snapshot.coverVersion);
+    return { assetId: 'composed-cover', bytes, mediaType: 'image/jpeg', width: COVER_WIDTH, height: COVER_HEIGHT, alt: `Cover of ${doc.book.title}`, caption: '' };
+  } catch (err) {
+    logger.warn({ err, bookId }, 'Composed cover could not be rendered; using the artwork alone');
+    return artwork;
+  }
+}
+
 const SNAPSHOT_UNAVAILABLE = 'A chapter was changed or removed after this export was requested, and the text it was requested with is no longer available. Request the export again.';
 
 /**
@@ -168,6 +188,7 @@ export const exportService = {
     const doc = await buildBookDocument(userId, bookId, design);
     const assetIds = referencedAssetIds(doc);
     const coverAssetId = await findCoverAsset(userId, bookId);
+    const coverDesign = await prisma.coverDesign.findFirst({ where: { bookId }, orderBy: { version: 'desc' }, select: { version: true } });
 
     // The asset references are pinned so the images cannot be deleted while the export runs.
     await prisma.$transaction(async (tx) => {
@@ -193,6 +214,7 @@ export const exportService = {
       contentHash: contentHash(doc.chapters.map((c) => ({ id: c.id, version: c.version, content: c.content }))),
       assets,
       coverAssetId,
+      coverVersion: coverDesign?.version ?? null,
       requestedAt: new Date().toISOString(),
     };
 
@@ -267,11 +289,13 @@ export const exportService = {
       const options = snapshot?.options ?? parseExportOptions(format, undefined);
 
       // The pinned image bytes are read from storage so the file carries exactly the verified bytes.
-      const { images, cover } = await loadPinnedImages(
+      const { images, cover: artworkCover } = await loadPinnedImages(
         exp.userId,
         snapshot?.assets.map((a) => a.assetId) ?? referencedAssetIds(doc),
         snapshot?.coverAssetId ?? null,
       );
+
+      const cover = format === 'epub' ? await composedCover(exp.userId, exp.bookId, snapshot, doc, artworkCover) : artworkCover;
 
       const rendered = await renderExport(
         { doc, design: design.data, images, cover, availableFonts: await fontRegistry.available(), rtl: doc.book.dir === 'rtl' },

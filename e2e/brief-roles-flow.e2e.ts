@@ -71,6 +71,11 @@ async function makeAdministrator(target: string) {
   `;
   const file = path.join(SHOTS, "make-admin.sql");
   writeFileSync(file, script, "utf8");
+  // CI reaches its database service over TCP; locally the Docker container is used.
+  if (process.env.E2E_DATABASE_URL) {
+    await execFileAsync("psql", [process.env.E2E_DATABASE_URL, "-v", "ON_ERROR_STOP=1", "-f", file]);
+    return;
+  }
   await execFileAsync("docker", ["cp", file, `${PG_CONTAINER}:/tmp/make-admin.sql`]);
   await execFileAsync("docker", ["exec", PG_CONTAINER, "psql", "-U", "ebook", "-d", DATABASE, "-v", "ON_ERROR_STOP=1", "-f", "/tmp/make-admin.sql"]);
 }

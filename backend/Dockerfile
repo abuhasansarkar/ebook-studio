@@ -25,6 +25,10 @@ RUN node backend/scripts/fetch-fonts.mjs
 RUN pnpm --filter backend build
 
 WORKDIR /app/backend
-RUN mkdir -p storage
+RUN mkdir -p storage backups && chown node:node storage backups
+COPY --chmod=755 backend/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+# The process runs as `node`, not root; the entrypoint fixes volume ownership
+# and drops privileges before starting the command.
+ENTRYPOINT ["docker-entrypoint.sh"]
 EXPOSE 4000
 CMD ["node", "dist/server.js"]

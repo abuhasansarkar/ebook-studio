@@ -65,3 +65,29 @@ export function safeNext(next: string | null): string {
     return fallback;
   }
 }
+
+/** A readable message for an email-code failure, by Better Auth's error code. */
+export function otpErrorMessage(error: { code?: string; status?: number; message?: string } | null | undefined): string {
+  if (!error) return "Something went wrong. Please try again.";
+  if (error.status === 429) return "Too many attempts in a short time. Wait a minute, then try again.";
+  switch (error.code) {
+    case "INVALID_OTP":
+      return "That code isn't right. Check the most recent email and try again.";
+    case "OTP_EXPIRED":
+      return "That code has expired. Request a new one below.";
+    case "TOO_MANY_ATTEMPTS":
+    case "TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE":
+      return "That code was tried too many times. Request a new one below.";
+    default:
+      return error.message ?? "That code didn't work. Check it or request a new one.";
+  }
+}
+
+/** Where to look when the email doesn't arrive. */
+export function InboxHint() {
+  return (
+    <p className="mt-3 text-center text-xs text-muted-foreground">
+      Not in your inbox? Check Spam, Junk or Promotions. Codes can take a minute to arrive.
+    </p>
+  );
+}

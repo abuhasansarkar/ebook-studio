@@ -247,7 +247,8 @@ export function renderEpub(input: RenderInput, options: EpubExportOptions): Epub
   const sections: EpubSection[] = [];
   const m = input.design.matter;
   const cover = options.includeCover ? input.cover : null;
-  const coverFile = 'images/cover.webp';
+  // The extension follows the image: the composed cover is a JPEG, uploaded artwork is WebP.
+  const coverFile = cover?.mediaType === 'image/jpeg' ? 'images/cover.jpg' : 'images/cover.webp';
 
   if (options.includeMatter) {
     if (m.titlePage) {

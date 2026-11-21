@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { AuthHeader } from "@/components/auth/auth-ui";
+import { useEffect, useState } from "react";
+import { AuthHeader, otpErrorMessage } from "@/components/auth/auth-ui";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/form";
 import { Alert } from "@/components/ui/misc";
@@ -15,9 +15,15 @@ export default function ForgotPasswordPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // "Send a new code" from the reset page carries the address, so it isn't typed twice.
+  useEffect(() => {
+    const known = new URLSearchParams(window.location.search).get("email");
+    if (known) queueMicrotask(() => setEmail((current) => current || known));
+  }, []);
+
   return (
     <>
-      <AuthHeader title="Reset your password" subtitle="Enter your account email and we'll send you a 6-digit code." />
+      <AuthHeader title="Reset your password" subtitle="Enter your account email. If an account uses it, we'll email a 6-digit code." />
       <form
         className="space-y-4"
         noValidate
@@ -28,7 +34,7 @@ export default function ForgotPasswordPage() {
           setLoading(true);
           const { error } = await authClient.emailOtp.requestPasswordReset({ email: email.trim() });
           setLoading(false);
-          if (error) return setError(error.message ?? "Could not send the reset code");
+          if (error) return setError(otpErrorMessage(error));
           router.push(`/reset-password?email=${encodeURIComponent(email.trim())}`);
         }}
       >

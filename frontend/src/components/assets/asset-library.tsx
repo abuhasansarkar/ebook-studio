@@ -44,6 +44,7 @@ function AssetCard({
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [previewFailed, setPreviewFailed] = useState(false);
 
   const save = async () => {
     setBusy(true);
@@ -78,8 +79,18 @@ function AssetCard({
     <Card className="flex flex-col overflow-hidden">
       <div className="relative flex h-44 items-center justify-center bg-muted">
         {/* Authenticated private images must bypass the public image optimizer. */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={imageUrl(asset.id)} alt={alt} loading="lazy" className="h-full w-full object-contain" />
+        {previewFailed ? (
+          <div className="flex flex-col items-center gap-1 text-xs text-muted-foreground" role="img" aria-label={alt || "Image preview unavailable"}>
+            <ImageOff className="h-6 w-6" aria-hidden />
+            Preview unavailable
+            <button type="button" className="cursor-pointer font-medium text-primary hover:underline" onClick={() => setPreviewFailed(false)}>
+              Try again
+            </button>
+          </div>
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={imageUrl(asset.id)} alt={alt} loading="lazy" className="h-full w-full object-contain" onError={() => setPreviewFailed(true)} />
+        )}
         {asset._count.references > 0 && (
           <span className="absolute end-2 top-2">
             <Badge tone="neutral" className="bg-white/90">

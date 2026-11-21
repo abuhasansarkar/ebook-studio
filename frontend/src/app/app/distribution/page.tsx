@@ -16,6 +16,8 @@ import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader, Section } from 
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { errorMessage } from "@/lib/api";
+import { downloadFile } from "@/lib/download";
+import { toast } from "sonner";
 import { useExports } from "@/lib/queries";
 import {
   useDestinations,
@@ -73,12 +75,15 @@ function PackageCard({ pkg }: { pkg: DistributionPackage }) {
             {pkg.status}
           </Badge>
           {pkg.status === "ready" && (
-            <a href={`/api/v1/distribution/packages/${pkg.id}/download`} download>
-              <Button size="sm" data-testid="download-package">
-                <Download className="h-4 w-4" />
-                Download ZIP
-              </Button>
-            </a>
+            <Button
+              size="sm"
+              data-testid="download-package"
+              data-href={`/api/v1/distribution/packages/${pkg.id}/download`}
+              onClick={() => downloadFile(`/api/v1/distribution/packages/${pkg.id}/download`, "package.zip").catch((err) => toast.error(errorMessage(err)))}
+            >
+              <Download className="h-4 w-4" />
+              Download ZIP
+            </Button>
           )}
         </div>
       </div>

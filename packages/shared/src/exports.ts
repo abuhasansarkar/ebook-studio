@@ -105,6 +105,8 @@ export interface ExportSnapshot {
   assets: { assetId: string; sha256: string; bytes: number }[];
   /** Cover asset id, when the book has a cover. */
   coverAssetId: string | null;
+  /** The saved cover design version at request time; the composed cover (artwork plus title and author) is rendered from it. */
+  coverVersion?: number | null;
   requestedAt: string;
 }
 
