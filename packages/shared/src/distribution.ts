@@ -214,6 +214,8 @@ export interface DistributionPackage {
   metadata: DistributionMetadata;
   /** The chapter versions captured when the package was made. */
   chapterVersions: { id: string; version: number }[];
+  /** The manuscript has changed since the package was made. */
+  stale?: boolean;
   /** The storage key of the ZIP, once it is stored. */
   storageKey?: string;
   /** The reason the package failed, when it did. */

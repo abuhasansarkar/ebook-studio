@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { CheckCircle2, Copy, FileText, GripVertical, Lock, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, CheckCircle2, Copy, FileText, GripVertical, Lock, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 import { CREDIT_COSTS, chapterCredits, getLanguage, outlineSchema, type Outline } from "@ebook/shared";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -49,7 +49,7 @@ function toOutline(e: { title: string; subtitle: string; chapters: EditableChapt
   };
 }
 
-function SortableChapter({ ch, index, dir, onChange, onRemove, onDuplicate, canRemove }: { ch: EditableChapter; index: number; dir: string; onChange: (c: EditableChapter) => void; onRemove: () => void; onDuplicate: () => void; canRemove: boolean }) {
+function SortableChapter({ ch, index, count, dir, onChange, onRemove, onDuplicate, onMove, canRemove }: { ch: EditableChapter; index: number; count: number; dir: string; onChange: (c: EditableChapter) => void; onRemove: () => void; onDuplicate: () => void; onMove: (delta: -1 | 1) => void; canRemove: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: ch.key });
   return (
     <li ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={isDragging ? "relative z-10 opacity-80" : ""}>
@@ -77,7 +77,14 @@ function SortableChapter({ ch, index, dir, onChange, onRemove, onDuplicate, canR
                 {![500, 800, 1000, 1500, 2000, 2500, 3000, 4000].includes(ch.targetWords) && <option value={ch.targetWords}>{ch.targetWords}</option>}
               </Select>
             </label>
-            <div className="flex gap-1">
+            <div className="flex flex-wrap gap-1">
+              {/* Buttons as well as dragging, for touch screens and keyboard users. */}
+              <Button variant="ghost" size="sm" onClick={() => onMove(-1)} disabled={index === 0} aria-label={`Move chapter ${index + 1} up`} title="Move up">
+                <ArrowUp className="h-3.5 w-3.5" />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => onMove(1)} disabled={index === count - 1} aria-label={`Move chapter ${index + 1} down`} title="Move down">
+                <ArrowDown className="h-3.5 w-3.5" />
+              </Button>
               <Button variant="ghost" size="sm" onClick={onDuplicate} aria-label={`Duplicate chapter ${index + 1}`}>
                 <Copy className="h-3.5 w-3.5" /> Duplicate
               </Button>
@@ -277,7 +284,9 @@ export function OutlineScreen({ params }: { params: Promise<{ bookId: string }> 
                   key={ch.key}
                   ch={ch}
                   index={i}
+                  count={draft.chapters.length}
                   dir={lang.dir}
+                  onMove={(delta) => update((d) => ({ ...d, chapters: arrayMove(d.chapters, i, i + delta) }))}
                   canRemove={draft.chapters.length > 1}
                   onChange={(c) => update((d) => ({ ...d, chapters: d.chapters.map((x) => (x.key === c.key ? c : x)) }))}
                   onRemove={() => update((d) => ({ ...d, chapters: d.chapters.filter((x) => x.key !== ch.key) }))}

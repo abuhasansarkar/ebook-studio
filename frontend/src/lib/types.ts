@@ -89,6 +89,10 @@ export interface ExportRecord {
   diagnostics: { notes: string[]; glyphs: { role: string; count: number; characters: { char: string; codepoint: string }[] }[]; foreignFonts: string[]; overflow: string[]; type3Fonts: string[] } | null;
   /** Result of validating the file that was read back from storage. */
   validation: ExportValidation | null;
+  /** What the file was made from, as captured when it was requested. */
+  summary: { title: string; author: string; chapters: number; hasCover: boolean; requestedAt: string } | null;
+  /** The manuscript has changed since this file was made. */
+  stale: boolean;
   createdAt: string;
   finishedAt: string | null;
 }

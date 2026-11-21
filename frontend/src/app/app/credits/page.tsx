@@ -6,7 +6,9 @@ import { Coins } from "lucide-react";
 import { CREDIT_COSTS } from "@ebook/shared";
 import { PageHeader } from "@/components/app/app-shell";
 import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader, Section } from "@/components/ui/misc";
-import { errorMessage } from "@/lib/api";
+import { api, errorMessage } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import type { CreditTransaction } from "@/lib/types";
 import { useCredits } from "@/lib/queries";
 import { formatNumber, timeAgo } from "@/lib/utils";
 
@@ -64,6 +66,24 @@ function CheckoutReturnNotice({ balance, refetch }: { balance: number | undefine
 
 export default function CreditsPage() {
   const { data, isPending, error, refetch } = useCredits();
+  // Older pages are appended below the first page the credits query returns.
+  const [older, setOlder] = useState<{ transactions: CreditTransaction[]; nextCursor: string | null } | null>(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [olderError, setOlderError] = useState("");
+  const nextCursor = older ? older.nextCursor : data?.nextCursor ?? null;
+  const loadOlder = async () => {
+    if (!nextCursor) return;
+    setLoadingOlder(true);
+    setOlderError("");
+    try {
+      const page = await api.get<{ transactions: CreditTransaction[]; nextCursor: string | null }>(`/credits/transactions?cursor=${encodeURIComponent(nextCursor)}`);
+      setOlder((prev) => ({ transactions: [...(prev?.transactions ?? []), ...page.transactions], nextCursor: page.nextCursor }));
+    } catch (err) {
+      setOlderError(errorMessage(err));
+    } finally {
+      setLoadingOlder(false);
+    }
+  };
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-8">
       <PageHeader title="Credits" description="Credits pay for AI work. You're only charged for what's actually generated." />
@@ -105,7 +125,7 @@ export default function CreditsPage() {
               <EmptyState icon={<Coins className="h-6 w-6" />} title="No activity yet" description="Credit usage will appear here." />
             ) : (
               <Card className="divide-y divide-border">
-                {data.transactions.map((t) => (
+                {[...data.transactions, ...(older?.transactions ?? [])].map((t) => (
                   <div key={t.id} className="flex items-center justify-between gap-4 px-5 py-3.5">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">{t.description ?? TYPE_LABEL[t.type]}</p>
@@ -121,6 +141,14 @@ export default function CreditsPage() {
                   </div>
                 ))}
               </Card>
+            )}
+            {olderError && <p role="alert" className="mt-3 text-sm text-danger">{olderError}</p>}
+            {nextCursor && (
+              <div className="mt-4 flex justify-center">
+                <Button variant="secondary" loading={loadingOlder} onClick={() => void loadOlder()}>
+                  Show older activity
+                </Button>
+              </div>
             )}
           </Section>
         </>

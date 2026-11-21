@@ -104,6 +104,12 @@ export const updateChapterSchema = z.object({
   version: z.number().int().min(0),
 });
 
+/** A new chapter order: every chapter of the book, each exactly once. */
+export const chapterOrderSchema = z.object({
+  chapterIds: z.array(z.string().trim().min(1).max(64)).min(1).max(200),
+}).strict();
+export type ChapterOrderInput = z.infer<typeof chapterOrderSchema>;
+
 // ---------- AI assistant ----------
 export const ASSIST_ACTIONS = [
   "rewrite",

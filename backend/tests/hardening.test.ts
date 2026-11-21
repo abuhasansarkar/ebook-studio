@@ -137,3 +137,52 @@ describe("an operation that crashed does not block its retry forever", () => {
     expect(res.statusCode).toBe(201);
   });
 });
+
+describe("chapter reordering", () => {
+  it("puts chapters in a new order and refuses a list that does not name each chapter once", async () => {
+    const { prisma } = await import("../src/database/prisma.js");
+    const { agent } = await createUser("reorder");
+    const created = await agent.post("/api/v1/books").set("Origin", ORIGIN).send(brief());
+    const bookId = created.body.book.id as string;
+    // Wait for no job: the outline job may still be queued in the test runtime.
+    await prisma.generationJob.updateMany({ where: { bookId, status: { in: ["queued", "running"] } }, data: { status: "cancelled" } });
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const chapter = await prisma.chapter.create({ data: { bookId, position: i, title: `Chapter ${i + 1}`, status: "done", wordCount: 10 } });
+      ids.push(chapter.id);
+    }
+    const reversed = [...ids].reverse();
+    const res = await agent.put(`/api/v1/books/${bookId}/chapters/order`).set("Origin", ORIGIN).send({ chapterIds: reversed });
+    expect(res.status).toBe(200);
+    expect(res.body.chapters.map((c: { id: string }) => c.id)).toEqual(reversed);
+
+    // Missing one, duplicated one, or naming a stranger's chapter: all refused.
+    await agent.put(`/api/v1/books/${bookId}/chapters/order`).set("Origin", ORIGIN).send({ chapterIds: reversed.slice(1) }).expect(409);
+    await agent.put(`/api/v1/books/${bookId}/chapters/order`).set("Origin", ORIGIN).send({ chapterIds: [ids[0], ids[0], ids[1]] }).expect(409);
+    await agent.put(`/api/v1/books/${bookId}/chapters/order`).set("Origin", ORIGIN).send({ chapterIds: [ids[0], ids[1], "someone-elses"] }).expect(409);
+
+    // Another author cannot reorder this book.
+    const other = await createUser("reorder-other");
+    const foreign = await other.agent.put(`/api/v1/books/${bookId}/chapters/order`).set("Origin", ORIGIN).send({ chapterIds: ids });
+    expect([403, 404]).toContain(foreign.status);
+  });
+});
+
+describe("credit history pages", () => {
+  it("pages through the ledger without overlap and refuses another author's cursor", async () => {
+    const { creditService } = await import("../src/services/credits/creditService.js");
+    const { agent, user } = await createUser("history");
+    for (let i = 0; i < 55; i++) await creditService.grant(user.id, 1, `history-test:${user.id}:${i}`, `Test grant ${i}`);
+    const first = await agent.get("/api/v1/credits").expect(200);
+    expect(first.body.transactions).toHaveLength(50);
+    expect(first.body.nextCursor).toBeTruthy();
+    const second = await agent.get(`/api/v1/credits/transactions?cursor=${first.body.nextCursor}`).expect(200);
+    const ids = new Set(first.body.transactions.map((t: { id: string }) => t.id));
+    expect(second.body.transactions.length).toBeGreaterThan(0);
+    expect(second.body.transactions.some((t: { id: string }) => ids.has(t.id))).toBe(false);
+    expect(second.body.nextCursor).toBeNull();
+
+    const other = await createUser("history-other");
+    await other.agent.get(`/api/v1/credits/transactions?cursor=${first.body.nextCursor}`).expect(400);
+  });
+});

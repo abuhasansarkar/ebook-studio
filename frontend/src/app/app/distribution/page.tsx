@@ -67,8 +67,13 @@ function PackageCard({ pkg }: { pkg: DistributionPackage }) {
         <div>
           <h3 className="text-sm font-semibold">{DEST_LABELS[pkg.destination]}</h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            {pkg.status} · {formatNumber(Math.round(pkg.bytes / 1024))} KB · {timeAgo(pkg.createdAt)}
+            {pkg.status} · {formatNumber(Math.round(pkg.bytes / 1024))} KB · {timeAgo(pkg.createdAt)} · rules {pkg.rulesVersion}
           </p>
+          {pkg.stale && pkg.status === "ready" && (
+            <p className="mt-1 text-xs text-warning" data-testid="package-stale">
+              The manuscript changed after this package was made. Export the book again and prepare a new package for the latest text.
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Badge tone={pkg.status === "ready" ? "success" : pkg.status === "blocked" ? "danger" : "neutral"}>
@@ -384,6 +389,7 @@ export function Distribution({ bookId }: { bookId: string }) {
                     {item.fileSize ? `${formatNumber(Math.round(item.fileSize / 1024))} KB` : ""} ·{" "}
                     {timeAgo(item.createdAt)}
                   </span>
+                  {item.stale && <Badge tone="warning">Older text</Badge>}
                 </label>
               ))}
             </div>
@@ -394,6 +400,26 @@ export function Distribution({ bookId }: { bookId: string }) {
           <input type="checkbox" checked={includeCover} onChange={(event) => setIncludeCover(event.target.checked)} />
           Include the book&apos;s cover
         </label>
+
+        {selected.length > 0 && (
+          <div className="mt-4 rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm" data-testid="package-manifest">
+            <p className="font-medium">This package will contain</p>
+            <ul className="mt-1 list-disc space-y-0.5 ps-5 text-muted-foreground">
+              {readyExports
+                .filter((item) => selected.includes(item.id))
+                .map((item) => (
+                  <li key={item.id}>
+                    Your {formatLabel(item.format)} file from {timeAgo(item.createdAt)}
+                    {item.stale ? " (made before your latest edits)" : ""}
+                  </li>
+                ))}
+              {includeCover && <li>Your cover as a JPEG image, if the book has one</li>}
+              <li>metadata.json with the title, author and details above</li>
+              <li>README.txt with the upload checklist for {DEST_LABELS[destination]}</li>
+            </ul>
+            <p className="mt-2 text-xs text-muted-foreground">The destination&apos;s checks run when you prepare it; anything blocking is listed before a package is made.</p>
+          </div>
+        )}
 
         <Button
           className="mt-5"

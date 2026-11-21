@@ -205,6 +205,8 @@ try {
   await clickButton(page, "Approve outline");
   await page.waitForFunction(() => location.pathname.endsWith("/generate"), { timeout: 30_000 });
   await clickButton(page, "Write my book");
+  // Starting is confirmed in a dialog that shows the cost.
+  await clickButton(page, "credits and start");
   // Writing eight chapters runs one provider request per section, so the book
   // needs several minutes before the whole run is committed.
   await waitText(page, "Your book is written", 600_000);

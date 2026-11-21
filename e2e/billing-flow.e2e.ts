@@ -4,7 +4,7 @@
  * provider is not live → a forged browser callback is refused → start a checkout
  * → the checkout alone grants nothing → the provider's own payment page
  * confirms the payment → the credits and the entitlements appear → the
- * subscription can be cancelled and the capabilities go with it.
+ * subscription can be cancelled and runs to the end of its paid period.
  *
  *   BASE_URL=http://localhost:3100 MAILPIT_URL=http://localhost:8025 pnpm e2e:billing
  */
@@ -191,14 +191,19 @@ try {
   }
   log("the balance did not change when the page was reloaded, so the payment was not counted twice");
 
-  // The subscription can be cancelled, and the capabilities go with it.
+  // Cancelling asks for confirmation, then stops the renewal. The period is
+  // paid for, so the plan and its capabilities run until it ends.
   await waitText(page, "Cancel subscription");
   await clickButton(page, "Cancel subscription");
+  await waitText(page, "Cancel your subscription?");
+  const confirm = await page.waitForSelector('::-p-xpath(//dialog[@open]//button[normalize-space(.)="Cancel subscription"])');
+  await confirm!.click();
   await waitText(page, "Subscription cancelled", 30_000);
   await page.reload({ waitUntil: "networkidle0" });
-  await waitText(page, "No paid capabilities are unlocked yet", 30_000);
+  await waitText(page, "stay active until", 30_000);
+  await waitText(page, "What your plan unlocks", 30_000);
   await shot(page, "cancelled");
-  log("the subscription was cancelled and the paid capabilities were withdrawn");
+  log("the subscription was cancelled after confirmation and keeps its capabilities until the paid period ends");
 
   if (consoleErrors.length) {
     console.warn("\nBrowser console errors:\n" + consoleErrors.map((e) => `  - ${e}`).join("\n"));

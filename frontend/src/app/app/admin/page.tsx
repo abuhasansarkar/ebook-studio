@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Activity,
   Archive,
@@ -352,8 +352,11 @@ function UsersPanel() {
 }
 
 /** The job list, with retry and cancel. */
+const JOB_STATUSES = ["queued", "running", "completed", "failed", "cancelled"] as const;
+
 function JobsPanel() {
-  const jobs = useOpsJobs();
+  const [status, setStatus] = useState("");
+  const jobs = useOpsJobs(true, status || undefined);
   const intervene = useJobIntervention();
   const [problem, setProblem] = useState<string | null>(null);
   const [pending, setPending] = useState<{ jobId: string; action: "retry" | "cancel"; label: string } | null>(null);
@@ -371,6 +374,19 @@ function JobsPanel() {
   return (
     <div className="space-y-4">
       {problem && <Alert tone="danger">{problem}</Alert>}
+      <div className="flex flex-wrap items-end gap-3">
+        <Field label="Status" htmlFor="job-status-filter">
+          <Select id="job-status-filter" className="h-9 w-44 bg-background py-0" value={status} onChange={(event) => setStatus(event.target.value)}>
+            <option value="">All jobs</option>
+            {JOB_STATUSES.map((value) => (
+              <option key={value} value={value}>
+                {value.charAt(0).toUpperCase() + value.slice(1)}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <p className="pb-2 text-xs text-muted-foreground">Newest 100 shown.</p>
+      </div>
       <Card className="divide-y divide-border">
         {(jobs.data ?? []).map((job) => (
           <div key={job.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5">
@@ -381,6 +397,16 @@ function JobsPanel() {
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {job.status} · {job.progress}/{job.total} · reserved {job.creditsReserved}, charged {job.creditsCharged} ·{" "}
                 {timeAgo(job.createdAt)}
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Dispatched {job.dispatchAttempts} time{job.dispatchAttempts === 1 ? "" : "s"}
+                {job.cancelRequested ? " · cancel requested" : ""}
+                {job.status === "running" && job.leaseExpiresAt
+                  ? new Date(job.leaseExpiresAt).getTime() < jobs.dataUpdatedAt
+                    ? " · worker claim lapsed, it will be picked up again"
+                    : ` · claimed by a worker until ${new Date(job.leaseExpiresAt).toLocaleTimeString()}`
+                  : ""}
+                {job.finishedAt ? ` · finished ${timeAgo(job.finishedAt)}` : ""}
               </p>
               {job.error && <p className="mt-1 text-xs text-danger">{job.error}</p>}
             </div>
@@ -1098,20 +1124,19 @@ function BackupsPanel() {
  * offers no way for an operator to edit it.
  */
 function BooksPanel() {
-  const books = useOpsBooks();
   const [search, setSearch] = useState("");
+  const [query, setQuery] = useState("");
+  // The server is asked once typing pauses, so every book is searchable, not just the newest page.
+  useEffect(() => {
+    const timer = setTimeout(() => setQuery(search.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+  const books = useOpsBooks(true, query || undefined);
 
   if (books.isLoading) return <PageLoader />;
   if (books.error) return <ErrorState message={errorMessage(books.error)} onRetry={() => void books.refetch()} />;
 
-  const rows = books.data ?? [];
-  const needle = search.trim().toLowerCase();
-  const visible = needle
-    ? rows.filter(
-        (book) =>
-          book.title.toLowerCase().includes(needle) || book.ownerEmail.toLowerCase().includes(needle),
-      )
-    : rows;
+  const visible = books.data ?? [];
 
   return (
     <div className="space-y-4">
@@ -1139,7 +1164,7 @@ function BooksPanel() {
         ))}
         {visible.length === 0 && (
           <p className="px-5 py-6 text-center text-sm text-muted-foreground">
-            {rows.length === 0 ? "No books yet." : "No books match that search."}
+            {query ? "No books match that search." : "No books yet."}
           </p>
         )}
       </Card>

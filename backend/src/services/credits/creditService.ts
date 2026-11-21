@@ -96,7 +96,20 @@ export const creditService = {
   },
 
   async listTransactions(userId: string, take = 50) {
-    return prisma.creditTransaction.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take });
+    return (await this.pageTransactions(userId, take)).transactions;
+  },
+
+  /** One page of the ledger, newest first, continuing after `cursor` (a transaction id). */
+  async pageTransactions(userId: string, take = 50, cursor?: string) {
+    const rows = await prisma.creditTransaction.findMany({
+      where: { userId },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: take + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    });
+    // The cursor must be the caller's own row; another author's id finds nothing here.
+    const transactions = rows.slice(0, take);
+    return { transactions, nextCursor: rows.length > take ? transactions[transactions.length - 1].id : null };
   },
 
   async grant(userId: string, amount: number, idempotencyKey: string, description: string) {

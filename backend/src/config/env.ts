@@ -77,6 +77,9 @@ const envSchema = z.object({
   /** Lets a production build use the local test processor. Only for a private
    *  test stack: the local processor grants credits without taking payment. */
   ALLOW_LOCAL_PAYMENTS: bool,
+  /** Requests per minute per address across the whole API. Automated browser
+   *  test runs raise it; people never come close to the default. */
+  API_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(10).max(100_000).default(300),
 });
 
 type Env = z.infer<typeof envSchema>;

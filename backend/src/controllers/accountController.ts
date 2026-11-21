@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { LANGUAGES } from "@ebook/shared";
 import { z } from "zod";
+import { badRequest } from "../utils/errors.js";
 import { prisma } from "../database/prisma.js";
 import { userId } from "../middleware/requireAuth.js";
 import { authFeatures } from "../services/auth/auth.js";
@@ -24,8 +25,17 @@ export const accountController = {
 
   async credits(req: Request, res: Response) {
     const uid = userId(req);
-    const [wallet, transactions] = await Promise.all([creditService.getWallet(uid), creditService.listTransactions(uid)]);
-    res.json({ wallet: { balance: wallet.balance, reserved: wallet.reserved }, transactions });
+    const [wallet, page] = await Promise.all([creditService.getWallet(uid), creditService.pageTransactions(uid)]);
+    res.json({ wallet: { balance: wallet.balance, reserved: wallet.reserved }, transactions: page.transactions, nextCursor: page.nextCursor });
+  },
+
+  /** Older pages of the credit history. */
+  async creditHistory(req: Request, res: Response) {
+    const uid = userId(req);
+    const cursor = typeof req.query.cursor === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(req.query.cursor) ? req.query.cursor : undefined;
+    const owned = cursor ? await prisma.creditTransaction.findFirst({ where: { id: cursor, userId: uid }, select: { id: true } }) : null;
+    if (cursor && !owned) throw badRequest("That history position is not available.");
+    res.json(await creditService.pageTransactions(uid, 50, cursor));
   },
 
   async listProjects(req: Request, res: Response) {

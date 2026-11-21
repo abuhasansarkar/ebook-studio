@@ -340,12 +340,17 @@ export async function getPackage(userId: string, packageId: string): Promise<Dis
 /** The packages for a book, newest first. */
 export async function listPackages(userId: string, bookId: string): Promise<DistributionPackage[]> {
   await getOwnedBook(userId, bookId);
-  const rows = await prisma.distributionPackage.findMany({
-    where: { userId, bookId },
-    orderBy: { createdAt: "desc" },
-    take: 50,
-  });
-  return Promise.all(rows.map((row) => getPackage(userId, row.id)));
+  const [rows, chapters] = await Promise.all([
+    prisma.distributionPackage.findMany({ where: { userId, bookId }, orderBy: { createdAt: "desc" }, take: 50 }),
+    prisma.chapter.findMany({ where: { bookId }, select: { id: true, version: true } }),
+  ]);
+  const current = new Map(chapters.map((c) => [c.id, c.version]));
+  const packages = await Promise.all(rows.map((row) => getPackage(userId, row.id)));
+  // A package is out of date when any chapter was edited, added or removed after it was made.
+  return packages.map((pkg) => ({
+    ...pkg,
+    stale: pkg.chapterVersions.length !== current.size || pkg.chapterVersions.some((c) => current.get(c.id) !== c.version),
+  }));
 }
 
 /** The ZIP of a package, for download. */

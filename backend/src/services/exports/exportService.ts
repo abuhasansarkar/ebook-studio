@@ -231,9 +231,30 @@ export const exportService = {
     return exp;
   },
 
+  /**
+   * The book's recent exports, each with a short summary of what it contains
+   * and whether the manuscript has changed since it was made.
+   */
   async list(userId: string, bookId: string) {
     await getOwnedBook(userId, bookId);
-    return prisma.export.findMany({ where: { bookId }, orderBy: { createdAt: 'desc' }, take: 20, omit: { designSnapshot: true, snapshot: true } });
+    const [rows, chapters] = await Promise.all([
+      prisma.export.findMany({ where: { bookId }, orderBy: { createdAt: 'desc' }, take: 20, omit: { designSnapshot: true } }),
+      prisma.chapter.findMany({ where: { bookId, OR: [{ wordCount: { gt: 0 } }, { status: 'done' }] }, select: { id: true, version: true, position: true } }),
+    ]);
+    const current = new Map(chapters.map((c) => [c.id, c]));
+    return rows.map(({ snapshot: raw, ...row }) => {
+      const snapshot = raw as unknown as ExportSnapshot | null;
+      const pinned = snapshot?.chapters ?? [];
+      // Out of date when a chapter was edited, moved, added or removed since the request.
+      const stale = snapshot ? pinned.length !== current.size || pinned.some((c) => current.get(c.id)?.version !== c.version || current.get(c.id)?.position !== c.position) : false;
+      return {
+        ...row,
+        summary: snapshot
+          ? { title: snapshot.book.title, author: snapshot.book.author, chapters: pinned.length, hasCover: Boolean(snapshot.coverVersion != null || snapshot.coverAssetId), requestedAt: snapshot.requestedAt }
+          : null,
+        stale,
+      };
+    });
   },
 
   /** One export with its snapshot and validation summary. */

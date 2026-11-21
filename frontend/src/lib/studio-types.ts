@@ -134,6 +134,12 @@ export interface OpsJob {
   creditsReserved: number;
   creditsCharged: number;
   error: string | null;
+  cancelRequested: boolean;
+  /** When the worker's claim on a running job lapses; a lapsed claim is recovered. */
+  leaseExpiresAt: string | null;
+  /** Times the job was handed to the queue. */
+  dispatchAttempts: number;
+  finishedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

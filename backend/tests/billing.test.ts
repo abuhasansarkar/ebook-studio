@@ -598,6 +598,8 @@ describe('the local provider takes the money, not the browser', () => {
     const b = await user.agent.post('/api/v1/billing/checkout').set('Origin', ORIGIN).send({ planId: 'second-plan' }).expect(201);
     expect(b.body.checkout.id).not.toBe(a.body.checkout.id);
     expect(b.body.checkout.planId).toBe('second-plan');
+    // Take the plan off sale again so it never shows up for anyone else using this database.
+    await prisma.plan.update({ where: { id: 'second-plan' }, data: { active: false } });
   });
 
   it('does not grant anything twice when the customer pays twice', async () => {

@@ -1,4 +1,4 @@
-import { lockBook } from '../generation/jobRuntime.js';
+import { assertIdle, lockBook } from '../generation/jobRuntime.js';
 import { pinImages } from '../assets/assetService.js';
 import { randomUUID } from "node:crypto";
 import { CREDIT_COSTS, documentError, imageAssetIds, type AssistAction } from "@ebook/shared";
@@ -112,6 +112,37 @@ export const chapterService = {
     return chapterService.update(userId, chapterId, {
       version, title: revision.title,
       contentJson: (revision.contentJson ?? { type: "doc", content: [] }) as Record<string, unknown>,
+    });
+  },
+
+  /**
+   * Puts the book's chapters in a new order.
+   *
+   * The order must name every chapter exactly once, so a stale list from
+   * another tab cannot drop or duplicate one. It is refused while a writing
+   * job runs, because the job writes chapters in order.
+   */
+  async reorder(userId: string, bookId: string, chapterIds: string[]) {
+    await getOwnedBook(userId, bookId);
+    return prisma.$transaction(async (tx) => {
+      await lockBook(tx, bookId, userId);
+      await assertIdle(tx, bookId);
+      const chapters = await tx.chapter.findMany({ where: { bookId }, select: { id: true } });
+      const known = new Set(chapters.map((c) => c.id));
+      if (chapterIds.length !== known.size || new Set(chapterIds).size !== chapterIds.length || chapterIds.some((id) => !known.has(id))) {
+        throw conflict("The chapter list changed. Reload the editor and try again.");
+      }
+      // Positions are unique per book, so moving one chapter into another's
+      // place would collide mid-way. Every chapter steps aside to a temporary
+      // negative position first, then takes its final place.
+      for (const [index, id] of chapterIds.entries()) {
+        await tx.chapter.update({ where: { id }, data: { position: -(index + 1) } });
+      }
+      for (const [position, id] of chapterIds.entries()) {
+        await tx.chapter.update({ where: { id }, data: { position } });
+      }
+      await tx.book.update({ where: { id: bookId }, data: { updatedAt: new Date() } });
+      return tx.chapter.findMany({ where: { bookId }, orderBy: { position: "asc" }, select: { id: true, position: true, title: true } });
     });
   },
 

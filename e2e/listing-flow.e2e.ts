@@ -139,6 +139,8 @@ try {
   await clickButton(page, "Approve outline");
   await page.waitForFunction(() => location.pathname.endsWith("/generate"), { timeout: 30_000 });
   await clickButton(page, "Write my book");
+  // Starting is confirmed in a dialog that shows the cost.
+  await clickButton(page, "credits and start");
   await waitText(page, "Your book is written", 180_000);
   log(`the book ${bookId} was created, the outline approved and the chapters written`);
 

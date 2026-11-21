@@ -107,19 +107,20 @@ export function useOpsUsers(search: string | undefined, enabled = true) {
   });
 }
 
-export function useOpsBooks(enabled = true) {
+export function useOpsBooks(enabled = true, search?: string) {
   return useQuery({
-    queryKey: studioQk.opsBooks,
-    queryFn: () => api.get<{ books: OpsBook[] }>("/admin/books").then((r) => r.books),
+    queryKey: [...studioQk.opsBooks, search ?? ""],
+    queryFn: () => api.get<{ books: OpsBook[] }>(`/admin/books${search ? `?search=${encodeURIComponent(search)}` : ""}`).then((r) => r.books),
+    placeholderData: (previous) => previous,
     enabled,
     retry: false,
   });
 }
 
-export function useOpsJobs(enabled = true) {
+export function useOpsJobs(enabled = true, status?: string) {
   return useQuery({
-    queryKey: studioQk.opsJobs,
-    queryFn: () => api.get<{ jobs: OpsJob[] }>("/admin/jobs").then((r) => r.jobs),
+    queryKey: [...studioQk.opsJobs, status ?? ""],
+    queryFn: () => api.get<{ jobs: OpsJob[] }>(`/admin/jobs${status ? `?status=${encodeURIComponent(status)}` : ""}`).then((r) => r.jobs),
     enabled,
     retry: false,
   });

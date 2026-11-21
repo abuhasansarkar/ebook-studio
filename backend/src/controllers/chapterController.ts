@@ -5,6 +5,9 @@ import { userId } from "../middleware/requireAuth.js";
 import { chapterService } from "../services/editor/chapterService.js";
 
 export const chapterController = {
+  async reorder(req: Request, res: Response) {
+    res.json({ chapters: await chapterService.reorder(userId(req), String(req.params.bookId), req.body.chapterIds) });
+  },
   async listForBook(req: Request, res: Response) {
     res.json({ chapters: await chapterService.listForBook(userId(req), String(req.params.bookId)) });
   },

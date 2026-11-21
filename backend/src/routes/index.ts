@@ -20,7 +20,7 @@ import { userId } from "../middleware/requireAuth.js";
 import { badRequest } from "../utils/errors.js";
 import { z } from "zod";
 import { Router } from "express";
-import { assistSchema, bookBriefSchema, createBookSchema, outlineSchema, updateChapterSchema } from "@ebook/shared";
+import { assistSchema, bookBriefSchema, chapterOrderSchema, createBookSchema, outlineSchema, updateChapterSchema } from "@ebook/shared";
 import { accountController, createProjectSchema } from "../controllers/accountController.js";
 import { bookController } from "../controllers/bookController.js";
 import { chapterController } from "../controllers/chapterController.js";
@@ -66,6 +66,7 @@ apiRouter.get("/books/:bookId/operations", async (req, res) => {
 apiRouter.get("/users/me", accountController.me);
 apiRouter.get("/users/me/dashboard", bookController.dashboard);
 apiRouter.get("/credits", accountController.credits);
+apiRouter.get("/credits/transactions", accountController.creditHistory);
 
 apiRouter.get("/projects", async (req, res) => {
   const query = libraryQuerySchema.safeParse(req.query);
@@ -122,6 +123,7 @@ apiRouter.post("/books/:bookId/generate/cancel", generationController.cancel);
 apiRouter.get("/generation-jobs/:jobId", generationController.getJob);
 
 apiRouter.get("/books/:bookId/chapters", chapterController.listForBook);
+apiRouter.put("/books/:bookId/chapters/order", validateBody(chapterOrderSchema), chapterController.reorder);
 apiRouter.get("/chapters/:chapterId", chapterController.get);
 apiRouter.patch("/chapters/:chapterId", validateBody(updateChapterSchema), chapterController.update);
 

@@ -1,6 +1,6 @@
 import type { Request } from "express";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
-import { isTest } from "../config/env.js";
+import { env, isTest } from "../config/env.js";
 
 const keyByUser = (req: Request) => req.user?.id ?? ipKeyGenerator(req.ip ?? "unknown");
 
@@ -8,7 +8,7 @@ const json = (message: string) => ({ error: { code: "RATE_LIMITED", message } })
 
 export const apiLimiter = rateLimit({
   windowMs: 60_000,
-  limit: 300,
+  limit: env.API_RATE_LIMIT_PER_MINUTE,
   standardHeaders: "draft-8",
   legacyHeaders: false,
   skip: () => isTest,

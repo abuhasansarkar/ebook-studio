@@ -166,7 +166,7 @@ export function useCredits() {
   const signedIn = useIsSignedIn();
   return useQuery({
     queryKey: qk.credits,
-    queryFn: () => api.get<{ wallet: { balance: number; reserved: number }; transactions: CreditTransaction[] }>("/credits"),
+    queryFn: () => api.get<{ wallet: { balance: number; reserved: number }; transactions: CreditTransaction[]; nextCursor?: string | null }>("/credits"),
     enabled: signedIn,
   });
 }
@@ -349,6 +349,15 @@ export function useBookAction(bookId: string) {
     startGeneration: useMutation({ mutationFn: () => operationRequest<{ job: GenerationJob }>(`/books/${bookId}/generate`), onSettled: invalidate }),
     cancelGeneration: useMutation({ mutationFn: () => api.post(`/books/${bookId}/generate/cancel`), onSettled: invalidate }),
   };
+}
+
+/** Puts the book's chapters in a new order (every chapter, each once). */
+export function useReorderChapters(bookId: string) {
+  const invalidate = useInvalidateBook(bookId);
+  return useMutation({
+    mutationFn: (chapterIds: string[]) => api.put<{ chapters: { id: string; position: number }[] }>(`/books/${bookId}/chapters/order`, { chapterIds }),
+    onSettled: invalidate,
+  });
 }
 
 /**

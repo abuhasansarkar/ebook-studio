@@ -6,7 +6,7 @@ import { CATEGORY_LABELS, QUALITY_CATEGORIES, bookContextSchema, getLanguage, ty
 import { api, errorMessage } from '@/lib/api';
 import { toast } from 'sonner';
 import { operationRequest } from '@/lib/operation-request';
-import { qk, useBook } from '@/lib/queries';
+import { qk, useBook, useChapters } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { Input, Label, Select, Textarea } from '@/components/ui/form';
 import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader, Progress } from '@/components/ui/misc';
@@ -181,6 +181,9 @@ function ContextEditor({ bookId, onSaved }: { bookId: string; onSaved: () => voi
   return <ContextForm key={context.data.version} bookId={bookId} initial={context.data} onSaved={() => { void context.refetch(); onSaved(); }} />;
 }
 function ContextForm({ bookId, initial, onSaved }: { bookId: string; initial: ContextState; onSaved: () => void }) {
+  const chapters = useChapters(bookId);
+  const written = (chapters.data ?? []).filter(c => c.wordCount > 0);
+  const [summaries, setSummaries] = useState<Record<string, string>>(() => Object.fromEntries(initial.data.chapterSummaries.map(c => [c.chapterId, c.summary])));
   const [voice, setVoice] = useState(initial.data.voice);
   const [terms, setTerms] = useState(initial.data.terms.map(t => ({ preferred: t.preferred, avoid: t.avoid.join(', '), note: t.note })));
   const [definitions, setDefinitions] = useState(initial.data.definitions.map(d => ({ term: d.term, definition: d.definition, note: d.note })));
@@ -189,7 +192,10 @@ function ContextForm({ bookId, initial, onSaved }: { bookId: string; initial: Co
     voice,
     terms: terms.map(t => ({ preferred: t.preferred.trim(), avoid: t.avoid.split(',').map(a => a.trim()).filter(Boolean), note: t.note.trim() })),
     definitions: definitions.map(d => ({ term: d.term.trim(), definition: d.definition.trim(), note: d.note.trim() })),
-    chapterSummaries: initial.data.chapterSummaries,
+    // Empty summaries are left out; a summary for a chapter that no longer exists is dropped.
+    chapterSummaries: Object.entries(summaries)
+      .filter(([id, text]) => text.trim() && (!chapters.data || chapters.data.some(c => c.id === id)))
+      .map(([chapterId, summary]) => ({ chapterId, summary: summary.trim() })),
   };
   const parsed = bookContextSchema.safeParse(data);
   const update = (i: number, patch: Partial<typeof terms[number]>) => setTerms(terms.map((t, j) => j === i ? { ...t, ...patch } : t));
@@ -200,7 +206,7 @@ function ContextForm({ bookId, initial, onSaved }: { bookId: string; initial: Co
     catch (e) { setState({ busy: false, error: errorMessage(e), notice: '' }); }
   }
   return <details className="rounded-2xl border border-border bg-surface p-4">
-    <summary className="cursor-pointer text-sm font-semibold">Voice and terminology (version {initial.version})</summary>
+    <summary className="cursor-pointer text-sm font-semibold">Voice, terminology and chapter summaries (version {initial.version})</summary>
     <div className="mt-3 space-y-4 text-sm">
       <p className="text-muted-foreground">Terms you list here are checked in every chapter, and the AI review uses your voice notes and definitions. Edits are versioned; a report made with an older version is marked out of date.</p>
       <div><Label htmlFor="ctx-voice">Voice and style notes</Label><Textarea id="ctx-voice" maxLength={2000} value={voice} onChange={e => setVoice(e.target.value)} placeholder="Warm, practical, second person, short paragraphs…" /></div>
@@ -224,9 +230,16 @@ function ContextForm({ bookId, initial, onSaved }: { bookId: string; initial: Co
         </div>)}
         <Button size="sm" variant="secondary" disabled={definitions.length >= 100} onClick={() => setDefinitions([...definitions, { term: '', definition: '', note: '' }])}>Add definition</Button>
       </div>
+      {written.length > 0 && <div className="space-y-2 border-t border-border pt-3">
+        <p className="text-xs text-muted-foreground">Chapter summaries (optional). One or two sentences on what each chapter establishes; the review uses them to check that later chapters stay consistent with earlier ones.</p>
+        {written.map(c => <div key={c.id}>
+          <Label htmlFor={`sum-${c.id}`} className="text-xs">{c.position + 1}. {c.title}</Label>
+          <Textarea id={`sum-${c.id}`} className="min-h-14" maxLength={600} value={summaries[c.id] ?? ''} onChange={e => setSummaries({ ...summaries, [c.id]: e.target.value })} placeholder="What this chapter establishes…" />
+        </div>)}
+      </div>}
       {!parsed.success && <p role="alert" className="text-xs text-danger">{parsed.error.issues.map(i => i.message).join('. ')}</p>}
       {state.error && <Alert tone="danger">{state.error}</Alert>}
-      <Button disabled={!parsed.success || state.busy} loading={state.busy} onClick={() => void save()}>Save voice and terminology</Button>
+      <Button disabled={!parsed.success || state.busy} loading={state.busy} onClick={() => void save()}>Save review context</Button>
     </div>
   </details>;
 }

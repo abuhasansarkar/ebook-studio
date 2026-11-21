@@ -104,8 +104,13 @@ adminRouter.get("/admin/users", async (req, res) => {
 adminRouter.get("/admin/books", async (req, res) => {
   await withPermission(req, "ops.read");
   const limit = Math.min(Number(req.query.limit ?? 100) || 100, 500);
+  // Searched on the server, so a book older than the newest page can be found.
+  const search = typeof req.query.search === "string" ? req.query.search.trim().slice(0, 200) : "";
   const rows = await prisma.book.findMany({
-    where: { deletedAt: null },
+    where: {
+      deletedAt: null,
+      ...(search ? { OR: [{ title: { contains: search, mode: "insensitive" as const } }, { user: { email: { contains: search, mode: "insensitive" as const } } }] } : {}),
+    },
     orderBy: { createdAt: "desc" },
     take: limit,
     include: {

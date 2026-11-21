@@ -351,3 +351,21 @@ The billing, administration, distribution and marketing screens are implemented 
 The `Operations` navigation item and the admin screen use a mounted-state guard, because the roles come from the browser's query cache and the server markup and the first client render would otherwise disagree — that was a real hydration mismatch on `/app/admin` and in the navigation, and it is fixed.
 
 The console reads the operational dashboard from the API, and the figures it shows are pinned by a backend test so a renamed field breaks the build rather than the screen. See ACCEPTANCE.md for the verified journeys and the boundaries.
+
+## Frontend checkpoint — 21 November 2026
+
+An audit of every unchecked item against the code found most S01–S15 tasks already built (the boxes above were never ticked). The gaps it found are now implemented:
+
+- **S01:** central session-expiry handling (any 401 re-checks the session and returns to login with the page and query kept); reads time out after 60 s; 429 shows the server's `Retry-After`; 402 points to Credits; a crashed operation no longer blocks its retry; AI assist keeps one request identity across uncertain retries.
+- **S02:** link add/edit/remove (web and mail links only), table row/column controls, find and replace (match count, next, replace, replace all as one undoable edit) and accessible chapter reordering in the editor (`PUT /books/:id/chapters/order`).
+- **S03:** start confirmation with outline version, scope, estimate and remaining balance; "Writing now" vs "Queued"; charged and returned credits after a run; cancel failures shown.
+- **S04:** error states by code (invalid, expired, attempt limit, throttled), double-submit guard, autofill of the whole code, email kept across "Send a new code", neutral wording and Inbox/Spam guidance.
+- **S05:** book brief editor after creation; move up/down buttons beside drag-and-drop on the outline; outline-history loading and empty states.
+- **S06:** cancel and retry for uploads; unavailable-preview fallback; usage status on every image.
+- **S09:** chapter summaries editable in the review context.
+- **S10:** pre-export check covers cover, quality review and author; each export shows title, author, chapters and cover; "Older text" when the manuscript changed since; inspection guidance; downloads report errors instead of saving them; queued exports render their request-time text; EPUBs carry the composed cover.
+- **S12:** checkout return notice with confirmation polling; cancellation keeps the plan to the end of the paid period with confirmation; paginated credit history; complete cost list.
+- **S13:** job status filter, dispatch attempts, lease and cancel state; reason and confirmation for job retry/cancel; server-side book search; role grant by customer search and revoke with reason.
+- **S14:** package contents previewed before preparing; out-of-date packages flagged; store reference and note recorded with publishing status; rules version shown; dead control removed.
+
+**Still open:** local/server draft preview and "keep both" (S02); partial chapter text during writing and a separate start-over action (S03); nested outline sections and structural remapping of a written book (S05); replacing a referenced image and editing alt/caption after insertion (S06); URL import (S11); provider billing portal and entitlement-aware prompts (S12); usage/cost dashboards (S13); Playwright migration, staging run, device and screen-reader verification and release evidence (S16).

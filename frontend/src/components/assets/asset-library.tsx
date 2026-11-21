@@ -103,7 +103,8 @@ function AssetCard({
       <div className="flex flex-1 flex-col gap-3 p-4">
         <p className="text-xs text-muted-foreground">
           {asset.provenance?.startsWith("ai:") ? "AI-generated · " : ""}
-          {asset.width} × {asset.height} · {formatNumber(Math.round(asset.bytes / 1024))} KB
+          {asset.width} × {asset.height} · {formatNumber(Math.round(asset.bytes / 1024))} KB ·{" "}
+          {asset._count.references > 0 ? "Used in a manuscript" : "Not used in a manuscript yet"}
         </p>
 
         <Field label="Alternative text" htmlFor={`alt-${asset.id}`} hint="Describe the image, or leave it empty if it is decorative.">
@@ -186,6 +187,8 @@ export function AssetLibrary({ onInsert }: { onInsert?: (asset: ImageAsset) => v
   const [error, setError] = useState("");
   const input = useRef<HTMLInputElement>(null);
   const upload = useRef<XMLHttpRequest | null>(null);
+  // The last file that did not finish, so it can be sent again without choosing it twice.
+  const [failedFile, setFailedFile] = useState<File | null>(null);
 
   useEffect(() => () => {
     upload.current?.abort();
@@ -203,6 +206,7 @@ export function AssetLibrary({ onInsert }: { onInsert?: (asset: ImageAsset) => v
 
   function send(file: File) {
     setError("");
+    setFailedFile(null);
     if (!ACCEPTED.includes(file.type) || !file.size || file.size > MAX_BYTES) {
       setError("Choose a PNG, JPEG or WebP up to 10 MiB.");
       return;
@@ -234,15 +238,23 @@ export function AssetLibrary({ onInsert }: { onInsert?: (asset: ImageAsset) => v
           /* the response was not the expected shape */
         }
         setError(message);
+        // A refusal (wrong type, too large) will not change on a retry; a
+        // server fault might.
+        if (xhr.status >= 500) setFailedFile(file);
       }
       done();
     };
     xhr.onerror = xhr.ontimeout = () => {
-      setError("Upload could not be confirmed. Refresh the library before retrying.");
+      setError("The upload could not be confirmed. The library has been refreshed; if the image is not there, retry.");
+      setFailedFile(file);
       refresh();
       done();
     };
-    xhr.onabort = done;
+    xhr.onabort = () => {
+      setError("Upload cancelled. Nothing was added to your library.");
+      setFailedFile(file);
+      done();
+    };
     xhr.send(file);
   }
 
@@ -276,15 +288,29 @@ export function AssetLibrary({ onInsert }: { onInsert?: (asset: ImageAsset) => v
         {progress !== null && (
           <div className="mt-4 space-y-2" role="status">
             <Progress value={progress} />
-            <p className="text-xs text-muted-foreground">
-              {progress < 100 ? `Uploading ${progress}%` : "Validating and processing image…"}
-            </p>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs text-muted-foreground">
+                {progress < 100 ? `Uploading ${progress}%` : "Validating and processing image…"}
+              </p>
+              {progress < 100 && (
+                <Button size="sm" variant="ghost" onClick={() => upload.current?.abort()}>
+                  Cancel upload
+                </Button>
+              )}
+            </div>
           </div>
         )}
 
         {error && (
           <Alert tone="danger" className="mt-4">
             {error}
+            {failedFile && progress === null && (
+              <div className="mt-2">
+                <Button size="sm" variant="secondary" onClick={() => send(failedFile)}>
+                  <RefreshCw className="h-3.5 w-3.5" /> Retry {failedFile.name}
+                </Button>
+              </div>
+            )}
           </Alert>
         )}
       </Card>

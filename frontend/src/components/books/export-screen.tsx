@@ -3,14 +3,15 @@
 import { PublishingChecks } from "./publishing-checks";
 import { OperationActivity } from "./operation-activity";
 import Link from "next/link";
-import { use, useState } from "react";
+import { use, useState, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { AlertTriangle, CheckCircle2, Download, FileText, Loader2 } from "lucide-react";
 import { getLanguage, type ExportFormat } from "@ebook/shared";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader } from "@/components/ui/misc";
 import { Input, Select } from "@/components/ui/form";
-import { errorMessage } from "@/lib/api";
+import { api, errorMessage } from "@/lib/api";
 import { downloadFile } from "@/lib/download";
 import { useBook, useCreateExport, useExports, useExportFormats } from "@/lib/queries";
 import { formatBytes, formatNumber, timeAgo } from "@/lib/utils";
@@ -69,6 +70,9 @@ export function ExportScreen({ params }: { params: Promise<{ bookId: string }> }
   const { bookId } = use(params);
   const book = useBook(bookId);
   const exports = useExports(bookId);
+  // What the pre-export check reports on besides the text: the saved cover and the latest review.
+  const cover = useQuery({ queryKey: ["export-cover", bookId], queryFn: () => api.get<{ cover: { version: number; data: { artworkId?: string | null } } }>(`/books/${bookId}/cover`).then((r) => r.cover) });
+  const reviews = useQuery({ queryKey: ["quality-reports", bookId], queryFn: () => api.get<{ reports: { id: string; stale: boolean; status: string; createdAt: string }[] }>(`/books/${bookId}/quality/reports`).then((r) => r.reports) });
   const formats = useExportFormats();
   const createExport = useCreateExport(bookId);
   const [format, setFormat] = useState<ExportFormat>("pdf");
@@ -88,12 +92,34 @@ export function ExportScreen({ params }: { params: Promise<{ bookId: string }> }
   const available = formats.data?.map((f) => f.format) ?? [];
   const spec = FORMAT_OPTIONS[format];
 
-  const checks = [
-    { ok: written.length > 0, label: `${written.length} of ${b.chapters.length} chapters have content`, warn: missing > 0 },
-    { ok: Boolean(b.title.trim()), label: "Book has a title" },
-    { ok: true, label: `${lang.name} typesetting with bundled fonts${lang.dir === "rtl" ? " and right-to-left layout" : ""}` },
-    { ok: true, label: "Front matter, contents and back matter from your saved design" },
-    { ok: true, label: "Every export is a frozen snapshot: later edits cannot change it" },
+  const savedCover = cover.data && cover.data.version > 0 ? cover.data : null;
+  const latestReview = reviews.data?.find((r) => r.status === "completed") ?? null;
+  const author = b.brief.authorName?.trim();
+  const checks: { ok: boolean; warn?: boolean; label: ReactNode; key: string }[] = [
+    { key: "chapters", ok: written.length > 0, label: `${written.length} of ${b.chapters.length} chapters have content`, warn: missing > 0 },
+    { key: "title", ok: Boolean(b.title.trim()), label: `Title: “${b.title}”${author ? ` · by ${author}` : ""}` },
+    ...(author ? [] : [{ key: "author", ok: true, warn: true, label: <>No author name. <Link href={`/app/books/${bookId}/brief`} className="font-medium underline">Add one in the brief</Link> to show it on the title page.</> }]),
+    {
+      key: "cover",
+      ok: Boolean(savedCover),
+      warn: !savedCover,
+      label: savedCover
+        ? <>Cover version {savedCover.version}{savedCover.data.artworkId ? " with artwork" : ""}: EPUB files carry it. <Link href={`/app/books/${bookId}/cover`} className="font-medium underline">Edit cover</Link></>
+        : <>No cover yet. <Link href={`/app/books/${bookId}/cover`} className="font-medium underline">Design one</Link> before publishing an EPUB.</>,
+    },
+    {
+      key: "review",
+      ok: Boolean(latestReview && !latestReview.stale),
+      warn: !latestReview || latestReview.stale,
+      label: !latestReview
+        ? <>No quality review yet (optional). <Link href={`/app/books/${bookId}/quality`} className="font-medium underline">Run checks</Link></>
+        : latestReview.stale
+          ? <>Quality review is out of date: the book changed after it. <Link href={`/app/books/${bookId}/quality`} className="font-medium underline">Run checks again</Link></>
+          : "Quality review is up to date",
+    },
+    { key: "fonts", ok: true, label: `${lang.name} typesetting with bundled fonts${lang.dir === "rtl" ? " and right-to-left layout" : ""}` },
+    { key: "design", ok: true, label: "Front matter, contents and back matter from your saved design" },
+    { key: "snapshot", ok: true, label: "Every export is a frozen snapshot: later edits cannot change it" },
   ];
 
   const request = () =>
@@ -213,15 +239,24 @@ export function ExportScreen({ params }: { params: Promise<{ bookId: string }> }
             {busy ? "Building…" : `Export ${spec.label}`}
           </Button>
           <p className="mt-3 text-center text-xs text-muted-foreground">Free to export. The file is validated before it can be downloaded.</p>
+          <details className="mt-4 rounded-xl border border-border px-4 py-3 text-sm">
+            <summary className="cursor-pointer font-medium">How to check your file before selling it</summary>
+            <ul className="mt-2 list-disc space-y-1 ps-5 text-muted-foreground">
+              <li><strong className="text-foreground">PDF:</strong> open it in a PDF reader and page through at full size; check headings, page breaks and images.</li>
+              <li><strong className="text-foreground">EPUB:</strong> open it in Apple Books, and in Amazon&apos;s free Kindle Previewer for Kindle, at a small and a large text size.</li>
+              <li><strong className="text-foreground">DOCX:</strong> open it in Microsoft Word or LibreOffice and check styles, the contents page and tables.</li>
+              <li>Each store reviews books itself; a file that validates here can still need changes for a store.</li>
+            </ul>
+          </details>
         </Card>
 
         <Card className="p-6">
           <h3 className="font-semibold">Pre-export check</h3>
           <ul className="mt-4 space-y-3">
             {checks.map((c) => (
-              <li key={c.label} className="flex items-start gap-2.5 text-sm">
-                {c.ok && !c.warn ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />}
-                {c.label}
+              <li key={c.key} className="flex items-start gap-2.5 text-sm">
+                {c.ok && !c.warn ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-label="OK" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-label="Check" />}
+                <span>{c.label}</span>
               </li>
             ))}
           </ul>
@@ -261,7 +296,13 @@ export function ExportScreen({ params }: { params: Promise<{ bookId: string }> }
                     </Badge>
                   )}
                   {e.status === "failed" && <Badge tone="danger">Failed</Badge>}
+                  {e.status === "ready" && e.stale && <Badge tone="warning">Older text</Badge>}
                 </p>
+                {e.summary && (
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    “{e.summary.title}”{e.summary.author ? ` by ${e.summary.author}` : ""} · {e.summary.chapters} chapter{e.summary.chapters === 1 ? "" : "s"} · {e.summary.hasCover ? "with cover" : "no cover"}
+                  </p>
+                )}
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   {timeAgo(e.createdAt)}
                   {e.designVersion !== null ? ` · ${e.designVersion ? `design v${e.designVersion}` : "default design"}` : ""}
@@ -269,12 +310,16 @@ export function ExportScreen({ params }: { params: Promise<{ bookId: string }> }
                   {e.fileSize ? ` · ${formatBytes(e.fileSize)}` : ""}
                   {e.status === "failed" && e.error ? ` · ${e.error}` : ""}
                 </p>
+                {e.status === "ready" && e.stale && (
+                  <p className="mt-1 text-xs text-warning">The manuscript changed after this file was made. Export again for the latest text.</p>
+                )}
                 {e.status === "ready" && <ExportFindings e={e} />}
               </div>
               {e.status === "ready" && (
                 <Button
                   variant="secondary"
                   size="sm"
+                  data-href={`/api/v1/exports/${e.id}/download`}
                   onClick={() => downloadFile(`/api/v1/exports/${e.id}/download`, `book.${e.format}`).catch((err) => toast.error(errorMessage(err)))}
                 >
                   <Download className="h-3.5 w-3.5" /> Download

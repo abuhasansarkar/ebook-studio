@@ -153,6 +153,8 @@ try {
 
   // Write chapters
   await clickButton(page, "Write my book");
+  // Starting is confirmed in a dialog that shows the cost.
+  await clickButton(page, "credits and start");
   await waitText(page, "Your book is written", 60_000);
   await shot(page, "written");
   log("chapters generated with live progress");
@@ -191,6 +193,8 @@ try {
   await page.waitForSelector('dialog[open] button[aria-pressed="false"]');
   await page.waitForFunction(() => document.querySelectorAll('dialog[open] button[aria-pressed="false"]').length >= 3);
   await page.click('dialog[open] button[aria-label="Close"]');
+  // The next step types into the editor; a dialog still closing would swallow the keys.
+  await page.waitForFunction(() => !document.querySelector("dialog[open]"));
   log("version preview, restore, and subsequent autosave");
 
   // Failed saves retain a durable browser draft; reload must not silently submit it.
@@ -297,9 +301,9 @@ try {
   const imagePath = `${SHOTS}/asset-upload.png`;
   const { writeFileSync } = await import('node:fs'); writeFileSync(imagePath, Buffer.from(imageBytes, 'base64'));
   const fileInput = await page.$('dialog input[type="file"]'); await fileInput!.uploadFile(imagePath);
-  await waitText(page, 'Not yet saved in a manuscript');
-  await page.type('dialog article input', 'Warm orange illustration');
-  await page.type('dialog article textarea', 'A caption for the illustrated chapter');
+  await waitText(page, 'Not used in a manuscript yet');
+  await page.type('dialog input[id^="alt-"]', 'Warm orange illustration');
+  await page.type('dialog textarea[id^="caption-"]', 'A caption for the illustrated chapter');
   await clickButton(page, 'Save details'); await waitText(page, 'Details saved.');
   await clickButton(page, 'Insert image');
   await page.waitForSelector('.book-prose img[alt="Warm orange illustration"]');
@@ -309,8 +313,8 @@ try {
     const image = document.querySelector('.book-prose img[alt="Warm orange illustration"]') as HTMLImageElement | null;
     return !!image?.complete && image.naturalWidth > 0;
   });
-  await clickButton(page, 'Images'); await waitText(page, 'Retained for manuscript history');
-  if (!await page.$eval('dialog article button:last-child', el => (el as HTMLButtonElement).disabled)) throw new Error('Referenced image deletion was enabled');
+  await clickButton(page, 'Images'); await waitText(page, 'kept for revision history and cannot be deleted');
+  if (!await page.$eval('::-p-xpath(//dialog//button[normalize-space(.)="Delete"])', el => (el as HTMLButtonElement).disabled)) throw new Error('Referenced image deletion was enabled');
   await page.click('dialog button[aria-label="Close"]');
   log('private upload, metadata, chapter insertion, persisted preview and deletion protection');
 
@@ -324,7 +328,7 @@ try {
   await waitText(page, "Ready", 90_000);
   await waitText(page, "pages");
   await shot(page, "export");
-  const href = await page.$eval('a[href*="/download"]', (a) => (a as HTMLAnchorElement).href);
+  const href = await page.$eval('[data-href*="/download"]', (el) => new URL(el.getAttribute("data-href") ?? "", location.href).href);
   const pdf = await page.evaluate(async (u) => {
     const r = await fetch(u, { credentials: "include" });
     const b = new Uint8Array(await r.arrayBuffer());
@@ -342,11 +346,11 @@ try {
   await page.click('input[name="export-format"][value="epub"]');
   await waitText(page, 'Reflowable eBook');
   await clickButton(page, "Export EPUB");
-  await page.waitForFunction(() => Array.from(document.querySelectorAll('a[href*="/download"]')).some(a => a.closest('[data-export]')?.textContent?.includes('EPUB')), { timeout: 90_000 });
+  await page.waitForFunction(() => Array.from(document.querySelectorAll('[data-href*="/download"]')).some(a => a.closest('[data-export]')?.textContent?.includes('EPUB')), { timeout: 90_000 });
   const epub = await page.evaluate(async () => {
-    const link = Array.from(document.querySelectorAll('a[href*="/download"]')).find(a => a.closest('[data-export]')?.textContent?.includes('EPUB')) as HTMLAnchorElement | undefined;
+    const link = Array.from(document.querySelectorAll('[data-href*="/download"]')).find(a => a.closest('[data-export]')?.textContent?.includes('EPUB')) as HTMLElement | undefined;
     if (!link) throw new Error('EPUB download link missing');
-    const r = await fetch(link.href, { credentials: "include" });
+    const r = await fetch(link.getAttribute("data-href") ?? "", { credentials: "include" });
     const b = new Uint8Array(await r.arrayBuffer());
     return { status: r.status, type: r.headers.get("content-type"), head: Array.from(b.slice(0, 2)).map(c => String.fromCharCode(c)).join(''), size: b.length, bytes: Array.from(b.slice(0, 64)) };
   });
@@ -359,11 +363,11 @@ try {
   await page.click('input[name="export-format"][value="docx"]');
   await waitText(page, 'Editable Word manuscript');
   await clickButton(page, "Export DOCX");
-  await page.waitForFunction(() => Array.from(document.querySelectorAll('a[href*="/download"]')).some(a => a.closest('[data-export]')?.textContent?.includes('DOCX')), { timeout: 90_000 });
+  await page.waitForFunction(() => Array.from(document.querySelectorAll('[data-href*="/download"]')).some(a => a.closest('[data-export]')?.textContent?.includes('DOCX')), { timeout: 90_000 });
   const docx = await page.evaluate(async () => {
-    const link = Array.from(document.querySelectorAll('a[href*="/download"]')).find(a => a.closest('[data-export]')?.textContent?.includes('DOCX')) as HTMLAnchorElement | undefined;
+    const link = Array.from(document.querySelectorAll('[data-href*="/download"]')).find(a => a.closest('[data-export]')?.textContent?.includes('DOCX')) as HTMLElement | undefined;
     if (!link) throw new Error('DOCX download link missing');
-    const r = await fetch(link.href, { credentials: "include" });
+    const r = await fetch(link.getAttribute("data-href") ?? "", { credentials: "include" });
     const b = new Uint8Array(await r.arrayBuffer());
     return { status: r.status, type: r.headers.get("content-type"), head: Array.from(b.slice(0, 2)).map(c => String.fromCharCode(c)).join(''), size: b.length };
   });
@@ -514,10 +518,10 @@ try {
   await clickButton(page, 'Mark resolved'); await waitText(page, 'Marked as resolved.');
   // Add a terminology rule; the existing report becomes out of date.
   await page.goto(`${BASE}/app/books/${currentBookId}/quality`, { waitUntil: 'networkidle0' });
-  await clickSummary('Voice and terminology');
+  await clickSummary('Voice, terminology and chapter summaries');
   await clickButton(page, 'Add term');
   await page.type('#t-pref-0', 'ফ্রিজার'); await page.type('#t-avoid-0', 'ফ্রিজ');
-  await clickButton(page, 'Save voice and terminology'); await waitText(page, 'Voice and terminology (version 1)');
+  await clickButton(page, 'Save review context'); await waitText(page, 'Voice, terminology and chapter summaries (version 1)');
   await waitText(page, 'Out of date');
   await clickButton(page, 'Run checks again'); await waitText(page, 'Checks finished.');
   await waitFor(page, '#f-category');
@@ -533,11 +537,11 @@ try {
   }, { timeout: 30000, polling: 500 }, seededChapter);
   // A definition the chapter contradicts must be reported under Contradictions.
   await page.goto(`${BASE}/app/books/${currentBookId}/quality`, { waitUntil: 'networkidle0' });
-  await clickSummary('Voice and terminology');
+  await clickSummary('Voice, terminology and chapter summaries');
   await clickButton(page, 'Add definition');
   await page.type('#d-term-0', 'batch cooking'); await page.type('#d-def-0', 'cooking several meals at once');
-  await clickButton(page, 'Save voice and terminology');
-  await waitText(page, 'Voice and terminology (version 2)');
+  await clickButton(page, 'Save review context');
+  await waitText(page, 'Voice, terminology and chapter summaries (version 2)');
   await page.evaluate(async id => {
     const c = (await (await fetch(`/api/v1/chapters/${id}`)).json()).chapter;
     if (!c.contentJson?.content) throw new Error('Chapter content is empty; nothing to extend');
@@ -582,35 +586,35 @@ try {
 
   await page.goto(`${BASE}/app/projects`, { waitUntil: 'networkidle0' });
   await clickButton(page, 'New project');
-  await page.type('input[aria-label="Project name"]', 'Marketplace series');
-  await page.type('textarea[aria-label="Project description"]', 'Books prepared for digital stores');
+  await page.type('#project-name', 'Marketplace series');
+  await page.type('#project-description', 'Books prepared for digital stores');
   await clickButton(page, 'Save project');
   await page.waitForFunction(() => !document.querySelector('dialog[open]'));
   await waitText(page, 'Marketplace series');
   const projectHref = await page.$eval('a[href*="projectId="]', el => (el as HTMLAnchorElement).href);
   const projectId = new URL(projectHref).searchParams.get('projectId')!;
-  await clickButton(page, 'Edit project');
-  await page.$eval('input[aria-label="Project name"]', el => (el as HTMLInputElement).select());
-  await page.type('input[aria-label="Project name"]', 'Digital publishing series');
+  await clickButton(page, 'Edit');
+  await page.$eval('#project-name', el => (el as HTMLInputElement).select());
+  await page.type('#project-name', 'Digital publishing series');
   await clickButton(page, 'Save project');
   await page.waitForFunction(() => !document.querySelector('dialog[open]'));
   await page.goto(`${BASE}/app/books`, { waitUntil: 'networkidle0' });
-  await page.waitForSelector('select[aria-label^="Project for "] option[value="' + projectId + '"]');
-  await page.select('select[aria-label^="Project for "]', projectId);
-  await page.waitForFunction(id => (document.querySelector('select[aria-label^="Project for "]') as HTMLSelectElement)?.value === id && !(document.querySelector('select[aria-label^="Project for "]') as HTMLSelectElement)?.disabled, {}, projectId);
-  await page.select('select[aria-label="Project filter"]', projectId);
+  await page.waitForSelector('select[id^="project-for-"] option[value="' + projectId + '"]');
+  await page.select('select[id^="project-for-"]', projectId);
+  await page.waitForFunction(id => (document.querySelector('select[id^="project-for-"]') as HTMLSelectElement)?.value === id && !(document.querySelector('select[id^="project-for-"]') as HTMLSelectElement)?.disabled, {}, projectId);
+  await page.select('#filter-projectId', projectId);
   await page.waitForFunction(id => new URL(location.href).searchParams.get('projectId') === id, {}, projectId);
-  await clickButton(page, 'Archive book');
+  await clickButton(page, 'Archive');
   await waitText(page, 'No books match');
-  await page.select('select[aria-label="Archive filter"]', 'archived');
-  await clickButton(page, 'Restore book');
+  await page.select('#filter-archived', 'archived');
+  await clickButton(page, 'Restore');
   await waitText(page, 'No books match');
-  await page.select('select[aria-label="Archive filter"]', '');
+  await page.select('#filter-archived', '');
   await clickButton(page, 'Duplicate');
   await clickButton(page, 'Include manuscript');
   await page.waitForFunction(() => !document.querySelector('dialog[open]'));
   await clickButton(page, 'Clear filters');
-  await page.waitForFunction(() => document.querySelectorAll('select[aria-label^="Project for "]').length === 2);
+  await page.waitForFunction(() => document.querySelectorAll('select[id^="project-for-"]').length === 2);
   log('project create/edit, assignment, URL filters, book archive/restore and manuscript duplication');
 
   // Credits

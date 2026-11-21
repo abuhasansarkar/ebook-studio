@@ -239,6 +239,11 @@ export async function jobList(options: { status?: string; limit?: number; before
     take: Math.min(options.limit ?? 100, 500),
     include: { book: { select: { id: true, title: true, userId: true } } },
   });
+  // How many times each job was handed to the queue: a high count means the
+  // broker kept losing or refusing it.
+  const dispatches = await prisma.queueDispatch.findMany({ where: { jobId: { in: rows.map((r) => r.id) } }, select: { jobId: true, attempts: true } });
+  const attempts = new Map<string, number>();
+  for (const d of dispatches) attempts.set(d.jobId, (attempts.get(d.jobId) ?? 0) + d.attempts);
   return rows.map((row) => ({
     id: row.id,
     status: row.status,
@@ -251,6 +256,10 @@ export async function jobList(options: { status?: string; limit?: number; before
     creditsReserved: row.creditsReserved,
     creditsCharged: row.creditsCharged,
     error: row.error,
+    cancelRequested: row.cancelRequested,
+    leaseExpiresAt: row.leaseExpiresAt?.toISOString() ?? null,
+    dispatchAttempts: attempts.get(row.id) ?? 0,
+    finishedAt: row.finishedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   }));

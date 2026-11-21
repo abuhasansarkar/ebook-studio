@@ -6,25 +6,26 @@ import Link from "next/link";
 import { use, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { AlertTriangle, CheckCircle2, Circle, FileDown, ListTree, PenLine, Square, Wand2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Circle, Clock, FileDown, ListTree, PenLine, Square, Wand2 } from "lucide-react";
 import { chapterCredits, getLanguage } from "@ebook/shared";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Alert, Card, ErrorState, PageLoader, Progress, Spinner } from "@/components/ui/misc";
 import { errorMessage } from "@/lib/api";
 import { qk, useBook, useBookAction, useCredits } from "@/lib/queries";
 import type { ChapterMeta } from "@/lib/types";
 import { formatNumber } from "@/lib/utils";
 
-function ChapterRow({ ch, dir }: { ch: ChapterMeta; dir: string }) {
+function ChapterRow({ ch, dir, writingNow }: { ch: ChapterMeta; dir: string; writingNow: boolean }) {
   const icon =
-    ch.status === "done" ? <CheckCircle2 className="h-5 w-5 text-success" /> : ch.status === "generating" ? <Spinner className="h-5 w-5" /> : ch.status === "failed" ? <AlertTriangle className="h-5 w-5 text-danger" /> : <Circle className="h-5 w-5 text-border" />;
+    ch.status === "done" ? <CheckCircle2 className="h-5 w-5 text-success" aria-label="Written" /> : ch.status === "generating" ? (writingNow ? <Spinner className="h-5 w-5" label="Writing" /> : <Clock className="h-5 w-5 text-muted-foreground" aria-label="Queued" />) : ch.status === "failed" ? <AlertTriangle className="h-5 w-5 text-danger" /> : <Circle className="h-5 w-5 text-border" />;
   return (
     <li className="flex items-center gap-3 px-5 py-3.5">
       {icon}
       <span className="w-6 text-sm font-semibold text-muted-foreground">{ch.position + 1}</span>
       <span dir={dir} className="min-w-0 flex-1 truncate text-sm font-medium">{ch.title}</span>
       <span className="text-xs text-muted-foreground">
-        {ch.status === "done" ? `${formatNumber(ch.wordCount)} words` : ch.status === "generating" ? "Queued / writing…" : ch.status === "failed" ? "Failed" : "Waiting"}
+        {ch.status === "done" ? `${formatNumber(ch.wordCount)} words` : ch.status === "generating" ? (writingNow ? "Writing now…" : "Queued") : ch.status === "failed" ? "Failed" : "Waiting"}
       </span>
     </li>
   );
@@ -38,6 +39,7 @@ export function GenerateScreen({ params }: { params: Promise<{ bookId: string }>
   const actions = useBookAction(bookId);
   const wasActive = useRef(false);
   const [jobDetailId, setJobDetailId] = useState<string | null>(null);
+  const [confirmStart, setConfirmStart] = useState(false);
 
   const job = book?.activeJob?.type === "chapters" ? book.activeJob : null;
 
@@ -72,6 +74,9 @@ export function GenerateScreen({ params }: { params: Promise<{ bookId: string }>
   const balance = credits.data?.wallet.balance;
   const totalWords = done.reduce((s, c) => s + c.wordCount, 0);
   const lastFailed = !job && book.lastJob?.type === "chapters" && book.lastJob.status === "failed" ? book.lastJob : null;
+  const lastFinished = !job && book.lastJob?.type === "chapters" && book.lastJob.finishedAt ? book.lastJob : null;
+  // Chapters are written in order, so the first unfinished one is the one being written.
+  const writingNowId = job ? book.chapters.find((c) => c.status === "generating")?.id : undefined;
 
   if ((!approved && done.length !== book.chapters.length) || book.chapters.length === 0) {
     return (
@@ -90,7 +95,9 @@ export function GenerateScreen({ params }: { params: Promise<{ bookId: string }>
     try {
       await actions.startGeneration.mutateAsync();
       wasActive.current = true;
+      setConfirmStart(false);
     } catch (err) {
+      setConfirmStart(false);
       toast.error(errorMessage(err));
     }
   };
@@ -140,7 +147,7 @@ export function GenerateScreen({ params }: { params: Promise<{ bookId: string }>
                 {balance !== undefined && ` · you have ${balance}`}. Credits are reserved now and unused ones are returned.
               </p>
             </div>
-            <Button size="lg" onClick={() => void start()} loading={actions.startGeneration.isPending} disabled={balance !== undefined && balance < cost}>
+            <Button size="lg" onClick={() => setConfirmStart(true)} loading={actions.startGeneration.isPending} disabled={balance !== undefined && balance < cost}>
               <Wand2 className="h-4 w-4" /> {done.length === 0 ? "Write my book" : lastFailed ? "Retry" : "Continue writing"}
             </Button>
           </div>
@@ -171,13 +178,40 @@ export function GenerateScreen({ params }: { params: Promise<{ bookId: string }>
         </Card>
       )}
 
+      {lastFinished && (
+        <p className="mb-4 text-sm text-muted-foreground" data-testid="last-run-charges">
+          Last run {lastFinished.status}: <strong className="text-foreground">{lastFinished.creditsCharged} credits charged</strong>
+          {lastFinished.creditsReserved > lastFinished.creditsCharged && <> · {lastFinished.creditsReserved - lastFinished.creditsCharged} reserved credits returned</>}.{" "}
+          <button type="button" className="cursor-pointer font-medium text-primary hover:underline" onClick={() => setJobDetailId(lastFinished.id)}>
+            Run details
+          </button>
+        </p>
+      )}
+
       <Card>
-        <ul className="divide-y divide-border">
+        <ul className="divide-y divide-border" aria-label="Chapters">
           {book.chapters.map((ch) => (
-            <ChapterRow key={ch.id} ch={ch} dir={lang.dir} />
+            <ChapterRow key={ch.id} ch={ch} dir={lang.dir} writingNow={ch.id === writingNowId} />
           ))}
         </ul>
       </Card>
+
+      <ConfirmDialog
+        open={confirmStart}
+        onClose={() => setConfirmStart(false)}
+        onConfirm={() => void start()}
+        title={done.length === 0 ? "Write your book?" : lastFailed ? "Retry writing?" : "Continue writing?"}
+        description={`From outline version ${book.outline?.version ?? "—"}${book.outline?.approvedAt ? " (approved)" : ""}. Finished chapters are kept and not charged again.`}
+        confirmLabel={`Reserve ${cost} credits and start`}
+        tone="primary"
+        busy={actions.startGeneration.isPending}
+      >
+        <ul className="space-y-1">
+          <li>{remaining.length} chapter{remaining.length === 1 ? "" : "s"} to write: {remaining.slice(0, 3).map((c) => c.title).join(", ")}{remaining.length > 3 ? `, and ${remaining.length - 3} more` : ""}.</li>
+          <li>Estimated cost: about {cost} credits{balance !== undefined ? `, leaving about ${Math.max(balance - cost, 0)} of your ${balance}` : ""}.</li>
+          <li>You&apos;re charged only for what is written; unused credits are returned when the run ends.</li>
+        </ul>
+      </ConfirmDialog>
       <OperationActivity bookId={bookId} />
       {jobDetailId ? <GenerationJobDetail jobId={jobDetailId} onClose={() => setJobDetailId(null)} /> : null}
     </div>

@@ -3,14 +3,15 @@
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { AlertTriangle, CheckCircle2, Circle, FileDown, Wand2 } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronUp, CheckCircle2, Circle, FileDown, Wand2 } from "lucide-react";
 import { getLanguage } from "@ebook/shared";
 import { ChapterEditor } from "@/components/editor/chapter-editor";
 import { buttonVariants } from "@/components/ui/button";
 import { Alert, EmptyState, ErrorState, PageLoader, Spinner } from "@/components/ui/misc";
 import { useSession } from "@/lib/auth-client";
 import { errorMessage } from "@/lib/api";
-import { useBook, useChapter, useChapters } from "@/lib/queries";
+import { useBook, useChapter, useChapters, useReorderChapters } from "@/lib/queries";
+import { toast } from "sonner";
 import { cn, formatNumber } from "@/lib/utils";
 
 /** Loads the language's Noto font so the editor matches the exported book. */
@@ -34,6 +35,8 @@ export function EditorScreen({ params }: { params: Promise<{ bookId: string }> }
   const book = useBook(bookId);
   const generating = book.data?.activeJob?.type === "chapters";
   const chapters = useChapters(bookId, generating);
+  const reorder = useReorderChapters(bookId);
+  const [moveNotice, setMoveNotice] = useState("");
   const search = useSearchParams();
   // Links from the quality review open a chapter and highlight one finding.
   const [pickedId, setSelectedId] = useState<string | null>(search.get("chapter"));
@@ -82,16 +85,25 @@ export function EditorScreen({ params }: { params: Promise<{ bookId: string }> }
           </Link>
         </div>
         <nav className="flex gap-1 overflow-x-auto px-2 pb-3 lg:flex-col lg:overflow-visible" aria-label="Chapters">
-          {chapters.data.map((c) => {
+          {chapters.data.map((c, index) => {
             const active = c.id === selectedId;
+            const list = chapters.data!;
+            const move = (delta: -1 | 1) => {
+              const order = list.map((x) => x.id);
+              [order[index], order[index + delta]] = [order[index + delta], order[index]];
+              reorder.mutate(order, {
+                onSuccess: () => setMoveNotice(`Moved “${c.title}” to position ${index + delta + 1}.`),
+                onError: (err) => toast.error(errorMessage(err)),
+              });
+            };
             return (
+              <div key={c.id} className="group flex min-w-48 items-stretch gap-0.5 lg:min-w-0">
               <button
-                key={c.id}
                 type="button"
                 data-editor-navigation="true"
                 onClick={() => setSelectedId(c.id)}
                 aria-current={active ? "true" : undefined}
-                className={cn("flex min-w-48 cursor-pointer items-start gap-2.5 rounded-xl px-3 py-2.5 text-start text-sm lg:min-w-0", active ? "bg-primary-soft" : "hover:bg-muted")}
+                className={cn("flex min-w-0 flex-1 cursor-pointer items-start gap-2.5 rounded-xl px-3 py-2.5 text-start text-sm", active ? "bg-primary-soft" : "hover:bg-muted")}
               >
                 {c.status === "done" ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" /> : c.status === "generating" ? <Spinner className="mt-0.5 h-4 w-4 shrink-0" /> : c.status === "failed" ? <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" /> : <Circle className="mt-0.5 h-4 w-4 shrink-0 text-border" />}
                 <span className="min-w-0">
@@ -101,9 +113,20 @@ export function EditorScreen({ params }: { params: Promise<{ bookId: string }> }
                   <span className="text-xs text-muted-foreground">{c.wordCount ? `${formatNumber(c.wordCount)} words` : "Empty"}</span>
                 </span>
               </button>
+              {/* Reorder buttons: visible on focus/hover on desktop, always on touch screens. */}
+              <span className="flex flex-col justify-center opacity-100 lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100">
+                <button type="button" className="cursor-pointer rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30" aria-label={`Move chapter ${index + 1} up`} title="Move up" disabled={index === 0 || generating || reorder.isPending} onClick={() => move(-1)}>
+                  <ChevronUp className="h-3.5 w-3.5" />
+                </button>
+                <button type="button" className="cursor-pointer rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30" aria-label={`Move chapter ${index + 1} down`} title="Move down" disabled={index === list.length - 1 || generating || reorder.isPending} onClick={() => move(1)}>
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+              </span>
+              </div>
             );
           })}
         </nav>
+        <p role="status" className="sr-only">{moveNotice}</p>
       </aside>
 
       <section className="flex min-w-0 flex-1 flex-col">
