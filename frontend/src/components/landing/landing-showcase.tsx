@@ -18,7 +18,7 @@ export function LandingShowcase() {
             WHAT YOU GET
           </div>
           <h2 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-5xl text-foreground">
-            See exactly what you'll create
+            See exactly what you&apos;ll create
           </h2>
           <p className="mt-4 text-base text-muted-foreground sm:text-lg leading-relaxed">
             From comprehensive, structured non-fiction books to best-selling 300 DPI
@@ -108,8 +108,8 @@ export function LandingShowcase() {
                       <span className="text-[10px] font-mono text-muted-foreground">p. 42</span>
                     </div>
                     <p className="text-muted-foreground mt-2 leading-relaxed">
-                      "Batch cooking isn't about eating repetitive meals for five days.
-                      It's about prepping modular base ingredients that transform in under 10 minutes..."
+                      &ldquo;Batch cooking isn&apos;t about eating repetitive meals for five days.
+                      It&apos;s about prepping modular base ingredients that transform in under 10 minutes...&rdquo;
                     </p>
                   </div>
 

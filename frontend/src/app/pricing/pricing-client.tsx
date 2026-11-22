@@ -137,7 +137,7 @@ export function PricingClient({
                 <span className="rounded-full bg-primary-soft px-3 py-1 text-xs font-semibold text-primary">Free Tier & Trial</span>
                 <span className="text-xs text-muted-foreground">• No credit card needed</span>
               </div>
-              <h3 className="mt-2 text-xl font-bold text-foreground">Start free, upgrade when you're ready</h3>
+              <h3 className="mt-2 text-xl font-bold text-foreground">Start free, upgrade when you&apos;re ready</h3>
               <p className="mt-1 text-xs sm:text-sm text-muted-foreground leading-relaxed">
                 Every account includes 99 welcome credits and full editor tools. High-resolution PDF, EPUB, and DOCX exports are unlocked on Pro plans.
               </p>

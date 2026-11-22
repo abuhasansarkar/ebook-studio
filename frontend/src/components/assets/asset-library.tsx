@@ -389,17 +389,12 @@ function AiIllustrationGenerator({ onGenerated }: { onGenerated: () => void }) {
   });
 
   const books = booksQuery.data ?? [];
-
-  useEffect(() => {
-    if (!bookId && books.length > 0) {
-      setBookId(books[0].id);
-    }
-  }, [bookId, books]);
+  const selectedBookId = bookId || (books.length > 0 ? books[0].id : "");
 
   const activeJobsQuery = useQuery({
-    queryKey: ["image-jobs", bookId],
-    queryFn: () => api.get<{ jobs: { id: string; status: string; assetId?: string; error?: string }[] }>(`/books/${bookId}/images`),
-    enabled: Boolean(bookId),
+    queryKey: ["image-jobs", selectedBookId],
+    queryFn: () => api.get<{ jobs: { id: string; status: string; assetId?: string; error?: string }[] }>(`/books/${selectedBookId}/images`),
+    enabled: Boolean(selectedBookId),
     refetchInterval: (q) => q.state.data?.jobs.some((j) => ["queued", "running"].includes(j.status)) ? 1500 : false,
   });
 
@@ -415,7 +410,7 @@ function AiIllustrationGenerator({ onGenerated }: { onGenerated: () => void }) {
   }, [activeJobsQuery.data, onGenerated, qc]);
 
   const handleGenerate = async () => {
-    if (!bookId) {
+    if (!selectedBookId) {
       setError("Please select or create an eBook to associate the generated illustration with.");
       return;
     }
@@ -427,7 +422,7 @@ function AiIllustrationGenerator({ onGenerated }: { onGenerated: () => void }) {
     setError("");
     setSuccessMsg("");
     try {
-      await operationRequest(`/books/${bookId}/images`, {
+      await operationRequest(`/books/${selectedBookId}/images`, {
         purpose,
         prompt: prompt.trim(),
         aspect,
@@ -475,7 +470,7 @@ function AiIllustrationGenerator({ onGenerated }: { onGenerated: () => void }) {
           <Field label="Target Book" htmlFor="illustration-book">
             <Select
               id="illustration-book"
-              value={bookId}
+              value={selectedBookId}
               onChange={(e) => setBookId(e.target.value)}
               disabled={books.length === 0 || busy || Boolean(activeJob)}
             >

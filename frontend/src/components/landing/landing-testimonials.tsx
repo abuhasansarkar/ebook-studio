@@ -140,7 +140,7 @@ export function LandingTestimonials() {
 
                 {/* Quote Text */}
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  "{t.quote}"
+                  &ldquo;{t.quote}&rdquo;
                 </p>
               </div>
 

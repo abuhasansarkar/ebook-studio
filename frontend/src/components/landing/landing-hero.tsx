@@ -186,7 +186,7 @@ export function LandingHero() {
                 onClick={() => handlePickSuggestion(item)}
                 className="rounded-full border border-border bg-surface px-3 py-1 text-muted-foreground hover:border-[#e8603c] hover:text-[#a9462c] hover:bg-[#e8603c]/5 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer"
               >
-                "{item.label}"
+                &ldquo;{item.label}&rdquo;
               </button>
             ))}
           </div>

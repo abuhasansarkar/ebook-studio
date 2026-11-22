@@ -190,22 +190,27 @@ function BillingContent() {
   const [notice, setNotice] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
-  const [billingCycle, setBillingCycle] = useState<"month" | "year">("month");
+  const [selectedBillingCycle, setSelectedBillingCycle] = useState<"month" | "year" | null>(null);
 
   useEffect(() => {
     const status = searchParams.get("checkout");
-    if (status === "success") {
-      setNotice("Payment received! Synchronizing your plan and credits with Stripe…");
-      sync.mutate(undefined, {
-        onSuccess: () => {
-          setNotice("Plan and credits are updated successfully!");
-        },
-      });
-      router.replace("/app/credits/billing", { scroll: false });
-    } else if (status === "cancelled") {
-      setProblem("Checkout was cancelled. No charges were made.");
-      router.replace("/app/credits/billing", { scroll: false });
-    }
+    if (!status) return;
+
+    router.replace("/app/credits/billing", { scroll: false });
+    const timer = setTimeout(() => {
+      if (status === "success") {
+        setNotice("Payment received! Synchronizing your plan and credits with Stripe…");
+        sync.mutate(undefined, {
+          onSuccess: () => {
+            setNotice("Plan and credits are updated successfully!");
+          },
+        });
+      } else if (status === "cancelled") {
+        setProblem("Checkout was cancelled. No charges were made.");
+      }
+    }, 0);
+
+    return () => clearTimeout(timer);
   }, [searchParams, sync, router]);
 
   const state = billingQuery.data;
@@ -216,11 +221,9 @@ function BillingContent() {
   const payments = state?.payments ?? [];
   const pendingPayment = payments.find((p) => p.status === "pending");
 
-  useEffect(() => {
-    if (currentPlan?.interval === "year" || currentPlan?.id.endsWith("-yearly")) {
-      setBillingCycle("year");
-    }
-  }, [currentPlan?.interval, currentPlan?.id]);
+  const isYearly = currentPlan?.interval === "year" || currentPlan?.id.endsWith("-yearly");
+  const billingCycle = selectedBillingCycle ?? (isYearly ? "year" : "month");
+  const setBillingCycle = (cycle: "month" | "year") => setSelectedBillingCycle(cycle);
 
   const entitlements = Object.entries(state?.entitlements ?? {}) as [EntitlementKey, string | number | boolean][];
   const paidEntitlements = entitlements.filter(([key, value]) => {

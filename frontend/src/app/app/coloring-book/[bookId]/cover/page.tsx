@@ -152,7 +152,7 @@ export default function ColoringBookCoverPage({ params }: { params: Promise<{ bo
 
             {/* KDP Barcode Zone */}
             <div className="mt-6 self-end border border-dashed border-white/40 bg-white/10 px-3 py-2 rounded text-[10px] text-center w-32">
-              <span className="font-mono text-[9px] text-indigo-200">KDP Barcode Safe Zone (2.0" × 1.2")</span>
+              <span className="font-mono text-[9px] text-indigo-200">KDP Barcode Safe Zone (2.0&quot; × 1.2&quot;)</span>
             </div>
           </div>
 

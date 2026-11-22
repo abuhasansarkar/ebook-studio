@@ -47,7 +47,7 @@ export function LandingFAQ() {
             FREQUENTLY ASKED QUESTIONS
           </div>
           <h2 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-5xl text-foreground">
-            Questions? We've got answers.
+            Questions? We&apos;ve got answers.
           </h2>
           <p className="mt-4 text-base text-muted-foreground sm:text-lg leading-relaxed">
             Everything you need to know about commercial publishing, file compliance, and royalties.

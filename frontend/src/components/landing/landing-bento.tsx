@@ -118,7 +118,7 @@ export function LandingBento() {
                 <span className="text-xs text-muted-foreground font-normal ml-1">Spine Width</span>
               </div>
               <div className="mt-1 text-[11px] text-muted-foreground">
-                {SPINE_PRESETS[selectedSpine].desc} • 50lb White Paper • 0.125" Bleed
+                {SPINE_PRESETS[selectedSpine].desc} • 50lb White Paper • 0.125&quot; Bleed
               </div>
             </div>
           </div>
@@ -182,7 +182,7 @@ export function LandingBento() {
                   KDP Gutter Margins
                 </div>
                 <p className="mt-1 text-muted-foreground text-[11px] leading-relaxed">
-                  0.375" inner gutter safely accommodates book spine binding.
+                  0.375&quot; inner gutter safely accommodates book spine binding.
                 </p>
               </div>
 
