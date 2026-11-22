@@ -61,6 +61,34 @@ html {
   100% { transform: translateX(200%); }
 }
 
+@keyframes marquee-up {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(-50%); }
+}
+
+@keyframes marquee-down {
+  0% { transform: translateY(-50%); }
+  100% { transform: translateY(0); }
+}
+
+.animate-marquee-up-slow {
+  animation: marquee-up 38s linear infinite;
+}
+
+.animate-marquee-up-normal {
+  animation: marquee-up 32s linear infinite;
+}
+
+.animate-marquee-down-slow {
+  animation: marquee-down 42s linear infinite;
+}
+
+.marquee-pause:hover .animate-marquee-up-slow,
+.marquee-pause:hover .animate-marquee-up-normal,
+.marquee-pause:hover .animate-marquee-down-slow {
+  animation-play-state: paused;
+}
+
 .animate-float {
   animation: float-slow 5s ease-in-out infinite;
 }
