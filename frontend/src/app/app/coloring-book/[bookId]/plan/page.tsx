@@ -18,7 +18,8 @@ import {
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge, Card, PageLoader } from "@/components/ui/misc";
+import { Badge, Card, ErrorState, PageLoader } from "@/components/ui/misc";
+import { errorMessage } from "@/lib/api";
 import { COLORING_CREDIT_COSTS } from "@ebook/shared";
 import {
   useAddColoringPage,
@@ -32,7 +33,7 @@ import {
 export default function ColoringBookPlanPage({ params }: { params: Promise<{ bookId: string }> }) {
   const { bookId } = use(params);
   const router = useRouter();
-  const { data: detail, isLoading } = useColoringBook(bookId);
+  const { data: detail, isPending, error, refetch } = useColoringBook(bookId);
 
   const updatePlan = useUpdateColoringPlan(bookId);
   const updatePage = useUpdateColoringPage(bookId);
@@ -47,13 +48,21 @@ export default function ColoringBookPlanPage({ params }: { params: Promise<{ boo
   const [newTitle, setNewTitle] = useState("");
   const [newPrompt, setNewPrompt] = useState("");
 
-  if (isLoading) {
+  if (isPending && !error) {
     return <PageLoader label="Loading book plan…" />;
   }
 
-  const book = detail?.book;
-  const plan = detail?.plan;
-  const pages = detail?.pages ?? [];
+  if (error || !detail) {
+    return (
+      <div className="mx-auto max-w-4xl px-4 py-8">
+        <ErrorState message={errorMessage(error) || "Coloring book not found"} onRetry={() => void refetch()} />
+      </div>
+    );
+  }
+
+  const book = detail.book;
+  const plan = detail.plan;
+  const pages = detail.pages ?? [];
 
   const handleMoveUp = async (index: number) => {
     if (index <= 0) return;

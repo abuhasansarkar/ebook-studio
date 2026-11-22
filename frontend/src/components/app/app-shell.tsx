@@ -89,13 +89,13 @@ function SidebarFooter() {
   const initial = mounted && session?.user.name ? session.user.name[0]?.toUpperCase() : "?";
 
   return (
-    <div className="space-y-3">
-      <Link href="/app/credits" className="block rounded-xl border border-border bg-background p-3 hover:bg-muted">
+    <div className="space-y-3" suppressHydrationWarning>
+      <Link href="/app/credits" className="block rounded-xl border border-border bg-background p-3 hover:bg-muted" suppressHydrationWarning>
         <p className="text-xs text-muted-foreground">Credits</p>
         <p className="mt-0.5 text-lg font-bold">{credits.data ? formatNumber(credits.data.wallet.balance) : "—"}</p>
         {credits.data && credits.data.wallet.reserved > 0 && <p className="text-xs text-muted-foreground">{credits.data.wallet.reserved} reserved for running jobs</p>}
       </Link>
-      <div className="flex items-center gap-3 px-1">
+      <div className="flex items-center gap-3 px-1" suppressHydrationWarning>
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-white" suppressHydrationWarning>
           {initial}
         </div>
@@ -139,8 +139,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   if (!isPending && !session) return <PageLoader label="Redirecting to log in…" />;
 
   return (
-    <div className="flex min-h-screen">
-      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col justify-between border-e border-border bg-surface p-4 lg:flex">
+    <div className="flex min-h-screen" suppressHydrationWarning>
+      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col justify-between border-e border-border bg-surface p-4 lg:flex" suppressHydrationWarning>
         <div>
           <Logo href="/app/dashboard" className="mb-8 px-2 pt-1" />
           <NavLinks />

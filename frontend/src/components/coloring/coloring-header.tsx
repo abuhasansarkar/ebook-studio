@@ -39,8 +39,8 @@ export function ColoringHeader({ params }: { params: Promise<{ bookId: string }>
   const stats = detail?.stats;
 
   return (
-    <div className="border-b border-border bg-surface">
-      <div className="mx-auto max-w-7xl px-4 pt-5 sm:px-8">
+    <div className="border-b border-border bg-surface" suppressHydrationWarning>
+      <div className="mx-auto max-w-7xl px-4 pt-5 sm:px-8" suppressHydrationWarning>
         <div className="flex items-center justify-between">
           <Link
             href="/app/coloring-book"

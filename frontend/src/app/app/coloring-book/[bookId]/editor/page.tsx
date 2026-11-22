@@ -18,7 +18,8 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge, Card, PageLoader } from "@/components/ui/misc";
+import { Badge, Card, ErrorState, PageLoader } from "@/components/ui/misc";
+import { errorMessage } from "@/lib/api";
 import {
   useAutoCleanColoringPage,
   useColoringBook,
@@ -29,7 +30,7 @@ import { cn } from "@/lib/utils";
 
 export default function ColoringBookEditorPage({ params }: { params: Promise<{ bookId: string }> }) {
   const { bookId } = use(params);
-  const { data: detail, isLoading } = useColoringBook(bookId);
+  const { data: detail, isPending, error, refetch } = useColoringBook(bookId);
 
   const updatePage = useUpdateColoringPage(bookId);
   const generatePage = useGenerateColoringPage(bookId);
@@ -45,13 +46,21 @@ export default function ColoringBookEditorPage({ params }: { params: Promise<{ b
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  if (isLoading) {
+  if (isPending && !error) {
     return <PageLoader label="Loading editor canvas…" />;
   }
 
-  const book = detail?.book;
-  const plan = detail?.plan;
-  const pages = detail?.pages ?? [];
+  if (error || !detail) {
+    return (
+      <div className="mx-auto max-w-4xl px-4 py-8">
+        <ErrorState message={errorMessage(error) || "Coloring book not found"} onRetry={() => void refetch()} />
+      </div>
+    );
+  }
+
+  const book = detail.book;
+  const plan = detail.plan;
+  const pages = detail.pages ?? [];
 
   const activePage = pages.find((p) => p.pageNumber === selectedPageNumber) || pages[0];
   const assetUrl = activePage?.asset ? `/api/v1/assets/${activePage.asset.id}/view` : null;

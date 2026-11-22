@@ -15,7 +15,8 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge, Card, PageLoader } from "@/components/ui/misc";
+import { Badge, Card, ErrorState, PageLoader } from "@/components/ui/misc";
+import { errorMessage } from "@/lib/api";
 import {
   useColoringBook,
   useColoringPublishingPackage,
@@ -27,8 +28,8 @@ import { cn } from "@/lib/utils";
 
 export default function ColoringBookExportPage({ params }: { params: Promise<{ bookId: string }> }) {
   const { bookId } = use(params);
-  const { data: detail, isLoading: loadingBook } = useColoringBook(bookId);
-  const { data: pkg, isLoading: loadingPkg } = useColoringPublishingPackage(bookId);
+  const { data: detail, isPending: pendingBook, error: bookError, refetch: refetchBook } = useColoringBook(bookId);
+  const { data: pkg, isPending: pendingPkg, error: pkgError, refetch: refetchPkg } = useColoringPublishingPackage(bookId);
   const compilePdf = useCompileColoringPdf(bookId);
   const billing = useBilling();
   const [showProModal, setShowProModal] = useState(false);
@@ -38,12 +39,26 @@ export default function ColoringBookExportPage({ params }: { params: Promise<{ b
   const [copiedDescription, setCopiedDescription] = useState(false);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
 
-  if (loadingBook || loadingPkg) {
+  if ((pendingBook || pendingPkg) && !bookError && !pkgError) {
     return <PageLoader label="Checking KDP print readiness…" />;
   }
 
-  const book = detail?.book;
-  const plan = detail?.plan;
+  if (bookError || pkgError || !detail) {
+    return (
+      <div className="mx-auto max-w-4xl px-4 py-8">
+        <ErrorState
+          message={errorMessage(bookError || pkgError) || "Coloring book export details not found"}
+          onRetry={() => {
+            void refetchBook();
+            void refetchPkg();
+          }}
+        />
+      </div>
+    );
+  }
+
+  const book = detail.book;
+  const plan = detail.plan;
   const preflight = pkg?.preflight;
 
   const handleCopyKeywords = () => {

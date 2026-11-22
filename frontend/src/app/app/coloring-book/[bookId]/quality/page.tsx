@@ -13,7 +13,8 @@ import {
   Wand2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge, Card, PageLoader } from "@/components/ui/misc";
+import { Badge, Card, ErrorState, PageLoader } from "@/components/ui/misc";
+import { errorMessage } from "@/lib/api";
 import {
   useAutoCleanAllColoringPages,
   useAutoCleanColoringPage,
@@ -23,20 +24,34 @@ import {
 
 export default function ColoringBookQualityPage({ params }: { params: Promise<{ bookId: string }> }) {
   const { bookId } = use(params);
-  const { data: detail, isLoading: loadingBook } = useColoringBook(bookId);
-  const { data: qualityData, isLoading: loadingQuality } = useColoringQuality(bookId);
+  const { data: detail, isPending: pendingBook, error: bookError, refetch: refetchBook } = useColoringBook(bookId);
+  const { data: qualityData, isPending: pendingQuality, error: qualityError, refetch: refetchQuality } = useColoringQuality(bookId);
 
   const autoClean = useAutoCleanColoringPage(bookId);
   const autoCleanAll = useAutoCleanAllColoringPages(bookId);
 
-  if (loadingBook || loadingQuality) {
+  if ((pendingBook || pendingQuality) && !bookError && !qualityError) {
     return <PageLoader label="Running line-art quality audit…" />;
   }
 
-  const book = detail?.book;
-  const plan = detail?.plan;
+  if (bookError || qualityError || !detail) {
+    return (
+      <div className="mx-auto max-w-4xl px-4 py-8">
+        <ErrorState
+          message={errorMessage(bookError || qualityError) || "Coloring book quality audit failed"}
+          onRetry={() => {
+            void refetchBook();
+            void refetchQuality();
+          }}
+        />
+      </div>
+    );
+  }
+
+  const book = detail.book;
+  const plan = detail.plan;
   const pages = qualityData?.pages ?? [];
-  const bookPages = detail?.pages ?? [];
+  const bookPages = detail.pages ?? [];
 
   const completedPages = pages.filter((p) => p.status === "completed");
   const issuesCount = completedPages.filter((p) => p.quality && !p.quality.passed).length;

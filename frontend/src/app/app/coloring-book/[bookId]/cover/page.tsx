@@ -14,7 +14,8 @@ import {
   Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge, Card, PageLoader } from "@/components/ui/misc";
+import { Badge, Card, ErrorState, PageLoader } from "@/components/ui/misc";
+import { errorMessage } from "@/lib/api";
 import {
   useColoringBook,
   useColoringCover,
@@ -25,8 +26,8 @@ import { formatNumber } from "@/lib/utils";
 
 export default function ColoringBookCoverPage({ params }: { params: Promise<{ bookId: string }> }) {
   const { bookId } = use(params);
-  const { data: detail, isLoading: loadingBook } = useColoringBook(bookId);
-  const { data: coverData, isLoading: loadingCover } = useColoringCover(bookId);
+  const { data: detail, isPending: pendingBook, error: bookError, refetch: refetchBook } = useColoringBook(bookId);
+  const { data: coverData, isPending: pendingCover, error: coverError, refetch: refetchCover } = useColoringCover(bookId);
   const generateCover = useGenerateColoringCover(bookId);
   const credits = useCredits();
 
@@ -35,12 +36,26 @@ export default function ColoringBookCoverPage({ params }: { params: Promise<{ bo
   const [subtitleOverride, setSubtitleOverride] = useState("");
   const [authorOverride, setAuthorOverride] = useState("");
 
-  if (loadingBook || loadingCover) {
+  if ((pendingBook || pendingCover) && !bookError && !coverError) {
     return <PageLoader label="Loading cover studio…" />;
   }
 
-  const book = detail?.book;
-  const plan = detail?.plan;
+  if (bookError || coverError || !detail) {
+    return (
+      <div className="mx-auto max-w-4xl px-4 py-8">
+        <ErrorState
+          message={errorMessage(bookError || coverError) || "Coloring book cover details not found"}
+          onRetry={() => {
+            void refetchBook();
+            void refetchCover();
+          }}
+        />
+      </div>
+    );
+  }
+
+  const book = detail.book;
+  const plan = detail.plan;
   const spine = coverData?.spine;
   const thumbnails = coverData?.sampleThumbnails ?? [];
   const artworkAsset = coverData?.coverArtworkAsset;

@@ -8,7 +8,7 @@ import type {
   ColoringPageUpdateInput,
 } from "@ebook/shared";
 import { api } from "./api";
-import { useSession } from "./auth-client";
+import { useIsSignedIn } from "./queries";
 
 export interface ColoringPageRecord {
   id: string;
@@ -86,20 +86,20 @@ export const coloringKeys = {
 };
 
 export function useColoringBooks() {
-  const { data: session } = useSession();
+  const signedIn = useIsSignedIn();
   return useQuery({
     queryKey: coloringKeys.all,
     queryFn: () => api.get<{ books: Array<{ id: string; title: string; subtitle: string; status: string; coloringPlan?: ColoringPlanRecord; _count: { coloringPages: number }; updatedAt: string }> }>("/coloring/books"),
-    enabled: Boolean(session?.user?.id),
+    enabled: signedIn,
   });
 }
 
 export function useColoringBook(bookId: string) {
-  const { data: session } = useSession();
+  const signedIn = useIsSignedIn();
   return useQuery({
     queryKey: coloringKeys.book(bookId),
     queryFn: () => api.get<ColoringBookDetail>(`/coloring/books/${bookId}`),
-    enabled: Boolean(session?.user?.id && bookId),
+    enabled: signedIn && Boolean(bookId),
     refetchInterval: (query) => {
       // Auto-poll if any page is generating
       const hasGenerating = query.state.data?.pages.some((p) => p.status === "generating");
@@ -223,6 +223,7 @@ export function useAutoCleanAllColoringPages(bookId: string) {
 }
 
 export function useColoringQuality(bookId: string) {
+  const signedIn = useIsSignedIn();
   return useQuery({
     queryKey: coloringKeys.quality(bookId),
     queryFn: () =>
@@ -231,11 +232,12 @@ export function useColoringQuality(bookId: string) {
         stats: { total: number; completed: number };
         pages: Array<{ pageNumber: number; title: string; status: string; assetId?: string; quality?: ColoringPageQuality }>;
       }>(`/coloring/books/${bookId}/quality`),
-    enabled: Boolean(bookId),
+    enabled: signedIn && Boolean(bookId),
   });
 }
 
 export function useColoringCover(bookId: string) {
+  const signedIn = useIsSignedIn();
   return useQuery({
     queryKey: coloringKeys.cover(bookId),
     queryFn: () =>
@@ -254,7 +256,7 @@ export function useColoringCover(bookId: string) {
         };
         sampleThumbnails: Array<{ pageNumber: number; title: string; assetId?: string; storageKey?: string }>;
       }>(`/coloring/books/${bookId}/cover`),
-    enabled: Boolean(bookId),
+    enabled: signedIn && Boolean(bookId),
   });
 }
 
@@ -271,8 +273,8 @@ export function useGenerateColoringCover(bookId: string) {
   });
 }
 
-
 export function useColoringPublishingPackage(bookId: string) {
+  const signedIn = useIsSignedIn();
   return useQuery({
     queryKey: coloringKeys.package(bookId),
     queryFn: () =>
@@ -294,7 +296,7 @@ export function useColoringPublishingPackage(bookId: string) {
         };
         kdpUploadChecklist: string[];
       }>(`/coloring/books/${bookId}/export/package`),
-    enabled: Boolean(bookId),
+    enabled: signedIn && Boolean(bookId),
   });
 }
 

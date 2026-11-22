@@ -13,15 +13,24 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge, Card, EmptyState, PageLoader, Progress } from "@/components/ui/misc";
+import { Badge, Card, EmptyState, ErrorState, PageLoader, Progress } from "@/components/ui/misc";
+import { errorMessage } from "@/lib/api";
 import { useColoringBooks } from "@/lib/coloring-queries";
 import { formatNumber } from "@/lib/utils";
 
 export default function ColoringStudioDashboardPage() {
-  const { data, isLoading } = useColoringBooks();
+  const { data, isPending, error, refetch } = useColoringBooks();
 
-  if (isLoading) {
+  if (isPending && !error) {
     return <PageLoader label="Loading your coloring studio…" />;
+  }
+
+  if (error) {
+    return (
+      <div className="mx-auto max-w-4xl px-4 py-8">
+        <ErrorState message={errorMessage(error) || "Failed to load coloring books"} onRetry={() => void refetch()} />
+      </div>
+    );
   }
 
   const books = data?.books ?? [];

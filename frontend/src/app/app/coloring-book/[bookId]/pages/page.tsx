@@ -21,7 +21,8 @@ import {
   Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge, Card, PageLoader } from "@/components/ui/misc";
+import { Badge, Card, ErrorState, PageLoader } from "@/components/ui/misc";
+import { errorMessage } from "@/lib/api";
 import {
   useAutoCleanColoringPage,
   useColoringBook,
@@ -35,7 +36,7 @@ import { cn, formatNumber } from "@/lib/utils";
 
 export default function ColoringBookPagesPage({ params }: { params: Promise<{ bookId: string }> }) {
   const { bookId } = use(params);
-  const { data: detail, isLoading } = useColoringBook(bookId);
+  const { data: detail, isPending, error, refetch } = useColoringBook(bookId);
   const credits = useCredits();
 
   const generatePage = useGenerateColoringPage(bookId);
@@ -48,14 +49,22 @@ export default function ColoringBookPagesPage({ params }: { params: Promise<{ bo
   const [regenPromptTweak, setRegenPromptTweak] = useState("");
   const [previewPage, setPreviewPage] = useState<ColoringPageRecord | null>(null);
 
-  if (isLoading) {
+  if (isPending && !error) {
     return <PageLoader label="Loading coloring pages…" />;
   }
 
-  const book = detail?.book;
-  const plan = detail?.plan;
-  const pages = detail?.pages ?? [];
-  const stats = detail?.stats;
+  if (error || !detail) {
+    return (
+      <div className="mx-auto max-w-4xl px-4 py-8">
+        <ErrorState message={errorMessage(error) || "Coloring book not found"} onRetry={() => void refetch()} />
+      </div>
+    );
+  }
+
+  const book = detail.book;
+  const plan = detail.plan;
+  const pages = detail.pages ?? [];
+  const stats = detail.stats;
 
   const pendingPages = pages.filter((p) => p.status === "pending" || p.status === "failed");
   const pendingCount = pendingPages.length;

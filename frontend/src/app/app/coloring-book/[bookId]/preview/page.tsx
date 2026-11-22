@@ -13,23 +13,32 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge, Card, PageLoader } from "@/components/ui/misc";
+import { Badge, Card, ErrorState, PageLoader } from "@/components/ui/misc";
+import { errorMessage } from "@/lib/api";
 import { useColoringBook } from "@/lib/coloring-queries";
 
 export default function ColoringBookPreviewPage({ params }: { params: Promise<{ bookId: string }> }) {
   const { bookId } = use(params);
-  const { data: detail, isLoading } = useColoringBook(bookId);
+  const { data: detail, isPending, error, refetch } = useColoringBook(bookId);
 
   // Spread index: 0 is Title/Blank spread, 1 is Page 1 illustration + Blank back, etc.
   const [spreadIndex, setSpreadIndex] = useState(0);
 
-  if (isLoading) {
+  if (isPending && !error) {
     return <PageLoader label="Loading book preview…" />;
   }
 
-  const book = detail?.book;
-  const plan = detail?.plan;
-  const pages = detail?.pages ?? [];
+  if (error || !detail) {
+    return (
+      <div className="mx-auto max-w-4xl px-4 py-8">
+        <ErrorState message={errorMessage(error) || "Coloring book not found"} onRetry={() => void refetch()} />
+      </div>
+    );
+  }
+
+  const book = detail.book;
+  const plan = detail.plan;
+  const pages = detail.pages ?? [];
   const completed = pages.filter((p) => p.status === "completed" && p.asset);
 
   const totalSpreads = completed.length + 1; // 1 for title matter + 1 per illustration
