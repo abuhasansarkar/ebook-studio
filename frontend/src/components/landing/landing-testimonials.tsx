@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Star, Sparkles } from "lucide-react";
+import { Star, Sparkles, ArrowDown, ArrowUp, Pause, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface TestimonialItem {
@@ -243,6 +243,13 @@ function TestimonialCard({ item }: { item: TestimonialItem }) {
 }
 
 export function LandingTestimonials() {
+  const [direction, setDirection] = useState<"down" | "up">("down");
+  const [isPaused, setIsPaused] = useState(false);
+
+  const col1Animation = direction === "down" ? "animate-marquee-down-normal" : "animate-marquee-up-normal";
+  const col2Animation = direction === "down" ? "animate-marquee-down-slow" : "animate-marquee-up-slow";
+  const col3Animation = direction === "down" ? "animate-marquee-down-fast" : "animate-marquee-up-fast";
+
   return (
     <section id="stories" className="py-24 bg-background relative overflow-hidden" aria-label="Creator Success Stories">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -258,31 +265,81 @@ export function LandingTestimonials() {
           <p className="mt-4 text-base text-muted-foreground sm:text-lg leading-relaxed">
             See how self-publishers, indie authors, and digital creators turn their concepts into monthly royalty income.
           </p>
+
+          {/* Direction & Pause Controls */}
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+            <div className="inline-flex items-center gap-1 rounded-full border border-border bg-surface p-1 shadow-xs">
+              <button
+                type="button"
+                onClick={() => setDirection("down")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all cursor-pointer",
+                  direction === "down"
+                    ? "bg-[#e8603c] text-white shadow-xs font-bold"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <ArrowDown className="h-3.5 w-3.5" />
+                <span>Top to bottom</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDirection("up")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all cursor-pointer",
+                  direction === "up"
+                    ? "bg-[#e8603c] text-white shadow-xs font-bold"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <ArrowUp className="h-3.5 w-3.5" />
+                <span>Bottom to top</span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsPaused((prev) => !prev)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3.5 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground shadow-xs transition-all cursor-pointer"
+            >
+              {isPaused ? <Play className="h-3.5 w-3.5 text-emerald-600" /> : <Pause className="h-3.5 w-3.5" />}
+              <span>{isPaused ? "Resume scroll" : "Pause scroll"}</span>
+            </button>
+          </div>
         </div>
 
         {/* Infinite Moving Marquee Columns with Top & Bottom Fade Overlays */}
-        <div className="relative mt-16 max-h-[660px] overflow-hidden marquee-pause">
+        <div className="relative mt-14 max-h-[660px] overflow-hidden marquee-pause">
           {/* Top Gradient Fade Mask */}
           <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-background via-background/85 to-transparent z-20" />
 
           {/* 3 Continuous Moving Columns */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-start">
-            {/* Column 1: Smooth Upward Marquee */}
-            <div className="flex flex-col gap-6 animate-marquee-up-slow will-change-transform">
+            {/* Column 1: Top-to-Bottom Marquee */}
+            <div
+              className={cn("flex flex-col gap-6 will-change-transform", col1Animation)}
+              style={isPaused ? { animationPlayState: "paused" } : undefined}
+            >
               {[...COLUMN_1, ...COLUMN_1].map((item, idx) => (
                 <TestimonialCard key={`col1-${idx}`} item={item} />
               ))}
             </div>
 
-            {/* Column 2: Smooth Downward / Offset Marquee */}
-            <div className="hidden md:flex flex-col gap-6 animate-marquee-down-slow will-change-transform">
+            {/* Column 2: Top-to-Bottom Marquee (Graceful Pace) */}
+            <div
+              className={cn("hidden md:flex flex-col gap-6 will-change-transform", col2Animation)}
+              style={isPaused ? { animationPlayState: "paused" } : undefined}
+            >
               {[...COLUMN_2, ...COLUMN_2].map((item, idx) => (
                 <TestimonialCard key={`col2-${idx}`} item={item} />
               ))}
             </div>
 
-            {/* Column 3: Smooth Upward Marquee at Custom Pace */}
-            <div className="hidden lg:flex flex-col gap-6 animate-marquee-up-normal will-change-transform">
+            {/* Column 3: Top-to-Bottom Marquee */}
+            <div
+              className={cn("hidden lg:flex flex-col gap-6 will-change-transform", col3Animation)}
+              style={isPaused ? { animationPlayState: "paused" } : undefined}
+            >
               {[...COLUMN_3, ...COLUMN_3].map((item, idx) => (
                 <TestimonialCard key={`col3-${idx}`} item={item} />
               ))}
