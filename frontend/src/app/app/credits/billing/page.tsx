@@ -72,7 +72,7 @@ function FreeTrialCard({ isCurrentPlan }: { isCurrentPlan: boolean }) {
                 )}
               </div>
               <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                Standard author capabilities to plan, write, and export eBooks. Every account includes 100 free welcome credits with no expiration or credit card required.
+                Standard author capabilities to plan, outline, and draft eBooks. Every account includes 99 free welcome credits with no credit card required. Upgrade to Pro to export print and digital files.
               </p>
             </div>
           </div>
@@ -85,7 +85,7 @@ function FreeTrialCard({ isCurrentPlan }: { isCurrentPlan: boolean }) {
           </div>
           <div className="rounded-xl border border-border/70 bg-background/80 p-3 text-center min-w-[5.5rem]">
             <span className="text-[11px] text-muted-foreground block">Welcome Credits</span>
-            <span className="text-base font-bold text-foreground">100</span>
+            <span className="text-base font-bold text-foreground">99</span>
           </div>
           <div className="rounded-xl border border-border/70 bg-background/80 p-3 text-center min-w-[5.5rem]">
             <span className="text-[11px] text-muted-foreground block">Active Books</span>
@@ -93,7 +93,7 @@ function FreeTrialCard({ isCurrentPlan }: { isCurrentPlan: boolean }) {
           </div>
           <div className="rounded-xl border border-border/70 bg-background/80 p-3 text-center min-w-[5.5rem]">
             <span className="text-[11px] text-muted-foreground block">Exports</span>
-            <span className="text-base font-bold text-success">Included Free</span>
+            <span className="text-base font-bold text-warning">Pro Only</span>
           </div>
         </div>
       </div>
@@ -224,7 +224,7 @@ function BillingContent() {
 
   const entitlements = Object.entries(state?.entitlements ?? {}) as [EntitlementKey, string | number | boolean][];
   const paidEntitlements = entitlements.filter(([key, value]) => {
-    if (key === "exports" || key === "sourceImports") return false;
+    if (key === "sourceImports") return false;
     const freeVal = FREE_TIER_ENTITLEMENTS[key];
     if (typeof value === "number" && typeof freeVal === "number") {
       return value > freeVal;
@@ -450,6 +450,7 @@ function BillingContent() {
             <div className="grid gap-5 md:grid-cols-3">
               {catalog.plans
                 .filter((p) => {
+                  if (!p.recurring) return false;
                   const isYearly = p.interval === "year" || p.id.endsWith("-yearly");
                   return billingCycle === "year" ? isYearly : !isYearly;
                 })
@@ -486,6 +487,67 @@ function BillingContent() {
             <EmptyState icon={<CreditCard className="h-6 w-6" />} title="No plans on offer" description="Plans will appear here when they are published." />
           )}
 
+          {/* One-Time Extra Credit Top-Up Packs */}
+          {catalog && catalog.plans.some((p) => !p.recurring) && (
+            <Section
+              title="Need extra credits?"
+              description="Buy one-time generation credit packs on demand without a recurring monthly plan. Credits never expire."
+              className="mt-10"
+            >
+              <div className="grid gap-4 sm:grid-cols-3">
+                {catalog.plans
+                  .filter((p) => !p.recurring)
+                  .map((pack) => (
+                    <Card key={pack.id} className="p-5 flex flex-col justify-between hover:border-primary/40 transition-colors">
+                      <div>
+                        <div className="flex items-center justify-between gap-2">
+                          <h4 className="font-bold text-base text-foreground">{pack.name}</h4>
+                          <Badge tone="neutral">One-Time</Badge>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">{pack.description}</p>
+                        <div className="mt-4">
+                          <span className="text-3xl font-black text-foreground">
+                            ${(pack.priceMinor / 100).toFixed(2)}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs font-semibold text-primary">
+                          +{formatNumber(pack.credits)} generation credits
+                        </p>
+                      </div>
+                      <Button
+                        variant="secondary"
+                        className="mt-5 w-full text-xs font-bold"
+                        loading={busyPlanId === pack.id}
+                        disabled={checkout.isPending}
+                        onClick={() => {
+                          setProblem(null);
+                          setNotice(null);
+                          checkout.mutate(pack.id, {
+                            onSuccess: (result) => {
+                              const url = result.checkout.url;
+                              if (url) {
+                                if (url.startsWith("http://") || url.startsWith("https://")) {
+                                  window.location.href = url;
+                                } else {
+                                  router.push(url);
+                                }
+                                return;
+                              }
+                              setNotice("Checkout started. Credits are added once payment is confirmed.");
+                              void billingQuery.refetch();
+                            },
+                            onError: (err) => setProblem(errorMessage(err)),
+                          });
+                        }}
+                      >
+                        Buy {formatNumber(pack.credits)} credits
+                      </Button>
+                    </Card>
+                  ))}
+              </div>
+            </Section>
+          )}
+
           <Section
             title="What your plan unlocks"
             description="The capabilities a paid plan adds on top of the free tier."
@@ -509,10 +571,6 @@ function BillingContent() {
 
           <Section title="Included on every plan" className="mt-10">
             <Card className="divide-y divide-border" data-testid="free-entitlements">
-              <div className="flex items-center justify-between gap-4 px-5 py-3.5">
-                <p className="text-sm font-medium">PDF, EPUB and DOCX export</p>
-                <Badge tone="success">Included free</Badge>
-              </div>
               <div className="flex items-center justify-between gap-4 px-5 py-3.5">
                 <p className="text-sm font-medium">Private source import</p>
                 <Badge tone="success">Included free</Badge>
@@ -556,6 +614,7 @@ function BillingContent() {
             {catalog && catalog.plans.length > 0 ? (
               <PricingComparison
                 plans={catalog.plans.filter((p) => {
+                  if (!p.recurring) return false;
                   const isYearly = p.interval === "year" || p.id.endsWith("-yearly");
                   return billingCycle === "year" ? isYearly : !isYearly;
                 })}

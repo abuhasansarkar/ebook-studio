@@ -5,6 +5,7 @@ import { badRequest, notFound } from "../../utils/errors.js";
 import { getOwnedBook } from "../books/bookService.js";
 import { storage } from "../storage/storage.js";
 import { renderPdf } from "../exports/pdfRenderer.js";
+import { requireEntitlement } from "../billing/entitlements.js";
 
 export interface KdpPreflightReport {
   meetsMinPages: boolean; // >= 24 pages
@@ -109,6 +110,7 @@ export const coloringExportService = {
   },
 
   async compilePdf(userId: string, bookId: string) {
+    await requireEntitlement(userId, "exports");
     const book = await getOwnedBook(userId, bookId);
     const plan = await prisma.coloringPlan.findUnique({ where: { bookId } });
     if (!plan) throw notFound("Coloring plan");

@@ -21,12 +21,18 @@ import {
   useColoringPublishingPackage,
   useCompileColoringPdf,
 } from "@/lib/coloring-queries";
+import { useBilling } from "@/lib/queries";
+import { ProPlansModal } from "@/components/billing/pro-plans-modal";
+import { cn } from "@/lib/utils";
 
 export default function ColoringBookExportPage({ params }: { params: Promise<{ bookId: string }> }) {
   const { bookId } = use(params);
   const { data: detail, isLoading: loadingBook } = useColoringBook(bookId);
   const { data: pkg, isLoading: loadingPkg } = useColoringPublishingPackage(bookId);
   const compilePdf = useCompileColoringPdf(bookId);
+  const billing = useBilling();
+  const [showProModal, setShowProModal] = useState(false);
+  const hasExportEntitlement = Boolean(billing.data?.entitlements?.exports);
 
   const [copiedKeywords, setCopiedKeywords] = useState(false);
   const [copiedDescription, setCopiedDescription] = useState(false);
@@ -57,6 +63,10 @@ export default function ColoringBookExportPage({ params }: { params: Promise<{ b
   };
 
   const handleCompilePdf = async () => {
+    if (!hasExportEntitlement) {
+      setShowProModal(true);
+      return;
+    }
     try {
       toast.loading("Compiling 300 DPI print-ready KDP PDF…");
       const res = await compilePdf.mutateAsync();
@@ -65,7 +75,12 @@ export default function ColoringBookExportPage({ params }: { params: Promise<{ b
       setDownloadUrl(`/api/v1/exports/${res.exportId}/download`);
     } catch (err) {
       toast.dismiss();
-      toast.error((err as Error).message || "PDF compilation failed");
+      const msg = (err as Error).message || "PDF compilation failed";
+      if (msg.toLowerCase().includes("exports") || msg.toLowerCase().includes("capability") || msg.toLowerCase().includes("plan")) {
+        setShowProModal(true);
+      } else {
+        toast.error(msg);
+      }
     }
   };
 
@@ -104,9 +119,17 @@ export default function ColoringBookExportPage({ params }: { params: Promise<{ b
                 size="lg"
                 onClick={handleCompilePdf}
                 loading={compilePdf.isPending}
-                className="gap-2 shadow-md"
+                className={cn("gap-2 shadow-md", !hasExportEntitlement && "bg-[#e8603c] hover:bg-[#d4512e] text-white")}
               >
-                <FileDown className="h-5 w-5" /> Compile Print-Ready PDF
+                {!hasExportEntitlement ? (
+                  <>
+                    <Sparkles className="h-4 w-4" /> Upgrade to Pro to Compile PDF
+                  </>
+                ) : (
+                  <>
+                    <FileDown className="h-5 w-5" /> Compile Print-Ready PDF
+                  </>
+                )}
               </Button>
             )}
           </div>
@@ -226,6 +249,8 @@ export default function ColoringBookExportPage({ params }: { params: Promise<{ b
           </Card>
         </div>
       </div>
+
+      <ProPlansModal open={showProModal} onClose={() => setShowProModal(false)} />
     </div>
   );
 }

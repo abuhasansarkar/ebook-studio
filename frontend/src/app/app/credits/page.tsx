@@ -9,8 +9,10 @@ import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader, Section } from 
 import { api, errorMessage } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import type { CreditTransaction } from "@/lib/types";
-import { useCredits } from "@/lib/queries";
+import { useCredits, usePlans, useStartCheckout } from "@/lib/queries";
 import { formatNumber, timeAgo } from "@/lib/utils";
+import { useRouter } from "next/navigation";
+import { Zap, Sparkles } from "lucide-react";
 
 const TYPE_LABEL = { grant: "Added", reserve: "Reserved", charge: "Used", release: "Returned", refund: "Refunded" } as const;
 
@@ -64,6 +66,70 @@ function CheckoutReturnNotice({ balance, refetch }: { balance: number | undefine
   return null;
 }
 
+function OneTimeCreditPacks() {
+  const router = useRouter();
+  const plansQuery = usePlans();
+  const checkout = useStartCheckout();
+  const [error, setError] = useState<string | null>(null);
+
+  const packs = (plansQuery.data?.plans ?? []).filter((p) => !p.recurring);
+
+  const handleBuy = (planId: string) => {
+    setError(null);
+    checkout.mutate(planId, {
+      onSuccess: (result) => {
+        const url = result.checkout.url;
+        if (url) {
+          if (url.startsWith("http://") || url.startsWith("https://")) {
+            window.location.href = url;
+          } else {
+            router.push(url);
+          }
+        }
+      },
+      onError: (err) => setError(errorMessage(err)),
+    });
+  };
+
+  if (packs.length === 0) return null;
+
+  return (
+    <div id="top-up">
+      {error && <Alert tone="danger" className="mb-4">{error}</Alert>}
+      <div className="grid gap-4 sm:grid-cols-3">
+        {packs.map((pack) => (
+          <Card key={pack.id} className="p-5 flex flex-col justify-between hover:border-primary/40 transition-colors">
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <h4 className="font-bold text-base text-foreground">{pack.name}</h4>
+                <Badge tone="neutral">One-Time</Badge>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">{pack.description}</p>
+              <div className="mt-4">
+                <span className="text-3xl font-black text-foreground">
+                  ${(pack.priceMinor / 100).toFixed(2)}
+                </span>
+              </div>
+              <p className="mt-1 text-xs font-semibold text-primary">
+                +{formatNumber(pack.credits)} generation credits
+              </p>
+            </div>
+            <Button
+              variant="secondary"
+              className="mt-5 w-full text-xs font-bold"
+              loading={checkout.isPending && checkout.variables === pack.id}
+              disabled={checkout.isPending}
+              onClick={() => handleBuy(pack.id)}
+            >
+              Buy {formatNumber(pack.credits)} credits
+            </Button>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function CreditsPage() {
   const { data, isPending, error, refetch } = useCredits();
   // Older pages are appended below the first page the credits query returns.
@@ -112,13 +178,22 @@ export default function CreditsPage() {
                 <li className="flex justify-between"><span>Book outline</span><span className="font-medium text-foreground">{CREDIT_COSTS.outline} credits</span></li>
                 <li className="flex justify-between"><span>Chapter (per 1,000 words)</span><span className="font-medium text-foreground">{CREDIT_COSTS.chapterPer1000Words} credits</span></li>
                 <li className="flex justify-between"><span>AI assistant edit</span><span className="font-medium text-foreground">{CREDIT_COSTS.assist} credit</span></li>
-                <li className="flex justify-between"><span>Exports (PDF, EPUB, DOCX)</span><span className="font-medium text-foreground">Free</span></li>
+                <li className="flex justify-between"><span>Exports (PDF, EPUB, DOCX)</span><span className="font-semibold text-primary">Pro Plan</span></li>
               </ul>
               <p className="mt-3 text-xs text-muted-foreground">
                 Cover and illustration images, AI quality reviews, marketing copy and store listings show their price before you start, and you&apos;re only charged when the result is saved.
               </p>
             </Card>
           </div>
+
+          {/* One-Time Extra Credit Top-Up Section */}
+          <Section
+            title="Buy extra credits"
+            description="Need credits without a monthly subscription? Top up on demand. Credits never expire."
+            className="mt-8"
+          >
+            <OneTimeCreditPacks />
+          </Section>
 
           <Section title="History" description="Every credit movement on your account." className="mt-10">
             {data.transactions.length === 0 ? (

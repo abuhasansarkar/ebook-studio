@@ -58,4 +58,5 @@ export const PAID_ENTITLEMENTS = {
   maxBooks: 25,
   maxChaptersPerBook: 60,
   priorityJobs: true,
+  exports: true,
 } as const;

@@ -23,7 +23,7 @@ export default function LandingPage() {
       "@type": "Offer",
       price: "0",
       priceCurrency: "USD",
-      description: "Free to start. 100 credits are included when you sign up.",
+      description: "Free to start. 99 credits are included when you sign up.",
     },
     featureList: [
       "AI outline and chapter generation",

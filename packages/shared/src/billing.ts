@@ -173,7 +173,6 @@ export function planEntitlements(plan: Plan): Partial<Record<EntitlementKey, str
  * priority job handling, and the extra credits that buy more AI work.
  */
 export const FREE_TIER_ENTITLEMENTS: Partial<Record<EntitlementKey, string | number | boolean>> = {
-  exports: true,
   sourceImports: true,
   maxBooks: 1,
   maxChaptersPerBook: 10,
@@ -188,6 +187,7 @@ export const PAID_ENTITLEMENT_KEYS: readonly EntitlementKey[] = [
   'maxBooks',
   'maxChaptersPerBook',
   'priorityJobs',
+  'exports',
 ];
 
 /**

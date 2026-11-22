@@ -23,7 +23,7 @@ const ENTITLEMENT_ROWS: { key: string; label: string; freeLabel: string }[] = [
   { key: "maxBooks", label: "Books at once", freeLabel: "1" },
   { key: "maxChaptersPerBook", label: "Chapters per book", freeLabel: "10" },
   { key: "priorityJobs", label: "Priority AI jobs", freeLabel: "—" },
-  { key: "exports", label: "PDF, EPUB and DOCX export", freeLabel: "Included" },
+  { key: "exports", label: "PDF, EPUB and DOCX export", freeLabel: "—" },
   { key: "sourceImports", label: "Private source import", freeLabel: "Included" },
 ];
 
@@ -61,7 +61,10 @@ export function PricingClient({
 }) {
   const [annual, setAnnual] = useState(false);
 
-  const displayedPlans = plans.filter((p) => {
+  const subscriptionPlans = plans.filter((p) => p.recurring !== false);
+  const oneTimePacks = plans.filter((p) => p.recurring === false);
+
+  const displayedPlans = subscriptionPlans.filter((p) => {
     const isYearly = p.interval === "year" || p.id.endsWith("-yearly");
     return annual ? isYearly : !isYearly;
   });
@@ -122,7 +125,7 @@ export function PricingClient({
           >
             <strong className="font-semibold text-foreground">Payments are not switched on in this build.</strong>{" "}
             The prices below are the published plan catalog, but no plan can be bought yet. You can still start free
-            with 100 credits.
+            with 99 credits.
           </div>
         )}
 
@@ -136,7 +139,7 @@ export function PricingClient({
               </div>
               <h3 className="mt-2 text-xl font-bold text-foreground">Start free, upgrade when you're ready</h3>
               <p className="mt-1 text-xs sm:text-sm text-muted-foreground leading-relaxed">
-                Every account includes 100 welcome credits, full editor tools, and print-ready PDF, EPUB, and DOCX exports.
+                Every account includes 99 welcome credits and full editor tools. High-resolution PDF, EPUB, and DOCX exports are unlocked on Pro plans.
               </p>
             </div>
 
@@ -147,7 +150,7 @@ export function PricingClient({
               </div>
               <div className="text-center sm:text-start">
                 <span className="text-[11px] text-muted-foreground block">Credits</span>
-                <span className="text-xl font-black text-foreground">100</span>
+                <span className="text-xl font-black text-foreground">99</span>
               </div>
               <div className="text-center sm:text-start">
                 <span className="text-[11px] text-muted-foreground block">Limits</span>
@@ -254,6 +257,41 @@ export function PricingClient({
         )}
       </section>
 
+      {/* One-Time Credit Packs Section */}
+      {oneTimePacks.length > 0 && (
+        <section className="mx-auto max-w-6xl px-4 pb-16 sm:px-6" aria-label="One-time credit packs">
+          <div className="rounded-3xl border border-border bg-gradient-to-b from-surface/80 to-surface/40 p-8 shadow-card">
+            <div className="text-center max-w-xl mx-auto">
+              <span className="rounded-full bg-primary-soft px-3 py-1 text-xs font-semibold text-primary">Need extra credits?</span>
+              <h3 className="mt-2 text-2xl font-bold text-foreground">One-Time Credit Packs</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                No recurring subscription required. Buy credits on demand to top up your balance whenever you need them — credits never expire.
+              </p>
+            </div>
+            <div className="mt-8 grid gap-5 sm:grid-cols-3 max-w-4xl mx-auto">
+              {oneTimePacks.map((pack) => (
+                <div key={pack.id} className="flex flex-col rounded-2xl border border-border bg-surface p-6 text-center shadow-card transition-all duration-200 hover:border-primary/40">
+                  <h4 className="font-bold text-foreground text-base">{pack.name}</h4>
+                  <p className="mt-1 text-xs text-muted-foreground min-h-[2rem]">{pack.description}</p>
+                  <div className="my-4">
+                    <span className="text-3xl font-black text-foreground">{formatPrice(pack.priceMinor, pack.currency)}</span>
+                    <span className="text-xs text-muted-foreground block mt-0.5">one-time payment</span>
+                  </div>
+                  <div className="rounded-xl bg-primary-soft/70 py-2 px-3 mb-5 border border-primary/10">
+                    <span className="text-sm font-extrabold text-primary">+{new Intl.NumberFormat("en").format(pack.credits)} credits</span>
+                  </div>
+                  <div className="mt-auto">
+                    <Link href="/signup" className={cn(buttonVariants({ variant: "secondary" }), "w-full text-xs font-semibold")}>
+                      Get {pack.name}
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Comparison grid */}
       {displayedPlans.length > 0 && (
         <section className="border-t border-border bg-surface py-16" aria-label="Compare plans">
@@ -292,7 +330,7 @@ export function PricingClient({
                   ))}
                   <tr className="border-t border-border bg-muted/40">
                     <th scope="row" className="px-5 py-3.5 text-start font-medium">Credits</th>
-                    <td className="px-5 py-3.5 text-muted-foreground">100</td>
+                    <td className="px-5 py-3.5 text-muted-foreground">99</td>
                     {displayedPlans.map((plan) => (
                       <td key={plan.id} className="px-5 py-3.5 font-medium text-foreground">
                         {new Intl.NumberFormat("en").format(plan.credits)}

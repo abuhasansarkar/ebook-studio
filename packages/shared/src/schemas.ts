@@ -165,4 +165,4 @@ export function estimateBookCredits(chapterCount: number, wordsPerChapter: numbe
   return chapterCount * chapterCredits(wordsPerChapter);
 }
 
-export const FREE_SIGNUP_CREDITS = 100;
+export const FREE_SIGNUP_CREDITS = 99;

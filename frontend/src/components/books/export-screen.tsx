@@ -13,9 +13,11 @@ import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader } from "@/compon
 import { Input, Select } from "@/components/ui/form";
 import { api, errorMessage } from "@/lib/api";
 import { downloadFile } from "@/lib/download";
-import { useBook, useCreateExport, useExports, useExportFormats } from "@/lib/queries";
-import { formatBytes, formatNumber, timeAgo } from "@/lib/utils";
+import { useBook, useCreateExport, useExports, useExportFormats, useBilling } from "@/lib/queries";
+import { formatBytes, formatNumber, timeAgo, cn } from "@/lib/utils";
 import type { ExportRecord } from "@/lib/types";
+import { ProPlansModal } from "@/components/billing/pro-plans-modal";
+import { Sparkles as SparklesIcon } from "lucide-react";
 
 /**
  * The export screen.
@@ -75,8 +77,12 @@ export function ExportScreen({ params }: { params: Promise<{ bookId: string }> }
   const reviews = useQuery({ queryKey: ["quality-reports", bookId], queryFn: () => api.get<{ reports: { id: string; stale: boolean; status: string; createdAt: string }[] }>(`/books/${bookId}/quality/reports`).then((r) => r.reports) });
   const formats = useExportFormats();
   const createExport = useCreateExport(bookId);
+  const billing = useBilling();
+  const [showProModal, setShowProModal] = useState(false);
   const [format, setFormat] = useState<ExportFormat>("pdf");
   const [options, setOptions] = useState<Record<string, unknown>>({});
+
+  const hasExportEntitlement = Boolean(billing.data?.entitlements?.exports);
 
   // isPending, not isLoading: the book query waits for the session, and a
   // waiting query is pending without loading (see generate-screen).
@@ -122,15 +128,27 @@ export function ExportScreen({ params }: { params: Promise<{ bookId: string }> }
     { key: "snapshot", ok: true, label: "Every export is a frozen snapshot: later edits cannot change it" },
   ];
 
-  const request = () =>
+  const request = () => {
+    if (!hasExportEntitlement) {
+      setShowProModal(true);
+      return;
+    }
     createExport.mutate(
       // A cleared number box means "use the default", so it is left out.
       { format, options: Object.fromEntries(Object.entries(options).filter(([, v]) => v !== "")) },
       {
         onSuccess: () => toast.success(`Building your ${spec.label}…`),
-        onError: (err) => toast.error(errorMessage(err)),
+        onError: (err) => {
+          const msg = errorMessage(err);
+          if (msg.toLowerCase().includes("exports") || msg.toLowerCase().includes("capability") || msg.toLowerCase().includes("plan")) {
+            setShowProModal(true);
+          } else {
+            toast.error(msg);
+          }
+        },
       },
     );
+  };
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-8">
@@ -229,16 +247,41 @@ export function ExportScreen({ params }: { params: Promise<{ bookId: string }> }
             </div>
           </fieldset>
 
+          {!hasExportEntitlement && (
+            <div className="mt-5 rounded-2xl border border-[#e8603c]/30 bg-[#e8603c]/5 p-4">
+              <div className="flex items-start gap-3">
+                <div className="rounded-lg bg-[#e8603c]/10 p-2 text-[#e8603c] shrink-0">
+                  <SparklesIcon className="h-4 w-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-[#e8603c]">
+                    Pro Feature Locked
+                  </h4>
+                  <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+                    Free trial accounts cannot export files. Upgrade to any Pro plan to unlock unlimited PDF, EPUB, and DOCX exports with full commercial rights.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <Button
-            className="mt-6 w-full"
+            className={cn(
+              "mt-6 w-full font-bold",
+              !hasExportEntitlement && "bg-[#e8603c] hover:bg-[#d4512e] text-white shadow-md",
+            )}
             size="lg"
             loading={createExport.isPending || busy}
             disabled={written.length === 0 || busy}
             onClick={request}
           >
-            {busy ? "Building…" : `Export ${spec.label}`}
+            {busy ? "Building…" : !hasExportEntitlement ? `Upgrade to Pro to Export ${spec.label}` : `Export ${spec.label}`}
           </Button>
-          <p className="mt-3 text-center text-xs text-muted-foreground">Free to export. The file is validated before it can be downloaded.</p>
+          <p className="mt-3 text-center text-xs text-muted-foreground">
+            {!hasExportEntitlement
+              ? "Exports are included on all Pro plans. Cancel anytime."
+              : "Included with your Pro plan. The file is validated before download."}
+          </p>
           <details className="mt-4 rounded-xl border border-border px-4 py-3 text-sm">
             <summary className="cursor-pointer font-medium">How to check your file before selling it</summary>
             <ul className="mt-2 list-disc space-y-1 ps-5 text-muted-foreground">
@@ -330,6 +373,7 @@ export function ExportScreen({ params }: { params: Promise<{ bookId: string }> }
         </Card>
       )}
       <OperationActivity bookId={bookId} />
+      <ProPlansModal open={showProModal} onClose={() => setShowProModal(false)} />
     </div>
   );
 }

@@ -42,11 +42,12 @@ async function writeAChapter(bookId: string) {
 }
 
 describe("entitlement enforcement", () => {
-  it("allows an export for an author with no paid plan, because export is free", async () => {
+  it("refuses an export for an author with no paid plan, because export is a paid capability", async () => {
     const a = await setup("free-export");
     await writeAChapter(a.book.id);
     const res = await a.agent.post(`/api/v1/books/${a.book.id}/exports`).set("Origin", ORIGIN).send({ format: "pdf" });
-    expect(res.status).toBe(202);
+    expect(res.status).toBe(403);
+    expect(res.body.error.details.entitlement).toBe("exports");
   });
 
   it("allows a source import for an author with no paid plan, because source import is free", async () => {
@@ -66,7 +67,7 @@ describe("entitlement enforcement", () => {
     // nothing is written for them.
     await grantEntitlements(a.user.id, PAID_ENTITLEMENTS);
     const rows = await prisma.entitlement.findMany({ where: { userId: a.user.id } });
-    expect(rows.map((r) => r.key).sort()).toEqual(["maxBooks", "maxChaptersPerBook", "priorityJobs"]);
+    expect(rows.map((r) => r.key).sort()).toEqual(["exports", "maxBooks", "maxChaptersPerBook", "priorityJobs"]);
   });
 
   it("still allows an export once the plan carries the export capability", async () => {

@@ -29,7 +29,7 @@ const ENTITLEMENT_ROWS: { key: EntitlementKey; label: string; freeLabel: string 
   { key: "maxBooks", label: "Books at once", freeLabel: "1" },
   { key: "maxChaptersPerBook", label: "Chapters per book", freeLabel: "10" },
   { key: "priorityJobs", label: "Priority AI jobs", freeLabel: "—" },
-  { key: "exports", label: "PDF, EPUB and DOCX export", freeLabel: "Included" },
+  { key: "exports", label: "PDF, EPUB and DOCX export", freeLabel: "—" },
   { key: "sourceImports", label: "Private source import", freeLabel: "Included" },
 ];
 

@@ -41,76 +41,110 @@ type Tx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 /** The plans this product sells, seeded into the catalog. */
 export const DEFAULT_PLANS: Plan[] = [
   {
-    id: "starter",
-    name: "Starter",
-    description: "Credits for one book, with every export format included.",
-    priceMinor: 1200,
+    id: "creator",
+    name: "Creator Pro",
+    description: "Ideal for new authors. Full Pro exports and essential generation credits.",
+    priceMinor: 2900,
     currency: "USD",
-    credits: 500,
-    entitlements: { maxBooks: 5, maxChaptersPerBook: 30 },
+    credits: 300,
+    entitlements: { maxBooks: 5, maxChaptersPerBook: 30, exports: true, priorityJobs: false },
     active: true,
     recurring: true,
     interval: "month",
   },
   {
-    id: "starter-yearly",
-    name: "Starter (Annual)",
-    description: "Credits for multiple books with all export formats, billed annually (save 17%).",
-    priceMinor: 12000,
+    id: "creator-yearly",
+    name: "Creator Pro (Annual)",
+    description: "Save 20%! Full Pro exports and 3,600 credits billed annually ($23.20/mo).",
+    priceMinor: 27800,
     currency: "USD",
-    credits: 6000,
-    entitlements: { maxBooks: 5, maxChaptersPerBook: 30 },
+    credits: 3600,
+    entitlements: { maxBooks: 5, maxChaptersPerBook: 30, exports: true, priorityJobs: false },
     active: true,
     recurring: true,
     interval: "year",
   },
   {
     id: "author",
-    name: "Author",
-    description: "Credits for several books, with priority job handling.",
-    priceMinor: 3900,
+    name: "Author Pro",
+    description: "Most popular! Priority AI generation, higher limits, and full Pro exports.",
+    priceMinor: 4900,
     currency: "USD",
-    credits: 2000,
-    entitlements: { maxBooks: 25, maxChaptersPerBook: 60, priorityJobs: true },
+    credits: 750,
+    entitlements: { maxBooks: 25, maxChaptersPerBook: 60, exports: true, priorityJobs: true },
     active: true,
     recurring: true,
     interval: "month",
   },
   {
     id: "author-yearly",
-    name: "Author (Annual)",
-    description: "2 months free! Priority handling and higher book quotas, billed annually.",
-    priceMinor: 39000,
+    name: "Author Pro (Annual)",
+    description: "Save 20%! Most popular choice for active creators billed annually ($39.20/mo).",
+    priceMinor: 47000,
     currency: "USD",
-    credits: 25000,
-    entitlements: { maxBooks: 25, maxChaptersPerBook: 60, priorityJobs: true },
+    credits: 9000,
+    entitlements: { maxBooks: 25, maxChaptersPerBook: 60, exports: true, priorityJobs: true },
     active: true,
     recurring: true,
     interval: "year",
   },
   {
     id: "studio",
-    name: "Studio",
-    description: "The most credits, for a catalogue of books.",
+    name: "Studio Pro",
+    description: "Maximum scale for prolific authors with highest credit quota and priority AI.",
     priceMinor: 9900,
     currency: "USD",
-    credits: 6000,
-    entitlements: { maxBooks: 100, maxChaptersPerBook: 120, priorityJobs: true },
+    credits: 2000,
+    entitlements: { maxBooks: 100, maxChaptersPerBook: 120, exports: true, priorityJobs: true },
     active: true,
     recurring: true,
     interval: "month",
   },
   {
     id: "studio-yearly",
-    name: "Studio (Annual)",
-    description: "Save 20%! Maximum scale, highest quotas, and priority handling billed annually.",
+    name: "Studio Pro (Annual)",
+    description: "Save 20%! Maximum scale, highest quotas, and priority handling billed annually ($79.20/mo).",
     priceMinor: 95000,
     currency: "USD",
-    credits: 75000,
-    entitlements: { maxBooks: 100, maxChaptersPerBook: 120, priorityJobs: true },
+    credits: 24000,
+    entitlements: { maxBooks: 100, maxChaptersPerBook: 120, exports: true, priorityJobs: true },
     active: true,
     recurring: true,
     interval: "year",
+  },
+  // One-Time Credit Top-Up Packs (No subscription)
+  {
+    id: "pack-mini",
+    name: "Mini Credit Pack",
+    description: "150 extra generation credits. One-time purchase, never expires.",
+    priceMinor: 900,
+    currency: "USD",
+    credits: 150,
+    entitlements: {},
+    active: true,
+    recurring: false,
+  },
+  {
+    id: "pack-creator",
+    name: "Creator Credit Pack",
+    description: "500 extra generation credits. One-time purchase, never expires.",
+    priceMinor: 2500,
+    currency: "USD",
+    credits: 500,
+    entitlements: {},
+    active: true,
+    recurring: false,
+  },
+  {
+    id: "pack-power",
+    name: "Power Credit Pack",
+    description: "1,200 extra generation credits. One-time purchase, never expires.",
+    priceMinor: 4900,
+    currency: "USD",
+    credits: 1200,
+    entitlements: {},
+    active: true,
+    recurring: false,
   },
 ];
 
@@ -143,7 +177,7 @@ function toPlan(row: {
     entitlements: (row.entitlements ?? {}) as Plan["entitlements"],
     active: row.active,
     recurring: row.recurring,
-    interval: isYearly ? "year" : "month",
+    interval: row.recurring ? (isYearly ? "year" : "month") : undefined,
   };
 }
 
@@ -162,7 +196,8 @@ export const billingService = {
   /** The plans on offer. */
   async plans() {
     let rows = await prisma.plan.findMany({ where: { active: true }, orderBy: { priceMinor: "asc" } });
-    if (rows.length < DEFAULT_PLANS.length) {
+    const hasAll = DEFAULT_PLANS.every((p) => rows.some((r) => r.id === p.id));
+    if (!hasAll || rows.length < DEFAULT_PLANS.length) {
       await this.seedPlans();
       rows = await prisma.plan.findMany({ where: { active: true }, orderBy: { priceMinor: "asc" } });
     }
@@ -176,6 +211,12 @@ export const billingService = {
    * so adding new plans or updating quotas takes effect across the catalog.
    */
   async seedPlans(plans: Plan[] = DEFAULT_PLANS) {
+    // Retire legacy plans
+    await prisma.plan.updateMany({
+      where: { id: { in: ["starter", "starter-yearly"] } },
+      data: { active: false },
+    });
+
     for (const plan of plans) {
       await prisma.plan.upsert({
         where: { id: plan.id },

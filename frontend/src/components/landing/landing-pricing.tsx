@@ -53,10 +53,10 @@ export function LandingPricing() {
             TRANSPARENT PRICING
           </div>
           <h2 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-5xl text-foreground">
-            Plans from $19/mo, pay only when you're ready to sell.
+            Plans from $29/mo, pay only when you're ready to sell.
           </h2>
           <p className="mt-4 text-base text-muted-foreground sm:text-lg leading-relaxed">
-            Start completely free with 100 credits. Upgrade to unlock full-resolution commercial exports and unlimited generation.
+            Start completely free with 99 credits. Upgrade to unlock full-resolution commercial exports and unlimited generation.
           </p>
 
           {/* Billing Cycle Toggle with Lively Pill Animation */}
@@ -105,19 +105,19 @@ export function LandingPricing() {
 
               <div className="mt-6 flex items-baseline justify-center gap-1">
                 <span className="text-5xl font-black tracking-tight text-foreground transition-all duration-300">
-                  {annual ? "$15" : "$19"}
+                  {annual ? "$23" : "$29"}
                 </span>
                 <span className="text-sm font-semibold text-muted-foreground">/ month</span>
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                {annual ? "Billed annually ($180/yr) • 2 months free" : "Billed monthly, cancel anytime"}
+                {annual ? "Billed annually ($278/yr) • Save 20%" : "Billed monthly, cancel anytime"}
               </p>
 
               <Link
                 href="/signup"
                 className="shimmer-mask mt-8 flex w-full items-center justify-center gap-2 rounded-xl bg-[#e8603c] hover:bg-[#d4512e] py-3.5 text-sm font-bold text-white shadow-md transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 active:scale-98 group/btn"
               >
-                <span>Start Free (100 Welcome Credits)</span>
+                <span>Start Free (99 Welcome Credits)</span>
                 <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover/btn:translate-x-1" />
               </Link>
               <div className="mt-3 flex items-center justify-center gap-4 text-xs text-muted-foreground">
@@ -126,7 +126,7 @@ export function LandingPricing() {
                 </Link>
               </div>
               <p className="mt-2 text-[11px] text-muted-foreground">
-                Instant access • Includes 100 welcome credits • Cancel anytime
+                Instant access • Includes 99 welcome credits • Cancel anytime
               </p>
             </div>
 
