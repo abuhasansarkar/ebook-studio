@@ -69,6 +69,13 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`} suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){if(typeof window==='undefined')return;var E=['bis_skin_checked','bis_register','__processed_'];var oE=console.error;console.error=function(){for(var i=0;i<arguments.length;i++){var a=arguments[i];if(typeof a==='string'&&E.some(function(x){return a.indexOf(x)!==-1;}))return;}return oE.apply(console,arguments);};var oS=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){if(typeof n==='string'&&E.some(function(x){return n.indexOf(x)!==-1;}))return;return oS.apply(this,arguments);};try{var scrub=function(el){if(!el||!el.removeAttribute||!el.attributes)return;for(var i=el.attributes.length-1;i>=0;i--){var aN=el.attributes[i].name;if(E.some(function(x){return aN.indexOf(x)!==-1;}))el.removeAttribute(aN);}};var obs=new MutationObserver(function(muts){for(var i=0;i<muts.length;i++){var m=muts[i];if(m.type==='attributes'){scrub(m.target);}else if(m.type==='childList'){for(var j=0;j<m.addedNodes.length;j++){var n=m.addedNodes[j];if(n.nodeType===1){scrub(n);if(n.querySelectorAll){var sub=n.querySelectorAll('*');for(var k=0;k<sub.length;k++)scrub(sub[k]);}}}}}});obs.observe(document.documentElement,{attributes:true,subtree:true,childList:true});window.addEventListener('DOMContentLoaded',function(){document.querySelectorAll('*').forEach(scrub);});}catch(e){}})();`,
+          }}
+        />
+      </head>
       <body className="flex min-h-full flex-col" suppressHydrationWarning>
         <Providers>{children}</Providers>
       </body>

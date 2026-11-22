@@ -58,7 +58,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
     : NAV;
 
   return (
-    <nav className="space-y-1" aria-label="App">
+    <nav className="space-y-1" aria-label="App" suppressHydrationWarning>
       {items.map(({ href, label, icon: Icon }) => {
         const active = pathname === href || (href !== "/app/dashboard" && pathname.startsWith(href));
         return (
@@ -141,7 +141,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen" suppressHydrationWarning>
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col justify-between border-e border-border bg-surface p-4 lg:flex" suppressHydrationWarning>
-        <div>
+        <div suppressHydrationWarning>
           <Logo href="/app/dashboard" className="mb-8 px-2 pt-1" />
           <NavLinks />
         </div>
@@ -149,18 +149,18 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       {/* Mobile */}
-      <div className="fixed inset-x-0 top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-surface px-4 lg:hidden">
+      <div className="fixed inset-x-0 top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-surface px-4 lg:hidden" suppressHydrationWarning>
         <Logo href="/app/dashboard" />
         <button type="button" aria-label="Open menu" className="cursor-pointer rounded-lg p-2 hover:bg-muted" onClick={() => setMobileOpen(true)}>
           <Menu className="h-5 w-5" />
         </button>
       </div>
       {mobileOpen && (
-        <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" aria-label="Menu">
+        <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" aria-label="Menu" suppressHydrationWarning>
           <div className="absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
-          <div className="absolute inset-y-0 start-0 flex w-72 flex-col justify-between bg-surface p-4">
-            <div>
-              <div className="mb-8 flex items-center justify-between">
+          <div className="absolute inset-y-0 start-0 flex w-72 flex-col justify-between bg-surface p-4" suppressHydrationWarning>
+            <div suppressHydrationWarning>
+              <div className="mb-8 flex items-center justify-between" suppressHydrationWarning>
                 <Logo href="/app/dashboard" />
                 <button type="button" aria-label="Close menu" className="cursor-pointer rounded-lg p-2 hover:bg-muted" onClick={() => setMobileOpen(false)}>
                   <X className="h-5 w-5" />
@@ -173,7 +173,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       )}
 
-      <main className="min-w-0 flex-1 pt-14 lg:pt-0">{children}</main>
+      <main className="min-w-0 flex-1 pt-14 lg:pt-0" suppressHydrationWarning>{children}</main>
     </div>
   );
 }
