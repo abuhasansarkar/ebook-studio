@@ -85,6 +85,9 @@ function SidebarFooter() {
   const router = useRouter();
   const { data: session } = useSession();
   const credits = useCredits();
+  const mounted = useMounted();
+  const initial = mounted && session?.user.name ? session.user.name[0]?.toUpperCase() : "?";
+
   return (
     <div className="space-y-3">
       <Link href="/app/credits" className="block rounded-xl border border-border bg-background p-3 hover:bg-muted">
@@ -93,12 +96,12 @@ function SidebarFooter() {
         {credits.data && credits.data.wallet.reserved > 0 && <p className="text-xs text-muted-foreground">{credits.data.wallet.reserved} reserved for running jobs</p>}
       </Link>
       <div className="flex items-center gap-3 px-1">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-white">
-          {session?.user.name?.[0]?.toUpperCase() ?? "?"}
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-white" suppressHydrationWarning>
+          {initial}
         </div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold">{session?.user.name}</p>
-          <p className="truncate text-xs text-muted-foreground">{session?.user.email}</p>
+        <div className="min-w-0 flex-1" suppressHydrationWarning>
+          <p className="truncate text-sm font-semibold">{mounted ? session?.user.name : ""}</p>
+          <p className="truncate text-xs text-muted-foreground">{mounted ? session?.user.email : ""}</p>
         </div>
         <button
           type="button"
