@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Coins, CreditCard, Sparkles } from "lucide-react";
 import { FREE_TIER_ENTITLEMENTS, type EntitlementKey, type Plan, type SubscriptionStatus } from "@ebook/shared";
 import { PageHeader } from "@/components/app/app-shell";
+import { PricingComparison } from "@/components/billing/pricing-table";
 import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader, Section } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -263,6 +264,16 @@ export default function BillingPage() {
                 </div>
               ))}
             </Card>
+          </Section>
+
+          <Section title="Compare every plan" description="What each plan unlocks, next to what every author gets for free." className="mt-10">
+            {catalog && catalog.plans.length > 0 ? (
+              <PricingComparison plans={catalog.plans} />
+            ) : (
+              <Card className="p-6 text-sm text-muted-foreground">
+                The plan catalog is empty right now, so there is nothing to compare.
+              </Card>
+            )}
           </Section>
 
           <PaymentHistory />

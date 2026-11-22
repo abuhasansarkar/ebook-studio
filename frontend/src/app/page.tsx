@@ -27,6 +27,18 @@ const qualityRules = [
   "Credits only charged for chapters actually written",
 ];
 
+/**
+ * The pricing teaser.
+ *
+ * The prices themselves live on the pricing page, which reads them from the
+ * published catalog. Repeating a price here would risk the two disagreeing.
+ */
+const pricingHighlights = [
+  { title: "Free to start", text: "100 credits and a full book, with no card. Export in PDF, EPUB and DOCX on every tier." },
+  { title: "Pay for the work, not the feature", text: "Credits are only charged for chapters actually written and saved." },
+  { title: "Cancel whenever", text: "A cancelled plan runs to the end of its period, and your credits are never affected." },
+];
+
 /** Cached at prerender time (Cache Components disallows `new Date()` in the static shell). */
 async function CopyrightYear() {
   "use cache";
@@ -75,6 +87,7 @@ export default function LandingPage() {
           <nav className="hidden items-center gap-8 text-sm text-muted-foreground md:flex" aria-label="Main">
             <a href="#how" className="hover:text-foreground">How it works</a>
             <a href="#features" className="hover:text-foreground">Features</a>
+            <Link href="/pricing" className="hover:text-foreground">Pricing</Link>
             <a href="#languages" className="hover:text-foreground">Languages</a>
           </nav>
           <div className="flex items-center gap-2">
@@ -194,6 +207,28 @@ export default function LandingPage() {
                 </li>
               ))}
             </ul>
+          </div>
+        </section>
+
+        {/* Pricing */}
+        <section id="pricing" className="border-t border-border py-20">
+          <div className="mx-auto max-w-5xl px-4 text-center sm:px-6">
+            <h2 className="text-3xl font-bold tracking-tight">Simple, honest pricing</h2>
+            <p className="mx-auto mt-3 max-w-xl text-muted-foreground">
+              Start free with 100 credits. A plan adds credits and lifts the limits on how much you can publish at
+              once — and never takes away PDF, EPUB and DOCX export.
+            </p>
+            <div className="mt-10 grid gap-4 text-start sm:grid-cols-3">
+              {pricingHighlights.map((h) => (
+                <div key={h.title} className="rounded-2xl border border-border bg-surface p-6 shadow-card">
+                  <h3 className="font-semibold">{h.title}</h3>
+                  <p className="mt-2 text-sm text-muted-foreground">{h.text}</p>
+                </div>
+              ))}
+            </div>
+            <Link href="/pricing" className={cn(buttonVariants({ size: "lg" }), "mt-10")}>
+              See all plans and compare
+            </Link>
           </div>
         </section>
 

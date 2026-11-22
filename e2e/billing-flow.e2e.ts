@@ -109,6 +109,32 @@ try {
   await shot(page, "plans");
   log("the billing page shows the plan catalog and says the provider is not live");
 
+  // The comparison grid is part of the billing screen, and every column of it
+  // must agree with the plan cards above it.
+  const comparison = await page.evaluate(() => {
+    const table = document.querySelector('[data-testid="pricing-comparison"]');
+    if (!table) return null;
+    const headers = Array.from(table.querySelectorAll("thead th")).map((th) => th.textContent?.trim() ?? "");
+    const rows = Array.from(table.querySelectorAll("tbody tr")).map((tr) =>
+      Array.from(tr.querySelectorAll("th,td")).map((cell) => cell.textContent?.trim() ?? ""),
+    );
+    return { headers, rows };
+  });
+  if (!comparison) throw new Error("the billing page has no plan comparison table");
+  if (!comparison.headers.includes("Free")) throw new Error("the comparison table has no free column");
+  for (const row of comparison.rows) {
+    // Export and source import are free for every author, so no paid column
+    // may show them as missing.
+    if (row[0] === "PDF, EPUB and DOCX export" || row[0] === "Private source import") {
+      for (const cell of row.slice(1)) {
+        if (cell === "—" || cell === "") {
+          throw new Error(`the comparison table shows "${row[0]}" as missing for a plan that includes it`);
+        }
+      }
+    }
+  }
+  log("the comparison table lists every plan and keeps the free capabilities included");
+
   // The author's balance before the purchase.
   const balanceBefore = await creditBalance(page);
 

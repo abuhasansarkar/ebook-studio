@@ -6,6 +6,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import {
   BookOpen,
   Coins,
+  CreditCard,
   FolderKanban,
   Images,
   LayoutDashboard,
@@ -32,6 +33,7 @@ const NAV = [
   { href: "/app/projects", label: "Projects", icon: FolderKanban },
   { href: "/app/image-studio", label: "Image library", icon: Images },
   { href: "/app/credits", label: "Credits", icon: Coins },
+  { href: "/app/credits/billing", label: "Plans & billing", icon: CreditCard },
   { href: "/app/support", label: "Support", icon: LifeBuoy },
   { href: "/app/settings", label: "Settings", icon: Settings },
 ];
