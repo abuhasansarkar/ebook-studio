@@ -56,22 +56,42 @@ async function requestOpenAiImage(prompt: string, aspect: "portrait" | "square" 
     timeout: 120000,
   });
 
-  const size = aspect === "square" ? "1024x1024" : "1024x1536";
-  const response = await client.images.generate({
-    model: env.OPENAI_IMAGE_MODEL || "dall-e-3",
-    n: 1,
-    size: size as "1024x1024" | "1024x1792",
-    quality: "standard",
-    response_format: "b64_json",
-    prompt,
-  });
+  const model = env.OPENAI_IMAGE_MODEL || "gpt-image-2.6-sunburst";
+  const isDallE = model.startsWith("dall-e");
+  const size = isDallE
+    ? (aspect === "square" ? "1024x1024" : "1024x1792")
+    : (aspect === "square" ? "1024x1024" : "1024x1536");
 
-  const b64 = response.data?.[0]?.b64_json;
-  if (!b64 || b64.length > 20 * 1024 * 1024) {
-    throw new Error("Invalid or missing image returned from provider");
+  const params: any = {
+    model,
+    n: 1,
+    size,
+    prompt,
+  };
+
+  if (isDallE) {
+    params.quality = "standard";
+    params.response_format = "b64_json";
+  } else {
+    params.quality = "medium";
+    params.output_format = "png";
   }
 
-  return Buffer.from(b64, "base64");
+  const response = await client.images.generate(params);
+  const item = response.data?.[0];
+  if (item?.b64_json) {
+    const b64 = item.b64_json;
+    if (b64.length > 20 * 1024 * 1024) {
+      throw new Error("Invalid or oversized image returned from provider");
+    }
+    return Buffer.from(b64, "base64");
+  }
+  if (item?.url) {
+    const res = await fetch(item.url);
+    if (!res.ok) throw new Error(`Failed to fetch image from provider (${res.status})`);
+    return Buffer.from(await res.arrayBuffer());
+  }
+  throw new Error("Invalid or missing image returned from provider");
 }
 
 export const coloringGenerationService = {

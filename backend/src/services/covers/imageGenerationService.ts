@@ -67,7 +67,11 @@ export const imageGenerationService = {
         }
       }
       if (!data) {
-        const sanitized = await sanitizeImage(await imageProvider.generate(snapshot), 'image/png'); data = sanitized.data;
+        const raw = await imageProvider.generate(snapshot);
+        const mime = raw.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])) ? 'image/png'
+          : raw[0] === 255 && raw[1] === 216 && raw[2] === 255 ? 'image/jpeg'
+          : 'image/webp';
+        const sanitized = await sanitizeImage(raw, mime); data = sanitized.data;
         const hash = createHash('sha256').update(data).digest('hex');
         asset = await prisma.$transaction(async tx => {
           await fence(tx, id, token);

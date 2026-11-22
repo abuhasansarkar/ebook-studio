@@ -33,7 +33,7 @@ const NAV = [
   { href: "/app/coloring-book", label: "Coloring Studio", icon: Palette },
   { href: "/app/books", label: "My eBooks", icon: BookOpen },
   { href: "/app/projects", label: "Projects", icon: FolderKanban },
-  { href: "/app/image-studio", label: "Image library", icon: Images },
+  { href: "/app/image-studio", label: "Cover & illustrations", icon: Images },
   { href: "/app/credits", label: "Credits", icon: Coins },
   { href: "/app/credits/billing", label: "Plans & billing", icon: CreditCard },
   { href: "/app/support", label: "Support", icon: LifeBuoy },

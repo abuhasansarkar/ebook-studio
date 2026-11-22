@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Coins, CreditCard, Sparkles } from "lucide-react";
 import { FREE_TIER_ENTITLEMENTS, type EntitlementKey, type Plan, type SubscriptionStatus } from "@ebook/shared";
 import { PageHeader } from "@/components/app/app-shell";
@@ -10,7 +11,7 @@ import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader, Section } from 
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { errorMessage } from "@/lib/api";
-import { useBilling, useCancelSubscription, usePayments, usePlans, useStartCheckout } from "@/lib/queries";
+import { qk, useBilling, useCancelSubscription, usePayments, usePlans, useStartCheckout } from "@/lib/queries";
 import { formatNumber, timeAgo } from "@/lib/utils";
 
 /**
@@ -103,6 +104,7 @@ function PlanCard({ plan, busy, onBuy }: { plan: Plan; busy: boolean; onBuy: () 
 function BillingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const qc = useQueryClient();
   const plansQuery = usePlans();
   const billingQuery = useBilling();
   const checkout = useStartCheckout();
@@ -115,14 +117,24 @@ function BillingContent() {
   useEffect(() => {
     const status = searchParams.get("checkout");
     if (status === "success") {
-      setNotice("Payment received! Your plan and credits are updating.");
-      void billingQuery.refetch();
+      setNotice("Payment received! Updating your plan and credits…");
+      let attempts = 0;
+      const interval = setInterval(() => {
+        attempts++;
+        void billingQuery.refetch();
+        void qc.invalidateQueries({ queryKey: qk.credits });
+        if (attempts >= 6) {
+          clearInterval(interval);
+          setNotice("Plan and credits are up to date!");
+        }
+      }, 1500);
       router.replace("/app/credits/billing", { scroll: false });
+      return () => clearInterval(interval);
     } else if (status === "cancelled") {
       setProblem("Checkout was cancelled. No charges were made.");
       router.replace("/app/credits/billing", { scroll: false });
     }
-  }, [searchParams, billingQuery, router]);
+  }, [searchParams, billingQuery, router, qc]);
 
   const state = billingQuery.data;
   const catalog = plansQuery.data;
@@ -182,7 +194,11 @@ function BillingContent() {
                         // own page. Nothing is granted here.
                         const url = result.checkout.url;
                         if (url) {
-                          router.push(url);
+                          if (url.startsWith("http://") || url.startsWith("https://")) {
+                            window.location.href = url;
+                          } else {
+                            router.push(url);
+                          }
                           return;
                         }
                         setNotice("Checkout started. Credits are added once the payment is confirmed.");

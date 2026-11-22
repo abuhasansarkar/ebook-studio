@@ -419,10 +419,22 @@ export const billingService = {
     if (event.type === "checkout.completed") {
       // A checkout that has been completed is not a payment: the money has to
       // have moved. This event records the checkout but grants nothing.
-      await prisma.payment.updateMany({
-        where: { providerPaymentId: event.providerPaymentId ?? "", userId: user.id, status: "pending" },
-        data: { description: "Checkout completed, awaiting payment." },
-      });
+      if (event.providerCheckoutId || event.providerPaymentId) {
+        await prisma.payment.updateMany({
+          where: {
+            userId: user.id,
+            status: "pending",
+            OR: [
+              event.providerCheckoutId ? { providerCheckoutId: event.providerCheckoutId } : undefined,
+              event.providerPaymentId ? { providerPaymentId: event.providerPaymentId } : undefined,
+            ].filter(Boolean) as any,
+          },
+          data: {
+            description: "Checkout completed, awaiting payment.",
+            ...(event.providerPaymentId ? { providerPaymentId: event.providerPaymentId } : {}),
+          },
+        });
+      }
       return { status: "ignored" as const, reason: "A completed checkout is not a payment." };
     }
     if (event.type === "subscription.updated" || event.type === "subscription.canceled") {

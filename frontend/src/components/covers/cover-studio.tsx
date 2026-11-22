@@ -218,11 +218,26 @@ function CoverWorkspace({ bookId, ownerId, initial }: { bookId: string; ownerId:
         </details>
       </fieldset>
     </div>
-    <ImageGenerator bookId={bookId} disabled={disabled || dirty || !saved.version} selectArtwork={id => change({ ...data, artworkId: id })} />
+    <ImageGenerator
+      bookId={bookId}
+      disabled={disabled || conflict}
+      onEnsureSaved={dirty || saved.version === 0 ? save : undefined}
+      selectArtwork={id => change({ ...data, artworkId: id })}
+    />
     <Dialog open={picker} onClose={() => setPicker(false)} title="Choose or upload artwork" className="max-w-4xl"><AssetLibrary key={ownerId} onInsert={asset => { change({ ...data, artworkId: asset.id }); setPicker(false); }} /></Dialog>
   </div>;
 }
-function ImageGenerator({ bookId, disabled, selectArtwork }: { bookId: string; disabled: boolean; selectArtwork: (id: string) => void }) {
+function ImageGenerator({
+  bookId,
+  disabled,
+  onEnsureSaved,
+  selectArtwork,
+}: {
+  bookId: string;
+  disabled: boolean;
+  onEnsureSaved?: () => Promise<void>;
+  selectArtwork: (id: string) => void;
+}) {
   const qc = useQueryClient();
   const [prompt, setPrompt] = useState(''); const [purpose, setPurpose] = useState<'cover' | 'illustration'>('cover');
   const [aspect, setAspect] = useState<'portrait' | 'square' | 'landscape'>('portrait');
@@ -235,7 +250,7 @@ function ImageGenerator({ bookId, disabled, selectArtwork }: { bookId: string; d
   useEffect(() => { if (!settled) return; void qc.invalidateQueries({ queryKey: qk.credits }); void qc.invalidateQueries({ queryKey: ['assets'] }); }, [settled, qc]);
   const active = history.data?.jobs.some(j => ['queued', 'running'].includes(j.status));
   return <section className="space-y-4 border-t border-border pt-6"><h2 className="text-xl font-semibold">Generate artwork</h2>
-    <p className="text-sm">{config.data ? `${config.data.credits} credits per image. ${config.data.mock ? 'Mock mode: produces a test image.' : `Model: ${config.data.model}.`}` : 'Loading image pricing…'} Credits are reserved when queued and charged only for a saved result. Save cover changes before generating.</p>
+    <p className="text-sm">{config.data ? `${config.data.credits} credits per image. ${config.data.mock ? 'Mock mode: produces a test image.' : `Model: ${config.data.model}.`}` : 'Loading image pricing…'} Credits are reserved when queued and charged only for a saved result.</p>
     {config.error && <Alert tone="danger">{errorMessage(config.error)}</Alert>}
     {config.data && !config.data.enabled && <Alert tone="warning">Image generation is not configured. You can upload your own artwork.</Alert>}
     <div className="grid gap-3 sm:grid-cols-2">
@@ -249,9 +264,26 @@ function ImageGenerator({ bookId, disabled, selectArtwork }: { bookId: string; d
     <Field label="Artwork prompt" htmlFor="artwork-prompt" hint="At least 10 characters. Describe the scene, subject and mood.">
       <Textarea id="artwork-prompt" aria-label="Artwork prompt" className="min-h-24" minLength={10} maxLength={2000} value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="Describe the scene, subject and mood. Text is added separately." />
     </Field>
-    <Button disabled={disabled || busy || active || !config.data?.enabled || prompt.trim().length < 10} onClick={async () => {
-      setBusy(true); setError(''); try { await operationRequest(`/books/${bookId}/images`, { purpose, prompt, aspect, expectedCredits: config.data!.credits }); setCursor(null); await qc.invalidateQueries({ queryKey: ['image-jobs', bookId] }); } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
-    }}>Generate image{config.data ? ` · ${config.data.credits} credits` : ''}</Button>
+    <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center">
+      <Button disabled={disabled || busy || active || !config.data?.enabled || prompt.trim().length < 10} onClick={async () => {
+        setBusy(true); setError('');
+        try {
+          if (onEnsureSaved) {
+            await onEnsureSaved();
+          }
+          await operationRequest(`/books/${bookId}/images`, { purpose, prompt, aspect, expectedCredits: config.data!.credits });
+          setCursor(null);
+          await qc.invalidateQueries({ queryKey: ['image-jobs', bookId] });
+        } catch (e) {
+          setError(errorMessage(e));
+        } finally {
+          setBusy(false);
+        }
+      }}>Generate image{config.data ? ` · ${config.data.credits} credits` : ''}</Button>
+      {prompt.trim().length > 0 && prompt.trim().length < 10 && (
+        <span className="text-xs text-muted-foreground">Prompt must be at least 10 characters ({prompt.trim().length}/10).</span>
+      )}
+    </div>
     {(error || history.error) && <p role="alert" className="text-danger">{error || errorMessage(history.error)}</p>}
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{history.data?.jobs.map(job => <article key={job.id} className="space-y-2 rounded border border-border p-3">
       <p className="font-semibold">{job.input.request.purpose} · {job.cancelRequested && ['queued', 'running'].includes(job.status) ? 'Cancelling…' : job.status}</p>

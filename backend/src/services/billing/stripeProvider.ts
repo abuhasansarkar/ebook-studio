@@ -35,8 +35,11 @@ const HANDLED_EVENTS = new Set([
   "payment_intent.succeeded",
   "payment_intent.payment_failed",
   "charge.refunded",
+  "customer.subscription.created",
   "customer.subscription.updated",
   "customer.subscription.deleted",
+  "invoice.payment_succeeded",
+  "invoice.paid",
 ]);
 
 export class StripeProvider implements PaymentProvider {
@@ -246,9 +249,26 @@ export class StripeProvider implements PaymentProvider {
         type: "payment.refunded",
         customerReference: customerRefFromMetadata(event),
         providerPaymentId: intent,
-        providerCheckoutId: charge.metadata?.checkout_session_id,
+        providerCheckoutId: charge.metadata?.checkout_session_id ?? charge.metadata?.checkout_session,
         amountMinor: charge.amount_refunded,
         currency: toCurrency(charge.currency),
+      };
+    }
+
+    if (event.type === "invoice.payment_succeeded" || event.type === "invoice.paid") {
+      const invoice = event.data.object as any;
+      const intent = typeof invoice.payment_intent === "string" ? invoice.payment_intent : undefined;
+      const subId = typeof invoice.subscription === "string" ? invoice.subscription : undefined;
+      return {
+        ...base,
+        type: "payment.succeeded",
+        customerReference: invoice.metadata?.customerReference ?? customerRefFromMetadata(event),
+        providerPaymentId: intent,
+        providerSubscriptionId: subId,
+        planId: invoice.metadata?.planId,
+        credits: invoice.metadata?.credits ? Number(invoice.metadata.credits) : undefined,
+        amountMinor: invoice.amount_paid ?? invoice.amount_due,
+        currency: toCurrency(invoice.currency),
       };
     }
 

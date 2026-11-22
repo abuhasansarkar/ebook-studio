@@ -13,6 +13,8 @@ export interface BookSummary {
   status: BookStatus;
   chapterCount: number;
   wordCount: number;
+  coverArtworkId?: string | null;
+  coverVersion?: number | null;
   createdAt: string;
   updatedAt: string;
 }

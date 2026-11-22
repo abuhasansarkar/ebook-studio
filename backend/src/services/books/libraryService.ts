@@ -22,10 +22,34 @@ export const libraryService = {
     };
     if (query.cursor && !await prisma.book.findFirst({ where: { ...where, id: query.cursor } })) throw badRequest('This page changed. Refresh the library.');
     const orderBy: Prisma.BookOrderByWithRelationInput[] = query.sort === 'title' ? [{ title: 'asc' }, { id: 'asc' }] : [{ createdAt: query.sort === 'oldest' ? 'asc' : 'desc' }, { id: query.sort === 'oldest' ? 'asc' : 'desc' }];
-    const rows = await prisma.book.findMany({ where, orderBy, take: query.limit + 1, ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}), include: { _count: { select: { chapters: true } } } });
+    const rows = await prisma.book.findMany({
+      where,
+      orderBy,
+      take: query.limit + 1,
+      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+      include: {
+        _count: { select: { chapters: true } },
+        coverDesigns: { orderBy: { version: 'desc' }, take: 1, select: { version: true, data: true } },
+        coloringPages: { where: { status: 'completed', assetId: { not: null } }, select: { assetId: true }, take: 1 },
+      },
+    });
     const page = rows.slice(0, query.limit);
     const words = await prisma.chapter.groupBy({ by: ['bookId'], where: { bookId: { in: page.map(b => b.id) } }, _sum: { wordCount: true } });
-    return { books: page.map(({ _count, ...b }) => ({ ...b, chapterCount: _count.chapters, wordCount: words.find(w => w.bookId === b.id)?._sum.wordCount ?? 0 })), nextCursor: rows.length > query.limit ? page.at(-1)!.id : null };
+    return {
+      books: page.map(({ _count, coverDesigns, coloringPages, ...b }) => {
+        const latestCover = coverDesigns?.[0];
+        const coverData = latestCover?.data as { artworkId?: string | null } | undefined;
+        const coverArtworkId = coverData?.artworkId ?? coloringPages?.[0]?.assetId ?? null;
+        return {
+          ...b,
+          chapterCount: _count.chapters,
+          wordCount: words.find(w => w.bookId === b.id)?._sum.wordCount ?? 0,
+          coverArtworkId,
+          coverVersion: latestCover?.version ?? null,
+        };
+      }),
+      nextCursor: rows.length > query.limit ? page.at(-1)!.id : null,
+    };
   },
   async projects(userId: string, query: LibraryQuery) {
     const where: Prisma.ProjectWhereInput = { userId, deletedAt: null, ...archiveWhere(query.archived), ...(query.search ? { name: { contains: query.search, mode: 'insensitive' } } : {}) };

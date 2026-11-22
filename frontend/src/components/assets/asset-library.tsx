@@ -2,14 +2,16 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ImageOff, RefreshCw, Trash2, Upload } from "lucide-react";
+import { ImageOff, RefreshCw, Trash2, Upload, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/app/app-shell";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Field, Input, Textarea } from "@/components/ui/form";
+import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader, Progress } from "@/components/ui/misc";
 import { api, errorMessage } from "@/lib/api";
+import { operationRequest } from "@/lib/operation-request";
 import { useSession } from "@/lib/auth-client";
+import { qk, useBooks } from "@/lib/queries";
 import { formatNumber } from "@/lib/utils";
 
 export interface ImageAsset {
@@ -356,13 +358,219 @@ export function AssetLibrary({ onInsert }: { onInsert?: (asset: ImageAsset) => v
 
 export function ImageStudio() {
   const { data: session } = useSession();
+  const qc = useQueryClient();
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-8">
+    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-8 space-y-6">
       <PageHeader
-        title="Image library"
-        description="Upload and describe images for your books. Saved manuscript images are retained for revision history."
+        title="Cover & Illustration Studio"
+        description="Generate AI illustrations, design custom covers, or upload media for your eBook and Coloring Book manuscripts."
       />
+      <AiIllustrationGenerator onGenerated={() => void qc.invalidateQueries({ queryKey: ["assets"] })} />
       <AssetLibrary key={session?.user.id ?? "loading"} />
     </div>
+  );
+}
+
+function AiIllustrationGenerator({ onGenerated }: { onGenerated: () => void }) {
+  const qc = useQueryClient();
+  const [bookId, setBookId] = useState<string>("");
+  const [prompt, setPrompt] = useState("");
+  const [purpose, setPurpose] = useState<"illustration" | "cover">("illustration");
+  const [aspect, setAspect] = useState<"portrait" | "square" | "landscape">("square");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
+
+  const booksQuery = useBooks();
+
+  const config = useQuery({
+    queryKey: ["image-config"],
+    queryFn: () => api.get<{ credits: number; model: string; mock: boolean; enabled: boolean }>("/image-config"),
+  });
+
+  const books = booksQuery.data ?? [];
+
+  useEffect(() => {
+    if (!bookId && books.length > 0) {
+      setBookId(books[0].id);
+    }
+  }, [bookId, books]);
+
+  const activeJobsQuery = useQuery({
+    queryKey: ["image-jobs", bookId],
+    queryFn: () => api.get<{ jobs: { id: string; status: string; assetId?: string; error?: string }[] }>(`/books/${bookId}/images`),
+    enabled: Boolean(bookId),
+    refetchInterval: (q) => q.state.data?.jobs.some((j) => ["queued", "running"].includes(j.status)) ? 1500 : false,
+  });
+
+  const activeJob = activeJobsQuery.data?.jobs.find((j) => ["queued", "running"].includes(j.status));
+
+  useEffect(() => {
+    const latest = activeJobsQuery.data?.jobs[0];
+    if (latest && latest.status === "completed" && latest.assetId) {
+      void qc.invalidateQueries({ queryKey: ["assets"] });
+      void qc.invalidateQueries({ queryKey: qk.credits });
+      onGenerated();
+    }
+  }, [activeJobsQuery.data, onGenerated, qc]);
+
+  const handleGenerate = async () => {
+    if (!bookId) {
+      setError("Please select or create an eBook to associate the generated illustration with.");
+      return;
+    }
+    if (prompt.trim().length < 10) {
+      setError("Prompt must be at least 10 characters long.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setSuccessMsg("");
+    try {
+      await operationRequest(`/books/${bookId}/images`, {
+        purpose,
+        prompt: prompt.trim(),
+        aspect,
+        expectedCredits: config.data?.credits ?? 10,
+      });
+      setSuccessMsg("AI image generation job queued! Generating illustration in background…");
+      setPrompt("");
+      await activeJobsQuery.refetch();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card className="p-6 border-brand-200/50 bg-gradient-to-br from-card to-brand-50/20">
+      <div className="flex items-center gap-2 mb-3">
+        <Sparkles className="h-5 w-5 text-brand-600" />
+        <h3 className="font-semibold text-base">Generate AI Illustration</h3>
+        {config.data && (
+          <Badge tone="neutral" className="ml-auto text-xs">
+            {config.data.credits} credits per image
+          </Badge>
+        )}
+      </div>
+      <p className="text-sm text-muted-foreground mb-4">
+        Generate custom interior scene illustrations, decorative elements, or cover concepts using AI. Generated images are automatically saved to your private asset library.
+      </p>
+
+      {config.data && !config.data.enabled && (
+        <Alert tone="warning" className="mb-4">
+          Image generation is currently disabled or not configured in system settings.
+        </Alert>
+      )}
+
+      {books.length === 0 && !booksQuery.isPending && (
+        <Alert tone="info" className="mb-4">
+          You don&apos;t have any books yet. Create your first eBook or Coloring Book project to generate AI illustrations for it.
+        </Alert>
+      )}
+
+      <div className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Field label="Target Book" htmlFor="illustration-book">
+            <Select
+              id="illustration-book"
+              value={bookId}
+              onChange={(e) => setBookId(e.target.value)}
+              disabled={books.length === 0 || busy || Boolean(activeJob)}
+            >
+              {books.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.title}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
+          <Field label="Purpose" htmlFor="illustration-purpose">
+            <Select
+              id="illustration-purpose"
+              value={purpose}
+              onChange={(e) => {
+                const p = e.target.value as "illustration" | "cover";
+                setPurpose(p);
+                if (p === "cover") setAspect("portrait");
+              }}
+              disabled={busy || Boolean(activeJob)}
+            >
+              <option value="illustration">Interior Illustration</option>
+              <option value="cover">Cover Concept</option>
+            </Select>
+          </Field>
+
+          <Field label="Aspect Ratio" htmlFor="illustration-aspect">
+            <Select
+              id="illustration-aspect"
+              value={aspect}
+              onChange={(e) => setAspect(e.target.value as "square" | "portrait" | "landscape")}
+              disabled={purpose === "cover" || busy || Boolean(activeJob)}
+            >
+              <option value="square">Square (1:1)</option>
+              <option value="portrait">Portrait (2:3)</option>
+              <option value="landscape">Landscape (3:2)</option>
+            </Select>
+          </Field>
+        </div>
+
+        <Field
+          label="Illustration Prompt"
+          htmlFor="illustration-prompt"
+          hint="Describe the scene, subject, lighting, style, and mood in detail (10-2000 chars)."
+        >
+          <Textarea
+            id="illustration-prompt"
+            placeholder="e.g. A serene cozy reading nook with sun rays streaming through a bay window, potted ferns, and a sleeping orange tabby cat..."
+            className="min-h-20"
+            minLength={10}
+            maxLength={2000}
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            disabled={busy || Boolean(activeJob)}
+          />
+        </Field>
+
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              disabled={
+                busy ||
+                Boolean(activeJob) ||
+                !bookId ||
+                prompt.trim().length < 10 ||
+                !config.data?.enabled
+              }
+              onClick={handleGenerate}
+            >
+              <Sparkles className="h-4 w-4 mr-1.5" />
+              {activeJob
+                ? "Generating in background…"
+                : busy
+                ? "Submitting…"
+                : `Generate Illustration (${config.data?.credits ?? 10} credits)`}
+            </Button>
+            {prompt.trim().length > 0 && prompt.trim().length < 10 && (
+              <span className="text-xs text-muted-foreground">
+                Minimum 10 characters ({prompt.trim().length}/10)
+              </span>
+            )}
+          </div>
+          {activeJob && (
+            <div className="flex items-center gap-2 text-sm text-brand-600 animate-pulse">
+              <RefreshCw className="h-4 w-4 animate-spin" />
+              <span>Generating illustration… status: {activeJob.status}</span>
+            </div>
+          )}
+        </div>
+
+        {error && <Alert tone="danger">{error}</Alert>}
+        {successMsg && !error && <Alert tone="success">{successMsg}</Alert>}
+      </div>
+    </Card>
   );
 }

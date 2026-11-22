@@ -223,7 +223,7 @@ describe("book pipeline", () => {
 
   it("returns 402 and leaves no job behind when credits are insufficient", async () => {
     const { agent, user } = await createUser("broke");
-    const bookId = await bookWithOutline(agent, { chapterCount: 20, wordsPerChapter: 5000 });
+    const bookId = await bookWithOutline(agent, { chapterCount: 10, wordsPerChapter: 5000 });
     await agent.post(`/api/v1/books/${bookId}/outline/approve`).set("Origin", ORIGIN).send({ version: 1 }).expect(200);
     const res = await agent.post(`/api/v1/books/${bookId}/generate`).set("Origin", ORIGIN);
     expect(res.status).toBe(402);

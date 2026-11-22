@@ -51,7 +51,11 @@ export const bookService = {
       },
       orderBy: { updatedAt: "desc" },
       take: Math.min(opts.take ?? 100, 200),
-      include: { _count: { select: { chapters: true } } },
+      include: {
+        _count: { select: { chapters: true } },
+        coverDesigns: { orderBy: { version: "desc" }, take: 1, select: { version: true, data: true } },
+        coloringPages: { where: { status: "completed", assetId: { not: null } }, select: { assetId: true }, take: 1 },
+      },
     });
     const wordSums = await prisma.chapter.groupBy({
       by: ["bookId"],
@@ -59,7 +63,18 @@ export const bookService = {
       _sum: { wordCount: true },
     });
     const words = new Map(wordSums.map((w) => [w.bookId, w._sum.wordCount ?? 0]));
-    return books.map(({ _count, ...b }) => ({ ...b, chapterCount: _count.chapters, wordCount: words.get(b.id) ?? 0 }));
+    return books.map(({ _count, coverDesigns, coloringPages, ...b }) => {
+      const latestCover = coverDesigns?.[0];
+      const coverData = latestCover?.data as { artworkId?: string | null } | undefined;
+      const coverArtworkId = coverData?.artworkId ?? coloringPages?.[0]?.assetId ?? null;
+      return {
+        ...b,
+        chapterCount: _count.chapters,
+        wordCount: words.get(b.id) ?? 0,
+        coverArtworkId,
+        coverVersion: latestCover?.version ?? null,
+      };
+    });
   },
 
   async get(userId: string, bookId: string) {
