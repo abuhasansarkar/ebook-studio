@@ -5,13 +5,16 @@ const backendUrl = process.env.BACKEND_INTERNAL_URL ?? "http://localhost:4000";
 // Monorepo root, so standalone output and Turbopack can see packages/shared.
 const workspaceRoot = path.resolve(process.cwd(), "..");
 
+const isWindows = process.platform === "win32";
+const enableStandalone = process.env.NEXT_OUTPUT_STANDALONE === "true" || !isWindows;
+
 const nextConfig: NextConfig = {
   experimental: {
     agentFeedback: true,
   },
   cacheComponents: true,
   partialPrefetching: true,
-  output: "standalone",
+  output: enableStandalone ? "standalone" : undefined,
   outputFileTracingRoot: workspaceRoot,
   // Workspace package shipped as TypeScript source.
   transpilePackages: ["@ebook/shared"],
