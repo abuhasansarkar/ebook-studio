@@ -86,7 +86,13 @@ export default function ColoringBookExportPage({ params }: { params: Promise<{ b
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <a href={`/api/v1/coloring/books/${bookId}/export/metadata`} download={`KDP_METADATA_${bookId}.md`}>
+              <Button variant="secondary" size="lg" className="gap-2 shadow-sm">
+                <FileText className="h-4 w-4" /> Download Metadata (.md)
+              </Button>
+            </a>
+
             {downloadUrl ? (
               <a href={downloadUrl} download>
                 <Button size="lg" className="gap-2 shadow-md bg-emerald-600 hover:bg-emerald-500">

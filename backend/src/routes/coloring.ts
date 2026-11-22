@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   coloringBookBriefSchema,
+  coloringCoverGenerateSchema,
   coloringPageReorderSchema,
   coloringPageUpdateSchema,
 } from "@ebook/shared";
@@ -93,13 +94,22 @@ coloringRouter.delete("/coloring/books/:bookId/pages/:pageId", async (req, res) 
   res.json(result);
 });
 
-// ---- 3. Independent & Batch Page Generation ----
+// ---- 3. Independent & Batch Page Generation & Auto-Clean ----
 coloringRouter.post("/coloring/books/:bookId/pages/:pageId/generate", aiLimiter, async (req, res) => {
   const updatedPage = await coloringGenerationService.generatePage(
     userId(req),
     String(req.params.bookId),
     String(req.params.pageId),
     req.body?.promptOverride,
+  );
+  res.json({ page: updatedPage });
+});
+
+coloringRouter.post("/coloring/books/:bookId/pages/:pageId/clean", async (req, res) => {
+  const updatedPage = await coloringGenerationService.autoCleanPage(
+    userId(req),
+    String(req.params.bookId),
+    String(req.params.pageId),
   );
   res.json({ page: updatedPage });
 });
@@ -130,17 +140,63 @@ coloringRouter.get("/coloring/books/:bookId/quality", async (req, res) => {
   });
 });
 
+coloringRouter.post("/coloring/books/:bookId/quality/auto-clean-all", async (req, res) => {
+  const result = await coloringGenerationService.autoCleanAll(userId(req), String(req.params.bookId));
+  res.json(result);
+});
+
 coloringRouter.get("/coloring/books/:bookId/cover", async (req, res) => {
   const coverDetails = await coloringCoverService.getCoverDetails(userId(req), String(req.params.bookId));
   res.json(coverDetails);
 });
+
+coloringRouter.post(
+  "/coloring/books/:bookId/cover",
+  aiLimiter,
+  validateBody(coloringCoverGenerateSchema.optional()),
+  async (req, res) => {
+    const result = await coloringCoverService.generateCover(userId(req), String(req.params.bookId), req.body);
+    res.json(result);
+  },
+);
 
 coloringRouter.get("/coloring/books/:bookId/export/package", async (req, res) => {
   const pkg = await coloringExportService.getPublishingPackage(userId(req), String(req.params.bookId));
   res.json(pkg);
 });
 
+coloringRouter.get("/coloring/books/:bookId/export/metadata", async (req, res) => {
+  const pkg = await coloringExportService.getPublishingPackage(userId(req), String(req.params.bookId));
+  const md = `# Amazon KDP Publishing Package: ${pkg.title}
+${pkg.subtitle ? `*${pkg.subtitle}*\n` : ""}
+## Amazon Search Keywords (7 Keywords)
+${pkg.sevenKeywords.map((k, i) => `${i + 1}. ${k}`).join("\n")}
+
+## Recommended Amazon Categories
+${pkg.recommendedCategories.map((c) => `- ${c}`).join("\n")}
+
+## Amazon HTML Product Description
+\`\`\`html
+${pkg.amazonDescriptionHtml}
+\`\`\`
+
+## Preflight Verification
+- Trim Size: ${pkg.preflight.trimSize}
+- Page Count: ${pkg.preflight.pageCount} physical pages
+- Bleed: ${pkg.preflight.bleed ? "Bleed" : "No Bleed"}
+- Single-Sided: ${pkg.preflight.singleSided ? "Yes (Blank backs)" : "Double-sided"}
+- 300 DPI Compliant: ${pkg.preflight.dpi300Compliant ? "PASS" : "FAIL"}
+
+## Step-by-Step Upload Instructions
+${pkg.kdpUploadChecklist.join("\n")}
+`;
+  res.setHeader("Content-Type", "text/markdown; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="KDP_METADATA_${req.params.bookId}.md"`);
+  res.send(md);
+});
+
 coloringRouter.post("/coloring/books/:bookId/export/compile", async (req, res) => {
   const result = await coloringExportService.compilePdf(userId(req), String(req.params.bookId));
   res.json(result);
 });
+

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import sharp from "sharp";
 import {
   COLORING_CREDIT_COSTS,
@@ -6,14 +6,23 @@ import {
   coloringBookBriefSchema,
   estimateColoringCredits,
 } from "@ebook/shared";
+import { prisma } from "../src/database/prisma.js";
+import { closeQueues } from "../src/queues/index.js";
 import { buildColoringPrompt } from "../src/services/coloring/coloringPromptBuilder.js";
 import { coloringQualityService } from "../src/services/coloring/coloringQualityService.js";
 import { calculateSpine } from "../src/services/coloring/coloringCoverService.js";
+import { createUser, ORIGIN } from "./helpers.js";
+
+afterAll(async () => {
+  await closeQueues();
+  await prisma.$disconnect();
+});
 
 describe("Coloring Contracts & Pricing", () => {
   it("computes credit estimates accurately", () => {
     expect(COLORING_CREDIT_COSTS.plan).toBe(0); // 100% free planning
     expect(COLORING_CREDIT_COSTS.perIllustration).toBe(8);
+    expect(COLORING_CREDIT_COSTS.cover).toBe(10);
     expect(estimateColoringCredits(24)).toBe(192);
     expect(estimateColoringCredits(30)).toBe(240);
     expect(estimateColoringCredits(40)).toBe(320);
@@ -37,6 +46,9 @@ describe("Coloring Contracts & Pricing", () => {
     expect(COLORING_STYLE_CATALOG.kawaii_chibi.label).toBe("Kawaii Chibi");
     expect(COLORING_STYLE_CATALOG.mandala_patterns.label).toBe("Mandala & Patterns");
     expect(COLORING_STYLE_CATALOG.bold_easy.label).toBe("Bold & Easy");
+    expect(COLORING_STYLE_CATALOG.cute_animals.label).toBe("Cute Animals");
+    expect(COLORING_STYLE_CATALOG.dinosaurs.label).toBe("Dinosaurs");
+    expect(COLORING_STYLE_CATALOG.ocean_sea_life.label).toBe("Ocean & Sea Life");
   });
 });
 
@@ -80,7 +92,6 @@ describe("Coloring Prompt Builder", () => {
 
 describe("Coloring Quality Service", () => {
   it("detects pure black-and-white line art accurately", async () => {
-    // Create an ideal monochrome line art test image: 1024x1024 white background with black circle
     const svg = `
       <svg width="1024" height="1024" xmlns="http://www.w3.org/2000/svg">
         <rect width="100%" height="100%" fill="#ffffff" />
@@ -98,7 +109,6 @@ describe("Coloring Quality Service", () => {
   });
 
   it("flags color contamination", async () => {
-    // Image with vibrant red fill
     const svg = `
       <svg width="1024" height="1024" xmlns="http://www.w3.org/2000/svg">
         <rect width="100%" height="100%" fill="#ffffff" />
@@ -114,7 +124,6 @@ describe("Coloring Quality Service", () => {
   });
 
   it("auto-cleans line art using threshold enhancement", async () => {
-    // Image with off-white / light gray background #f0f0f0 and dark gray line #202020
     const svg = `
       <svg width="1024" height="1024" xmlns="http://www.w3.org/2000/svg">
         <rect width="100%" height="100%" fill="#f4f4f4" />
@@ -145,5 +154,158 @@ describe("KDP Spine Math", () => {
     // 82 * 0.002252 = 0.1847 inches
     expect(spine40.spineThicknessInches).toBe(0.1847);
     expect(spine40.meetsKdpSpineTextThreshold).toBe(true); // >= 79 pages (allows spine title text)
+  });
+});
+
+describe("AI Coloring Studio End-to-End API Integration", () => {
+  it("runs full lifecycle: create plan (free), reorder, generate page, clean, cover, and export", async () => {
+    const { user, agent } = await createUser("coloring-test-user");
+
+    // Grant 150 credits to wallet for generation tests
+    await prisma.creditWallet.upsert({
+      where: { userId: user.id },
+      create: { userId: user.id, balance: 150 },
+      update: { balance: 150 },
+    });
+
+    // 1. Create Coloring Book Plan (100% Free - 0 credits spent)
+    const createRes = await agent
+      .post("/api/v1/coloring/plan")
+      .set("Origin", ORIGIN)
+      .send({
+        topic: "Cute baby animals exploring a sunny flower meadow",
+        artStyle: "kawaii_chibi",
+        targetAudience: "children",
+        difficulty: "easy",
+        lineThickness: "medium",
+        trimSize: "8.5x11",
+        singleSided: true,
+        pageCount: 24,
+      })
+      .expect(201);
+
+    expect(createRes.body.book).toBeDefined();
+    expect(createRes.body.plan).toBeDefined();
+    expect(createRes.body.pages).toHaveLength(24);
+
+    const bookId = createRes.body.book.id;
+
+    // Verify wallet balance is completely untouched (0 credits charged for planning)
+    const walletAfterPlan = await prisma.creditWallet.findUnique({ where: { userId: user.id } });
+    expect(walletAfterPlan?.balance).toBe(150);
+
+    // 2. List User Coloring Books
+    const listRes = await agent.get("/api/v1/coloring/books").set("Origin", ORIGIN).expect(200);
+    expect(listRes.body.books.some((b: { id: string }) => b.id === bookId)).toBe(true);
+
+    // 3. Get Coloring Book Details
+    const detailRes = await agent.get(`/api/v1/coloring/books/${bookId}`).set("Origin", ORIGIN).expect(200);
+    expect(detailRes.body.stats.total).toBe(24);
+    expect(detailRes.body.stats.pending).toBe(24);
+    expect(detailRes.body.stats.completed).toBe(0);
+
+    // 4. Update and Approve Plan
+    const patchPlanRes = await agent
+      .patch(`/api/v1/coloring/books/${bookId}/plan`)
+      .set("Origin", ORIGIN)
+      .send({
+        title: "Enchanted Animals Coloring Book",
+        approved: true,
+      })
+      .expect(200);
+    expect(patchPlanRes.body.plan.approvedAt).toBeDefined();
+
+    // 5. Reorder Pages atomically
+    const firstTwo = [detailRes.body.pages[1].id, detailRes.body.pages[0].id, ...detailRes.body.pages.slice(2).map((p: { id: string }) => p.id)];
+    const reorderRes = await agent
+      .post(`/api/v1/coloring/books/${bookId}/pages/reorder`)
+      .set("Origin", ORIGIN)
+      .send({ pageIds: firstTwo })
+      .expect(200);
+    expect(reorderRes.body.pages[0].id).toBe(detailRes.body.pages[1].id);
+    expect(reorderRes.body.pages[0].pageNumber).toBe(1);
+
+    // 6. Add a page
+    const addPageRes = await agent
+      .post(`/api/v1/coloring/books/${bookId}/pages`)
+      .set("Origin", ORIGIN)
+      .send({
+        title: "Bonus Baby Bunny",
+        prompt: "A joyful baby bunny hopping over fresh spring clover flowers.",
+      })
+      .expect(201);
+    expect(addPageRes.body.page.pageNumber).toBe(25);
+
+    // 7. Delete a page
+    const deletePageRes = await agent
+      .delete(`/api/v1/coloring/books/${bookId}/pages/${addPageRes.body.page.id}`)
+      .set("Origin", ORIGIN)
+      .expect(200);
+    expect(deletePageRes.body.remainingCount).toBe(24);
+
+    // 8. Generate Single Page (Charges exactly 8 credits)
+    const targetPage = detailRes.body.pages[0];
+    const genPageRes = await agent
+      .post(`/api/v1/coloring/books/${bookId}/pages/${targetPage.id}/generate`)
+      .set("Origin", ORIGIN)
+      .send({ promptOverride: "A smiling baby duck with flowers." })
+      .expect(200);
+
+    expect(genPageRes.body.page.status).toBe("completed");
+    expect(genPageRes.body.page.assetId).toBeDefined();
+
+    // Verify 8 credits deducted
+    const walletAfterPage = await prisma.creditWallet.findUnique({ where: { userId: user.id } });
+    expect(walletAfterPage?.balance).toBe(150 - 8);
+
+    // 9. Auto-clean line art on generated page
+    const cleanRes = await agent
+      .post(`/api/v1/coloring/books/${bookId}/pages/${targetPage.id}/clean`)
+      .set("Origin", ORIGIN)
+      .expect(200);
+
+    expect(cleanRes.body.page.assetId).toBeDefined();
+    expect(cleanRes.body.page.qualityChecks?.passed).toBe(true);
+
+    // 10. Generate Full-Color Cover (Charges 10 credits)
+    const coverGenRes = await agent
+      .post(`/api/v1/coloring/books/${bookId}/cover`)
+      .set("Origin", ORIGIN)
+      .send({
+        titleOverride: "Enchanted Meadow Coloring Book",
+        authorOverride: "Jane Studio",
+      })
+      .expect(200);
+
+    expect(coverGenRes.body.cover).toBeDefined();
+    expect(coverGenRes.body.asset).toBeDefined();
+
+    // Verify 10 credits deducted (total: 150 - 8 - 10 = 132)
+    const walletAfterCover = await prisma.creditWallet.findUnique({ where: { userId: user.id } });
+    expect(walletAfterCover?.balance).toBe(132);
+
+    // 11. Get Cover Details & Spine
+    const coverDetailsRes = await agent.get(`/api/v1/coloring/books/${bookId}/cover`).set("Origin", ORIGIN).expect(200);
+    expect(coverDetailsRes.body.spine.totalPhysicalPages).toBe(50); // 24 * 2 + 2
+    expect(coverDetailsRes.body.coverArtworkAsset).toBeDefined();
+
+    // 12. Quality Audit
+    const qualityRes = await agent.get(`/api/v1/coloring/books/${bookId}/quality`).set("Origin", ORIGIN).expect(200);
+    expect(qualityRes.body.stats.completed).toBe(1);
+
+    // 13. Publishing Package & KDP Metadata
+    const pkgRes = await agent.get(`/api/v1/coloring/books/${bookId}/export/package`).set("Origin", ORIGIN).expect(200);
+    expect(pkgRes.body.sevenKeywords).toHaveLength(7);
+    expect(pkgRes.body.amazonDescriptionHtml).toContain("✨");
+    expect(pkgRes.body.preflight.meetsMinPages).toBe(true);
+
+    const mdRes = await agent.get(`/api/v1/coloring/books/${bookId}/export/metadata`).set("Origin", ORIGIN).expect(200);
+    expect(mdRes.text).toContain("Amazon KDP Publishing Package");
+    expect(mdRes.text).toContain("Amazon Search Keywords");
+
+    // 14. PDF Compilation (Puppeteer print PDF with single-sided blank backs)
+    const compileRes = await agent.post(`/api/v1/coloring/books/${bookId}/export/compile`).set("Origin", ORIGIN).expect(200);
+    expect(compileRes.body.exportId).toBeDefined();
+    expect(compileRes.body.fileSize).toBeGreaterThan(100);
   });
 });

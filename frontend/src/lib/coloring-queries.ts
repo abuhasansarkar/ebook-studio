@@ -197,6 +197,30 @@ export function useGenerateBatchColoring(bookId: string) {
   });
 }
 
+export function useAutoCleanColoringPage(bookId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (pageId: string) =>
+      api.post<{ page: ColoringPageRecord }>(`/coloring/books/${bookId}/pages/${pageId}/clean`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: coloringKeys.book(bookId) });
+      void queryClient.invalidateQueries({ queryKey: coloringKeys.quality(bookId) });
+    },
+  });
+}
+
+export function useAutoCleanAllColoringPages(bookId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api.post<{ total: number; cleanedCount: number }>(`/coloring/books/${bookId}/quality/auto-clean-all`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: coloringKeys.book(bookId) });
+      void queryClient.invalidateQueries({ queryKey: coloringKeys.quality(bookId) });
+    },
+  });
+}
+
 export function useColoringQuality(bookId: string) {
   return useQuery({
     queryKey: coloringKeys.quality(bookId),
@@ -218,6 +242,7 @@ export function useColoringCover(bookId: string) {
         book: { id: string; title: string; subtitle: string };
         plan: ColoringPlanRecord;
         cover?: unknown;
+        coverArtworkAsset?: { id: string; storageKey: string; width: number; height: number } | null;
         spine: {
           interiorPages: number;
           totalPhysicalPages: number;
@@ -231,6 +256,20 @@ export function useColoringCover(bookId: string) {
     enabled: Boolean(bookId),
   });
 }
+
+export function useGenerateColoringCover(bookId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input?: { promptOverride?: string; titleOverride?: string; subtitleOverride?: string; authorOverride?: string }) =>
+      api.post<{ cover: unknown; asset: { id: string } }>(`/coloring/books/${bookId}/cover`, input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: coloringKeys.book(bookId) });
+      void queryClient.invalidateQueries({ queryKey: coloringKeys.cover(bookId) });
+      void queryClient.invalidateQueries({ queryKey: ["credits"] });
+    },
+  });
+}
+
 
 export function useColoringPublishingPackage(bookId: string) {
   return useQuery({

@@ -233,3 +233,11 @@ export const coloringPageReorderSchema = z.object({
   pageIds: z.array(z.string().min(1)).min(1),
 });
 export type ColoringPageReorderInput = z.infer<typeof coloringPageReorderSchema>;
+
+export const coloringCoverGenerateSchema = z.object({
+  promptOverride: z.string().trim().max(2000).optional().or(z.literal("")),
+  titleOverride: z.string().trim().max(200).optional().or(z.literal("")),
+  subtitleOverride: z.string().trim().max(300).optional().or(z.literal("")),
+  authorOverride: z.string().trim().max(120).optional().or(z.literal("")),
+});
+export type ColoringCoverGenerateInput = z.infer<typeof coloringCoverGenerateSchema>;

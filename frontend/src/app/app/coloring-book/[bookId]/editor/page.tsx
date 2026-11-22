@@ -3,7 +3,9 @@
 import { use, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
+  AlertTriangle,
   Check,
+  CheckCircle2,
   Eye,
   Layers,
   Maximize2,
@@ -11,12 +13,14 @@ import {
   Save,
   Sparkles,
   Upload,
+  Wand2,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge, Card, PageLoader } from "@/components/ui/misc";
 import {
+  useAutoCleanColoringPage,
   useColoringBook,
   useGenerateColoringPage,
   useUpdateColoringPage,
@@ -29,12 +33,14 @@ export default function ColoringBookEditorPage({ params }: { params: Promise<{ b
 
   const updatePage = useUpdateColoringPage(bookId);
   const generatePage = useGenerateColoringPage(bookId);
+  const autoClean = useAutoCleanColoringPage(bookId);
 
   const [selectedPageNumber, setSelectedPageNumber] = useState(1);
   const [zoom, setZoom] = useState(100);
   const [showMargins, setShowMargins] = useState(true);
   const [editTitle, setEditTitle] = useState("");
   const [editPrompt, setEditPrompt] = useState("");
+  const [editNegativePrompt, setEditNegativePrompt] = useState("");
   const [editCaption, setEditCaption] = useState("");
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -49,6 +55,8 @@ export default function ColoringBookEditorPage({ params }: { params: Promise<{ b
 
   const activePage = pages.find((p) => p.pageNumber === selectedPageNumber) || pages[0];
   const assetUrl = activePage?.asset ? `/api/v1/assets/${activePage.asset.id}/view` : null;
+  const quality = activePage?.qualityChecks;
+  const hasQualityIssues = quality && !quality.passed;
 
   const handleSelectPage = (pageNumber: number) => {
     setSelectedPageNumber(pageNumber);
@@ -56,6 +64,7 @@ export default function ColoringBookEditorPage({ params }: { params: Promise<{ b
     if (p) {
       setEditTitle(p.title);
       setEditPrompt(p.prompt);
+      setEditNegativePrompt(p.negativePrompt || "");
       setEditCaption(p.caption || "");
     }
   };
@@ -68,6 +77,7 @@ export default function ColoringBookEditorPage({ params }: { params: Promise<{ b
         updates: {
           title: editTitle || activePage.title,
           prompt: editPrompt || activePage.prompt,
+          negativePrompt: editNegativePrompt !== "" ? editNegativePrompt : undefined,
           caption: editCaption,
         },
       });
@@ -90,6 +100,19 @@ export default function ColoringBookEditorPage({ params }: { params: Promise<{ b
     } catch (err) {
       toast.dismiss();
       toast.error((err as Error).message || "Regeneration failed");
+    }
+  };
+
+  const handleCleanLines = async () => {
+    if (!activePage || !activePage.asset) return;
+    try {
+      toast.loading(`Auto-cleaning Page ${activePage.pageNumber} lines and background…`);
+      await autoClean.mutateAsync(activePage.id);
+      toast.dismiss();
+      toast.success(`Page ${activePage.pageNumber} sharpened to pure black & white!`);
+    } catch (err) {
+      toast.dismiss();
+      toast.error((err as Error).message || "Failed to auto-clean line art");
     }
   };
 
@@ -160,6 +183,17 @@ export default function ColoringBookEditorPage({ params }: { params: Promise<{ b
               <span className="font-semibold text-foreground">Canvas</span>
               <span>•</span>
               <span>{plan?.trimSize} paperback</span>
+              {activePage?.asset && (
+                quality?.passed ? (
+                  <Badge tone="success" className="gap-1 text-[10px]">
+                    <CheckCircle2 className="h-3 w-3" /> 100% Quality Pass
+                  </Badge>
+                ) : (
+                  <Badge tone="warning" className="gap-1 text-[10px]">
+                    <AlertTriangle className="h-3 w-3" /> Minor Shading Detected
+                  </Badge>
+                )
+              )}
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -222,6 +256,25 @@ export default function ColoringBookEditorPage({ params }: { params: Promise<{ b
               </div>
             )}
           </div>
+
+          {/* Quality Notice Banner if issues exist */}
+          {hasQualityIssues && (
+            <div className="mt-3 w-full max-w-xl flex items-center justify-between rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                <span>Notice: {quality?.issues.join(", ")}</span>
+              </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={handleCleanLines}
+                loading={autoClean.isPending}
+                className="gap-1 text-xs shrink-0"
+              >
+                <Wand2 className="h-3 w-3" /> Fix Line Art
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Right (5 cols): Controls & Prompt Refinements */}
@@ -230,7 +283,7 @@ export default function ColoringBookEditorPage({ params }: { params: Promise<{ b
             <div className="flex items-center justify-between pb-2 border-b border-border">
               <div>
                 <h3 className="font-bold text-base">Page {activePage?.pageNumber} Settings</h3>
-                <p className="text-xs text-muted-foreground">Customize prompts and optional text</p>
+                <p className="text-xs text-muted-foreground">Customize prompts, exclusions and captions</p>
               </div>
               <Badge tone="primary">8 credits to regenerate</Badge>
             </div>
@@ -257,6 +310,19 @@ export default function ColoringBookEditorPage({ params }: { params: Promise<{ b
 
             <div>
               <label className="text-xs font-semibold text-foreground">
+                Negative Prompt (Exclusions)
+              </label>
+              <input
+                type="text"
+                defaultValue={activePage?.negativePrompt || ""}
+                onChange={(e) => setEditNegativePrompt(e.target.value)}
+                placeholder="e.g. no shading, no gray, no text, no borders"
+                className="mt-1 w-full rounded-xl border border-border bg-surface px-3 py-2 text-xs"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-foreground">
                 Optional Page Caption (Printed below illustration)
               </label>
               <input
@@ -268,7 +334,7 @@ export default function ColoringBookEditorPage({ params }: { params: Promise<{ b
               />
             </div>
 
-            <div className="flex items-center gap-2 pt-2">
+            <div className="flex flex-wrap items-center gap-2 pt-2">
               <Button
                 variant="secondary"
                 size="sm"
@@ -278,6 +344,19 @@ export default function ColoringBookEditorPage({ params }: { params: Promise<{ b
               >
                 <Save className="h-3.5 w-3.5" /> Save Details
               </Button>
+
+              {activePage?.asset && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleCleanLines}
+                  loading={autoClean.isPending}
+                  className="gap-1.5"
+                  title="Purify background to pure #FFFFFF and lines to pure #000000"
+                >
+                  <Wand2 className="h-3.5 w-3.5" /> Clean Lines
+                </Button>
+              )}
 
               <Button
                 variant="primary"

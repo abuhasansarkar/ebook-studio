@@ -4,7 +4,9 @@ import { use, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
+  ArrowDown,
   ArrowRight,
+  ArrowUp,
   Check,
   CheckCircle2,
   Edit2,
@@ -21,6 +23,7 @@ import {
   useAddColoringPage,
   useColoringBook,
   useDeleteColoringPage,
+  useReorderColoringPages,
   useUpdateColoringPage,
   useUpdateColoringPlan,
 } from "@/lib/coloring-queries";
@@ -34,6 +37,7 @@ export default function ColoringBookPlanPage({ params }: { params: Promise<{ boo
   const updatePage = useUpdateColoringPage(bookId);
   const addPage = useAddColoringPage(bookId);
   const deletePage = useDeleteColoringPage(bookId);
+  const reorderPages = useReorderColoringPages(bookId);
 
   const [editingPageId, setEditingPageId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
@@ -49,6 +53,34 @@ export default function ColoringBookPlanPage({ params }: { params: Promise<{ boo
   const book = detail?.book;
   const plan = detail?.plan;
   const pages = detail?.pages ?? [];
+
+  const handleMoveUp = async (index: number) => {
+    if (index <= 0) return;
+    const newPages = [...pages];
+    const temp = newPages[index];
+    newPages[index] = newPages[index - 1];
+    newPages[index - 1] = temp;
+    try {
+      await reorderPages.mutateAsync(newPages.map((p) => p.id));
+      toast.success("Page moved up");
+    } catch {
+      toast.error("Failed to reorder page");
+    }
+  };
+
+  const handleMoveDown = async (index: number) => {
+    if (index >= pages.length - 1) return;
+    const newPages = [...pages];
+    const temp = newPages[index];
+    newPages[index] = newPages[index + 1];
+    newPages[index + 1] = temp;
+    try {
+      await reorderPages.mutateAsync(newPages.map((p) => p.id));
+      toast.success("Page moved down");
+    } catch {
+      toast.error("Failed to reorder page");
+    }
+  };
 
   const handleStartEdit = (p: { id: string; title: string; prompt: string }) => {
     setEditingPageId(p.id);
@@ -181,7 +213,7 @@ export default function ColoringBookPlanPage({ params }: { params: Promise<{ boo
         </div>
 
         <div className="grid grid-cols-1 gap-3">
-          {pages.map((p) => {
+          {pages.map((p, idx) => {
             const isEditing = editingPageId === p.id;
 
             return (
@@ -219,7 +251,7 @@ export default function ColoringBookPlanPage({ params }: { params: Promise<{ boo
                   )}
                 </div>
 
-                <div className="mt-3 sm:mt-0 sm:ms-4 flex shrink-0 items-center gap-2">
+                <div className="mt-3 sm:mt-0 sm:ms-4 flex shrink-0 items-center gap-1.5">
                   {isEditing ? (
                     <>
                       <Button
@@ -240,8 +272,28 @@ export default function ColoringBookPlanPage({ params }: { params: Promise<{ boo
                       <Button
                         size="sm"
                         variant="ghost"
+                        onClick={() => handleMoveUp(idx)}
+                        disabled={idx === 0 || reorderPages.isPending}
+                        className="p-1.5 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                        title="Move Up"
+                      >
+                        <ArrowUp className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleMoveDown(idx)}
+                        disabled={idx === pages.length - 1 || reorderPages.isPending}
+                        className="p-1.5 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                        title="Move Down"
+                      >
+                        <ArrowDown className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
                         onClick={() => handleStartEdit(p)}
-                        className="text-muted-foreground hover:text-foreground"
+                        className="p-1.5 text-muted-foreground hover:text-foreground"
                         title="Edit Scene Prompt"
                       >
                         <Edit2 className="h-3.5 w-3.5" />
@@ -250,7 +302,7 @@ export default function ColoringBookPlanPage({ params }: { params: Promise<{ boo
                         size="sm"
                         variant="ghost"
                         onClick={() => handleDeletePage(p.id)}
-                        className="text-muted-foreground hover:text-danger"
+                        className="p-1.5 text-muted-foreground hover:text-danger"
                         title="Delete Page"
                       >
                         <Trash2 className="h-3.5 w-3.5" />

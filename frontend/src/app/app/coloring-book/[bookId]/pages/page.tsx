@@ -1,26 +1,33 @@
 "use client";
 
 import { use, useState } from "react";
-import Image from "next/image";
+import Link from "next/link";
 import { toast } from "sonner";
 import {
   AlertCircle,
+  AlertTriangle,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Download,
+  Edit2,
   Eye,
   Filter,
   Image as ImageIcon,
   Loader2,
   RefreshCw,
   Sparkles,
+  Wand2,
   Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge, Card, PageLoader } from "@/components/ui/misc";
 import {
+  useAutoCleanColoringPage,
   useColoringBook,
   useGenerateBatchColoring,
   useGenerateColoringPage,
+  useReorderColoringPages,
   type ColoringPageRecord,
 } from "@/lib/coloring-queries";
 import { useCredits } from "@/lib/queries";
@@ -33,6 +40,8 @@ export default function ColoringBookPagesPage({ params }: { params: Promise<{ bo
 
   const generatePage = useGenerateColoringPage(bookId);
   const generateBatch = useGenerateBatchColoring(bookId);
+  const autoClean = useAutoCleanColoringPage(bookId);
+  const reorderPages = useReorderColoringPages(bookId);
 
   const [filter, setFilter] = useState<"all" | "completed" | "pending" | "failed">("all");
   const [regenPage, setRegenPage] = useState<ColoringPageRecord | null>(null);
@@ -78,6 +87,37 @@ export default function ColoringBookPagesPage({ params }: { params: Promise<{ bo
     } catch (err) {
       toast.dismiss();
       toast.error((err as Error).message || "Regeneration failed");
+    }
+  };
+
+  const handleAutoClean = async (page: ColoringPageRecord) => {
+    try {
+      toast.loading(`Cleaning Page ${page.pageNumber} line art…`);
+      await autoClean.mutateAsync(page.id);
+      toast.dismiss();
+      toast.success(`Page ${page.pageNumber} line art cleaned!`);
+    } catch (err) {
+      toast.dismiss();
+      toast.error((err as Error).message || "Auto-clean failed");
+    }
+  };
+
+  const handleMovePage = async (pageNumber: number, direction: -1 | 1) => {
+    const currentIndex = pages.findIndex((p) => p.pageNumber === pageNumber);
+    if (currentIndex < 0) return;
+    const targetIndex = currentIndex + direction;
+    if (targetIndex < 0 || targetIndex >= pages.length) return;
+
+    const newPages = [...pages];
+    const temp = newPages[currentIndex];
+    newPages[currentIndex] = newPages[targetIndex];
+    newPages[targetIndex] = temp;
+
+    try {
+      await reorderPages.mutateAsync(newPages.map((p) => p.id));
+      toast.success("Page reordered");
+    } catch {
+      toast.error("Failed to reorder page");
     }
   };
 
@@ -153,6 +193,7 @@ export default function ColoringBookPagesPage({ params }: { params: Promise<{ bo
           const isGenerating = page.status === "generating";
           const isFailed = page.status === "failed";
           const assetUrl = page.asset ? `/api/v1/assets/${page.asset.id}/view` : null;
+          const hasQualityIssue = page.qualityChecks && !page.qualityChecks.passed;
 
           return (
             <Card
@@ -162,29 +203,62 @@ export default function ColoringBookPagesPage({ params }: { params: Promise<{ bo
               <div>
                 {/* Card Header */}
                 <div className="flex items-center justify-between pb-3">
-                  <span className="rounded-lg bg-muted px-2 py-0.5 text-xs font-bold text-foreground">
-                    Page {page.pageNumber}
-                  </span>
-                  {isDone && (
-                    <Badge tone="success" className="gap-1 text-[10px]">
-                      <CheckCircle2 className="h-3 w-3" /> Ready
-                    </Badge>
-                  )}
-                  {isGenerating && (
-                    <Badge tone="primary" className="gap-1 text-[10px] animate-pulse">
-                      <Loader2 className="h-3 w-3 animate-spin" /> Drawing…
-                    </Badge>
-                  )}
-                  {isFailed && (
-                    <Badge tone="danger" className="gap-1 text-[10px]">
-                      <AlertCircle className="h-3 w-3" /> Failed
-                    </Badge>
-                  )}
-                  {page.status === "pending" && (
-                    <Badge tone="neutral" className="text-[10px]">
-                      Pending
-                    </Badge>
-                  )}
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleMovePage(page.pageNumber, -1)}
+                      disabled={page.pageNumber <= 1 || reorderPages.isPending}
+                      className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-20"
+                      title="Move Earlier"
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                    </button>
+                    <span className="rounded-lg bg-muted px-2 py-0.5 text-xs font-bold text-foreground">
+                      Page {page.pageNumber}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleMovePage(page.pageNumber, 1)}
+                      disabled={page.pageNumber >= pages.length || reorderPages.isPending}
+                      className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-20"
+                      title="Move Later"
+                    >
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    {hasQualityIssue && (
+                      <button
+                        type="button"
+                        onClick={() => handleAutoClean(page)}
+                        className="rounded-full bg-amber-500/10 p-1 text-amber-500 hover:bg-amber-500/20"
+                        title="Minor shading found: Click to clean line art"
+                      >
+                        <Wand2 className="h-3 w-3" />
+                      </button>
+                    )}
+                    {isDone && (
+                      <Badge tone="success" className="gap-1 text-[10px]">
+                        <CheckCircle2 className="h-3 w-3" /> Ready
+                      </Badge>
+                    )}
+                    {isGenerating && (
+                      <Badge tone="primary" className="gap-1 text-[10px] animate-pulse">
+                        <Loader2 className="h-3 w-3 animate-spin" /> Drawing…
+                      </Badge>
+                    )}
+                    {isFailed && (
+                      <Badge tone="danger" className="gap-1 text-[10px]">
+                        <AlertCircle className="h-3 w-3" /> Failed
+                      </Badge>
+                    )}
+                    {page.status === "pending" && (
+                      <Badge tone="neutral" className="text-[10px]">
+                        Pending
+                      </Badge>
+                    )}
+                  </div>
                 </div>
 
                 {/* Line Art Image Box */}
@@ -217,7 +291,7 @@ export default function ColoringBookPagesPage({ params }: { params: Promise<{ bo
               </div>
 
               {/* Action Buttons */}
-              <div className="mt-4 border-t border-border pt-3 flex items-center gap-2">
+              <div className="mt-4 border-t border-border pt-3 flex items-center gap-1.5">
                 <Button
                   size="sm"
                   variant={isDone ? "secondary" : "primary"}
@@ -238,6 +312,11 @@ export default function ColoringBookPagesPage({ params }: { params: Promise<{ bo
                     <Eye className="h-4 w-4" />
                   </Button>
                 )}
+                <Link href={`/app/coloring-book/${bookId}/editor`}>
+                  <Button size="sm" variant="ghost" className="px-2" title="Edit in Studio">
+                    <Edit2 className="h-3.5 w-3.5" />
+                  </Button>
+                </Link>
               </div>
             </Card>
           );

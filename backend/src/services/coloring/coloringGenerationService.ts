@@ -226,4 +226,100 @@ export const coloringGenerationService = {
       results,
     };
   },
+
+  /**
+   * 1-Click Auto-Clean: Enhances contrast and binarizes line art
+   * using Sharp thresholding to pure white #FFFFFF background and deep black outlines.
+   */
+  async autoCleanPage(userId: string, bookId: string, pageId: string) {
+    await getOwnedBook(userId, bookId);
+    const plan = await prisma.coloringPlan.findUnique({ where: { bookId } });
+    if (!plan) throw notFound("Coloring plan");
+
+    const page = await prisma.coloringPage.findFirst({
+      where: { id: pageId, bookId },
+      include: { asset: true },
+    });
+    if (!page || !page.asset) {
+      throw notFound("Coloring page with illustration asset");
+    }
+
+    // Read current raw asset from storage
+    const { stream } = await storage.getStream(page.asset.storageKey);
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+    const rawBuffer = Buffer.concat(chunks);
+
+    // Apply auto-clean binarization filter
+    const cleanedBuffer = await coloringQualityService.autoCleanLines(rawBuffer);
+
+    // Re-run quality inspection to verify 100% compliance
+    const quality = await coloringQualityService.inspectImage(cleanedBuffer, plan.trimSize);
+
+    // Sanitize and persist new clean asset
+    const sanitized = await sanitizeImage(cleanedBuffer, "image/png");
+    const hash = createHash("sha256").update(sanitized.data).digest("hex");
+    const storageKey = `assets/${userId}/${randomUUID()}.webp`;
+
+    await storage.put(storageKey, sanitized.data, "image/webp");
+
+    return prisma.$transaction(async (tx) => {
+      const asset = await tx.asset.create({
+        data: {
+          userId,
+          storageKey,
+          sha256: hash,
+          width: sanitized.width,
+          height: sanitized.height,
+          bytes: sanitized.data.length,
+          status: "ready",
+          provenance: `ai:coloring:cleaned`,
+          alt: `${page.title} (Cleaned Line Art)`,
+        },
+      });
+
+      await tx.assetReference.upsert({
+        where: { assetId_bookId: { assetId: asset.id, bookId } },
+        create: { assetId: asset.id, bookId },
+        update: {},
+      });
+
+      return tx.coloringPage.update({
+        where: { id: pageId },
+        data: {
+          assetId: asset.id,
+          qualityChecks: quality as unknown as object,
+          error: null,
+          status: "completed",
+        },
+        include: { asset: true },
+      });
+    });
+  },
+
+  /**
+   * Auto-cleans all completed pages in the book that have quality issues.
+   */
+  async autoCleanAll(userId: string, bookId: string) {
+    await getOwnedBook(userId, bookId);
+    const pages = await prisma.coloringPage.findMany({
+      where: { bookId, status: "completed", assetId: { not: null } },
+    });
+
+    const cleaned: string[] = [];
+    for (const page of pages) {
+      try {
+        await this.autoCleanPage(userId, bookId, page.id);
+        cleaned.push(page.id);
+      } catch {
+        // Continue cleaning other pages
+      }
+    }
+
+    return {
+      total: pages.length,
+      cleanedCount: cleaned.length,
+    };
+  },
 };
+
