@@ -112,13 +112,17 @@ describe("entitlement enforcement", () => {
     expect(await prisma.book.count({ where: { userId: a.user.id, deletedAt: null } })).toBe(2);
   });
 
-  it("does not apply a quota to an author with no plan", async () => {
+  it("enforces free tier quotas on an author with no paid plan", async () => {
     const a = await setup("no-quota");
-    // No entitlements at all: the free tier has no paid quota, so it is not
-    // limited by one.
-    await bookService.create(a.user.id, bookBriefSchema.parse(brief({ title: "Second" }).brief));
-    await bookService.create(a.user.id, bookBriefSchema.parse(brief({ title: "Third" }).brief));
-    expect(await prisma.book.count({ where: { userId: a.user.id, deletedAt: null } })).toBe(3);
+    // Free tier allows 1 book. setup() created 1 book. A second book is refused.
+    await expect(
+      bookService.create(a.user.id, bookBriefSchema.parse(brief({ title: "Second" }).brief)),
+    ).rejects.toMatchObject({ status: 403 });
+
+    // Archiving the first book frees a slot.
+    await prisma.book.update({ where: { id: a.book.id }, data: { archivedAt: new Date() } });
+    const second = await bookService.create(a.user.id, bookBriefSchema.parse(brief({ title: "Second" }).brief));
+    expect(second.id).toBeTruthy();
   });
 
   it("frees a quota slot when a book is archived", async () => {
@@ -173,26 +177,26 @@ describe("entitlement enforcement", () => {
 
   it("keeps one author's entitlements from granting another author a quota", async () => {
     const paid = await setup("owner-paid");
-    await grantEntitlements(paid.user.id, { maxBooks: 1 });
+    await grantEntitlements(paid.user.id, { maxBooks: 5 });
 
     const free = await setup("owner-free");
-    // The free author holds no quota, so the paid author's limit does not
-    // apply to them and a second book is allowed.
+    // The free author holds only free tier quota (1 book), so their second book is refused.
     await expect(
       bookService.create(free.user.id, bookBriefSchema.parse(brief({ title: "Second" }).brief)),
-    ).resolves.toBeTruthy();
+    ).rejects.toMatchObject({ status: 403 });
   });
 
-  it("ignores an entitlement that has expired, so its quota no longer applies", async () => {
+  it("ignores an entitlement that has expired, falling back to free tier", async () => {
     const a = await setup("expired-entitlement");
-    await grantEntitlements(a.user.id, { maxBooks: 1 });
-    // The entitlement has passed its expiry, so it grants nothing.
+    await grantEntitlements(a.user.id, { maxBooks: 5 });
+    // The entitlement has passed its expiry, so it falls back to free tier (max 1 book).
     await prisma.entitlement.updateMany({
       where: { userId: a.user.id, key: "maxBooks" },
       data: { expiresAt: new Date(Date.now() - 1000) },
     });
+    // With 1 live book already from setup, creating a second book is refused.
     await expect(
       bookService.create(a.user.id, bookBriefSchema.parse(brief({ title: "Second" }).brief)),
-    ).resolves.toBeTruthy();
+    ).rejects.toMatchObject({ status: 403 });
   });
 });

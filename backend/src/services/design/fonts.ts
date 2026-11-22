@@ -1,12 +1,14 @@
 import { createHash } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { FONT_FACE_IDS, FONT_IDS, INTERIOR_FONTS, type FontId } from '@ebook/shared';
 import { notFound } from '../../utils/errors.js';
 
 /** Manifest-pinned interior fonts. Bytes are verified against SHA-256 before first use in a process. */
 interface ManifestFont { id: string; usage: 'cover' | 'interior'; file: string; delivery: 'vendored' | 'fetched'; sha256: string; bytes: number; license: string; licenseFile: string }
-const FONT_DIR = path.resolve(process.env.FONT_DIR || 'assets/fonts');
+const DEFAULT_FONT_DIR = fileURLToPath(new URL('../../../assets/fonts', import.meta.url));
+const FONT_DIR = path.resolve(process.env.FONT_DIR || DEFAULT_FONT_DIR);
 let manifestPromise: Promise<Map<string, ManifestFont>> | null = null;
 function manifest() {
   manifestPromise ??= readFile(path.join(FONT_DIR, 'manifest.json'), 'utf8').then(raw => new Map((JSON.parse(raw).fonts as ManifestFont[]).map(f => [f.id, f])))

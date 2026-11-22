@@ -147,9 +147,7 @@ export async function assertChapterQuota(
   incoming: number | undefined,
   tx?: Tx,
 ): Promise<void> {
-  const headroom = await entitlementHeadroom(userId, "maxChaptersPerBook", tx);
-  // No entitlement means no paid quota is in force, so nothing is refused.
-  if (headroom === null) return;
+  const headroom = (await entitlementHeadroom(userId, "maxChaptersPerBook", tx)) ?? Number(FREE_TIER_ENTITLEMENTS.maxChaptersPerBook ?? 10);
   const client = tx ?? prisma;
   const existing = await client.chapter.count({ where: { bookId } });
   const total = incoming === undefined ? existing : existing + incoming;

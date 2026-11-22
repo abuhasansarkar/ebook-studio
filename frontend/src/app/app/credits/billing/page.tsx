@@ -1,7 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { Coins, CreditCard, Sparkles } from "lucide-react";
 import { FREE_TIER_ENTITLEMENTS, type EntitlementKey, type Plan, type SubscriptionStatus } from "@ebook/shared";
 import { PageHeader } from "@/components/app/app-shell";
@@ -100,8 +100,9 @@ function PlanCard({ plan, busy, onBuy }: { plan: Plan; busy: boolean; onBuy: () 
   );
 }
 
-export default function BillingPage() {
+function BillingContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const plansQuery = usePlans();
   const billingQuery = useBilling();
   const checkout = useStartCheckout();
@@ -111,12 +112,31 @@ export default function BillingPage() {
   const [problem, setProblem] = useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
 
+  useEffect(() => {
+    const status = searchParams.get("checkout");
+    if (status === "success") {
+      setNotice("Payment received! Your plan and credits are updating.");
+      void billingQuery.refetch();
+      router.replace("/app/credits/billing", { scroll: false });
+    } else if (status === "cancelled") {
+      setProblem("Checkout was cancelled. No charges were made.");
+      router.replace("/app/credits/billing", { scroll: false });
+    }
+  }, [searchParams, billingQuery, router]);
+
   const state = billingQuery.data;
   const catalog = plansQuery.data;
   const entitlements = Object.entries(state?.entitlements ?? {}) as [EntitlementKey, string | number | boolean][];
   // The free-tier capabilities are in every author's state, so only the ones a
-  // plan actually added belong under "What your plan unlocks".
-  const paidEntitlements = entitlements.filter(([key]) => !(key in FREE_TIER_ENTITLEMENTS));
+  // plan actually added or upgraded belong under "What your plan unlocks".
+  const paidEntitlements = entitlements.filter(([key, value]) => {
+    if (key === "exports" || key === "sourceImports") return false;
+    const freeVal = FREE_TIER_ENTITLEMENTS[key];
+    if (typeof value === "number" && typeof freeVal === "number") {
+      return value > freeVal;
+    }
+    return value !== freeVal;
+  });
   const subscription = state?.subscription ?? null;
 
   const busyPlanId = checkout.isPending ? (checkout.variables ?? null) : null;
@@ -327,5 +347,13 @@ function PaymentHistory() {
         />
       )}
     </Section>
+  );
+}
+
+export default function BillingPage() {
+  return (
+    <Suspense fallback={<PageLoader />}>
+      <BillingContent />
+    </Suspense>
   );
 }

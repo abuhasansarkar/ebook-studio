@@ -6,7 +6,7 @@ import { bookService } from '../src/services/books/bookService.js';
 import { libraryService } from '../src/services/books/libraryService.js';
 import { outlineService } from '../src/services/outline/outlineService.js';
 import { generationService } from '../src/services/generation/generationService.js';
-import { brief, createUser, ORIGIN } from './helpers.js';
+import { brief, createUser, grantEntitlements, ORIGIN } from './helpers.js';
 
 async function planning() {
   const owner = await createUser('library');
@@ -43,6 +43,7 @@ describe('library and planning', () => {
   });
   it('paginates deterministically across tied timestamps and validates filters', async () => {
     const { user, agent } = await createUser('pagination');
+    await grantEntitlements(user.id, { maxBooks: 10 });
     const parsed = bookBriefSchema.parse(brief().brief);
     const ids: string[] = [];
     for (let i = 0; i < 5; i++) ids.push((await bookService.create(user.id, parsed)).id);

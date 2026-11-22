@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import { COVER_FONTS, COVER_HEIGHT, COVER_WIDTH, coverDesignSchema, coverTextStyle, defaultCover, type CoverDesign } from '@ebook/shared';
 import { prisma } from '../../database/prisma.js';
@@ -10,10 +11,14 @@ import { assetService, pinImages } from '../assets/assetService.js';
 import { getBrowser } from '../exports/pdfRenderer.js';
 import { escapeHtml } from '../exports/tiptapToHtml.js';
 
+const FONT_BASE_DIR = process.env.FONT_DIR
+  ? path.resolve(process.env.FONT_DIR)
+  : fileURLToPath(new URL('../../../assets/fonts', import.meta.url));
+
 const fontCache = new Map<string, Promise<Buffer>>();
 export function coverFont(name: string) {
   if (!(COVER_FONTS as readonly string[]).includes(name)) throw notFound('Font');
-  if (!fontCache.has(name)) fontCache.set(name, readFile(path.resolve('assets/fonts', `${name}.ttf`)).catch(error => { fontCache.delete(name); throw error; }));
+  if (!fontCache.has(name)) fontCache.set(name, readFile(path.resolve(FONT_BASE_DIR, `${name}.ttf`)).catch(error => { fontCache.delete(name); throw error; }));
   return fontCache.get(name)!;
 }
 export function artworkDocument(id: string) { return { type: 'doc', content: [{ type: 'image', attrs: { assetId: id, alt: '', caption: '' } }] }; }

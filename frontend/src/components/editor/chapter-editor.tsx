@@ -9,8 +9,9 @@ import StarterKit from "@tiptap/starter-kit";
 import { TableKit } from "@tiptap/extension-table";
 import { CharacterCount, Placeholder } from "@tiptap/extensions";
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
-import { History, Save, Download } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Download, History, Save, Upload } from "lucide-react";
+import { toast } from "sonner";
 import { getLanguage } from "@ebook/shared";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -32,6 +33,8 @@ export function ChapterEditor({ ownerId, chapter, bookId, language, findingId }:
   const [imagesOpen, setImagesOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [discardDraftsOpen, setDiscardDraftsOpen] = useState(false);
+  const restoreFileRef = useRef<HTMLInputElement>(null);
+  const [restoreConfirm, setRestoreConfirm] = useState<{ title?: string; contentJson?: Record<string, unknown> } | null>(null);
 
   const onSaved = useCallback(
     (saved: SavedChapter, payload: ChapterPatch) => {
@@ -95,6 +98,27 @@ export function ChapterEditor({ ownerId, chapter, bookId, language, findingId }:
             const link = document.createElement('a'); link.href = url; link.download = 'chapter-backup.json'; link.click();
             setTimeout(() => URL.revokeObjectURL(url), 1000);
           }}><Download className="h-4 w-4" /> Backup</Button>
+          <Button variant="secondary" size="sm" disabled={!editor || !save.ready || save.drafts.length > 0 || historyOpen} onClick={() => restoreFileRef.current?.click()} title="Restore chapter from a JSON backup file"><Upload className="h-4 w-4" /> Restore</Button>
+          <input
+            type="file"
+            ref={restoreFileRef}
+            accept=".json,application/json"
+            className="hidden"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              try {
+                const text = await file.text();
+                const data = JSON.parse(text) as { title?: string; contentJson?: Record<string, unknown> };
+                if (!data.contentJson && !data.title) throw new Error("Invalid backup format");
+                setRestoreConfirm(data);
+              } catch {
+                toast.error("Could not parse chapter backup file. Ensure it is a valid JSON backup.");
+              } finally {
+                e.target.value = "";
+              }
+            }}
+          />
           <Button variant="secondary" size="sm" disabled={!save.ready || save.drafts.length > 0 || save.state !== "saved" || !editor} onClick={() => setHistoryOpen(true)} title={save.state !== "saved" ? "Save your changes before opening history" : "View earlier drafts"}><History className="h-4 w-4" /> History</Button>
           <span className="text-xs text-muted-foreground">{formatNumber(words ?? 0)} words</span>
           <SaveIndicator state={save.state} lastSavedAt={save.lastSavedAt} error={save.errorMsg} onRetry={() => void save.retry()} />
@@ -127,6 +151,25 @@ export function ChapterEditor({ ownerId, chapter, bookId, language, findingId }:
         confirmLabel="Discard drafts"
       >
         <p>Unsaved changes kept only in this browser will be lost. This cannot be undone.</p>
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={restoreConfirm !== null}
+        onClose={() => setRestoreConfirm(null)}
+        onConfirm={() => {
+          if (!restoreConfirm || !editor) return;
+          if (restoreConfirm.title) setTitle(restoreConfirm.title);
+          if (restoreConfirm.contentJson) {
+            editor.commands.setContent(restoreConfirm.contentJson, { emitUpdate: true });
+            save.schedule({ title: restoreConfirm.title ?? title, contentJson: restoreConfirm.contentJson });
+          }
+          toast.success("Chapter restored from backup");
+          setRestoreConfirm(null);
+        }}
+        title="Restore chapter from backup?"
+        description="This will replace the current chapter title and content in the editor with the contents of the backup file."
+        confirmLabel="Restore"
+      >
+        <p>Current unsaved changes will be replaced. You can review revision history if you need to access earlier server drafts.</p>
       </ConfirmDialog>
       <div className="mx-auto w-full max-w-3xl flex-1 px-5 py-10 sm:px-10" style={{ fontFamily: lang.fontFamily }}>
         <p className="mb-2 text-sm font-bold text-primary">Chapter {chapter.position + 1}</p>

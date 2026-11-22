@@ -1,6 +1,7 @@
 import { createReadStream } from "node:fs";
 import { mkdir, writeFile, stat, unlink } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { Readable } from "node:stream";
 import { CreateBucketCommand, DeleteObjectCommand, GetObjectCommand, HeadBucketCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { env } from "../../config/env.js";
@@ -10,7 +11,8 @@ import { logger } from "../../utils/logger.js";
  * S3-compatible object storage (MinIO in dev). Falls back to the local filesystem
  * when S3_ENDPOINT is not configured.
  */
-const LOCAL_DIR = path.resolve(env.STORAGE_DIR || path.join(process.cwd(), "storage"));
+const DEFAULT_STORAGE = fileURLToPath(new URL("../../../storage", import.meta.url));
+const LOCAL_DIR = path.resolve(env.STORAGE_DIR || DEFAULT_STORAGE);
 const useS3 = Boolean(env.S3_ENDPOINT);
 
 const s3 = useS3

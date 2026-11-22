@@ -13,6 +13,7 @@ import { generationService } from "./services/generation/generationService.js";
 import { outlineService } from "./services/outline/outlineService.js";
 import { exportService } from "./services/exports/exportService.js";
 import { closeBrowser } from "./services/exports/pdfRenderer.js";
+import { raiseIncident } from "./services/admin/operationsService.js";
 import { logger } from "./utils/logger.js";
 
 /**
@@ -43,7 +44,21 @@ const workers = [
 ];
 
 for (const w of workers) {
-  w.on("failed", (job, err) => logger.error({ err, queue: w.name, jobId: job?.id }, "Job failed"));
+  w.on("failed", (job, err) => {
+    logger.error({ err, queue: w.name, jobId: job?.id }, "Job failed");
+    if (job && job.attemptsMade >= (job.opts?.attempts ?? 1)) {
+      const subjectId = (job.data as { generationJobId?: string; exportId?: string })?.generationJobId 
+        ?? (job.data as { generationJobId?: string; exportId?: string })?.exportId 
+        ?? (job.id ? String(job.id) : undefined);
+      void raiseIncident({
+        kind: `queue.${w.name}.exhausted`,
+        severity: "warning",
+        summary: `Job ${job.id} failed after ${job.attemptsMade} attempt(s) in queue ${w.name}: ${(err as Error).message.slice(0, 300)}`,
+        subjectType: "worker_job",
+        subjectId,
+      }).catch((incidentError) => logger.warn({ err: incidentError }, "Could not record incident for failed job"));
+    }
+  });
   w.on("error", (err) => logger.error({ err, queue: w.name }, "Worker error"));
 }
 

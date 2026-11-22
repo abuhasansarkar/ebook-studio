@@ -153,6 +153,8 @@ export function planEntitlements(plan: Plan): Partial<Record<EntitlementKey, str
 export const FREE_TIER_ENTITLEMENTS: Partial<Record<EntitlementKey, string | number | boolean>> = {
   exports: true,
   sourceImports: true,
+  maxBooks: 1,
+  maxChaptersPerBook: 10,
 };
 
 /**
@@ -160,9 +162,11 @@ export const FREE_TIER_ENTITLEMENTS: Partial<Record<EntitlementKey, string | num
  *
  * These are the entitlements that a plan may write and a refund may withdraw.
  */
-export const PAID_ENTITLEMENT_KEYS: readonly EntitlementKey[] = ENTITLEMENT_KEYS.filter(
-  (key) => !(key in FREE_TIER_ENTITLEMENTS),
-);
+export const PAID_ENTITLEMENT_KEYS: readonly EntitlementKey[] = [
+  'maxBooks',
+  'maxChaptersPerBook',
+  'priorityJobs',
+];
 
 /**
  * Whether an entitlement allows a given use.
