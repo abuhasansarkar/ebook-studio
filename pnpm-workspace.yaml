@@ -14,3 +14,15 @@ allowBuilds:
   unrs-resolver: true
   "@parcel/watcher": true
   "@swc/core": true
+# One React for the whole workspace.
+#
+# `better-auth` declares `react`, `react-dom` and `next` as optional peer
+# dependencies. The backend uses better-auth's Node API only, but pnpm still
+# satisfies those peers for it, which pulled a second React (19.3.1) and a
+# second Next into the tree. The frontend's better-auth then resolved React
+# 19.3.0 while the backend's resolved 19.3.1, and the prerender failed with
+# "Cannot read properties of null (reading 'useState')" because the hook
+# dispatcher came from one React and the component from another.
+overrides:
+  react: 19.3.0
+  react-dom: 19.3.0

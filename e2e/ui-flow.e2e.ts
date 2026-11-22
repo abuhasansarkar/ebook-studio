@@ -7,10 +7,15 @@
  */
 import puppeteer, { type Page } from "puppeteer";
 import { mkdirSync } from "node:fs";
+import path from "node:path";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
 const MAILPIT = process.env.MAILPIT_URL ?? "http://localhost:8025";
-const SHOTS = process.env.SHOTS_DIR ?? "/tmp/ebook-e2e";
+// The path must be resolved to a real absolute path on this machine. A
+// POSIX-style path such as "/tmp/ebook-e2e" is written by Node to the drive
+// root, but the browser process cannot open it, so `uploadFile` hands the page
+// a file of zero bytes and the upload is rejected as an empty file.
+const SHOTS = path.resolve(process.env.SHOTS_DIR ?? "/tmp/ebook-e2e");
 const HEADLESS = process.env.HEADED ? false : true;
 mkdirSync(SHOTS, { recursive: true });
 
@@ -300,10 +305,12 @@ try {
   });
   const imagePath = `${SHOTS}/asset-upload.png`;
   const { writeFileSync } = await import('node:fs'); writeFileSync(imagePath, Buffer.from(imageBytes, 'base64'));
-  const fileInput = await page.$('dialog input[type="file"]'); await fileInput!.uploadFile(imagePath);
+  const fileInput = await page.$('dialog[open] input[type="file"]');
+  if (!fileInput) throw new Error('The image picker has no file input inside the open dialog.');
+  await fileInput.uploadFile(imagePath);
   await waitText(page, 'Not used in a manuscript yet');
-  await page.type('dialog input[id^="alt-"]', 'Warm orange illustration');
-  await page.type('dialog textarea[id^="caption-"]', 'A caption for the illustrated chapter');
+  await page.type('dialog[open] input[id^="alt-"]', 'Warm orange illustration');
+  await page.type('dialog[open] textarea[id^="caption-"]', 'A caption for the illustrated chapter');
   await clickButton(page, 'Save details'); await waitText(page, 'Details saved.');
   await clickButton(page, 'Insert image');
   await page.waitForSelector('.book-prose img[alt="Warm orange illustration"]');

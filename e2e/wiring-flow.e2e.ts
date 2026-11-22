@@ -129,6 +129,9 @@ try {
 
   // ---- The Support Center is reachable from the nav ----
   await page.goto(`${BASE}/app/dashboard`, { waitUntil: "networkidle0" });
+  // The nav is only in the DOM once the client has mounted, so the wait is
+  // what makes this check deterministic rather than a race against hydration.
+  await page.waitForSelector('a[href="/app/support"]', { timeout: 20_000 });
   const navLink = await page.$('a[href="/app/support"]');
   check(Boolean(navLink), "the Support Center is linked from the dashboard nav");
 

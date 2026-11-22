@@ -96,6 +96,34 @@ async function sha256File(file: string): Promise<string> {
 }
 
 /**
+ * The SHA-256 of a directory's contents.
+ *
+ * The assets are captured as a directory tree, so the checksum has to cover the
+ * tree and not a single file. Reading a directory as a stream fails with
+ * `EISDIR`, so the tree is walked instead: every file's path and contents are
+ * folded into one hash, in sorted order, so the same tree always produces the
+ * same digest.
+ */
+async function sha256Directory(directory: string): Promise<string> {
+  const hash = createHash("sha256");
+  const walk = async (current: string, relative: string): Promise<void> => {
+    const entries = await readdir(current, { withFileTypes: true });
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      const from = path.join(current, entry.name);
+      const name = relative ? `${relative}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        await walk(from, name);
+      } else if (entry.isFile()) {
+        hash.update(name);
+        hash.update(await readFile(from));
+      }
+    }
+  };
+  await walk(directory, "");
+  return hash.digest("hex");
+}
+
+/**
  * The PostgreSQL client tools.
  *
  * `pg_dump` and `psql` are not always on the host's PATH: the common
@@ -287,7 +315,7 @@ export async function createBackup(input: { name?: string; actorId?: string } = 
   const assetCounts = await copyAssets(assetsDirectory);
 
   const databaseSha256 = await sha256File(databaseFile);
-  const assetsSha256 = assetCounts ? await sha256File(assetsDirectory) : null;
+  const assetsSha256 = assetCounts ? await sha256Directory(assetsDirectory) : null;
 
   const databaseBytes = (await stat(databaseFile)).size;
   const assetBytes = assetCounts?.bytes ?? 0;

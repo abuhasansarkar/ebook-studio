@@ -23,6 +23,13 @@ const MAILPIT = process.env.MAILPIT_URL ?? "http://localhost:8025";
 const SHOTS = process.env.SHOTS_DIR ?? path.join(tmpdir(), "ebook-e2e-brief-roles");
 const DATABASE = process.env.E2E_DATABASE ?? "ebook_studio_test";
 const PG_CONTAINER = process.env.PG_CONTAINER ?? "ebook-studio-postgres-1";
+// When the journey points at a database by URL, that URL names the database the
+// journey actually uses. The container path below has to use the same name, or
+// the role is granted in a different database than the one under test and the
+// administrator screen never appears.
+const DATABASE_IN_URL = process.env.E2E_DATABASE_URL
+  ? new URL(process.env.E2E_DATABASE_URL).pathname.replace(/^\//, "")
+  : null;
 mkdirSync(SHOTS, { recursive: true });
 
 const email = `e2e-brief-${Date.now()}@example.com`;
@@ -71,13 +78,21 @@ async function makeAdministrator(target: string) {
   `;
   const file = path.join(SHOTS, "make-admin.sql");
   writeFileSync(file, script, "utf8");
-  // CI reaches its database service over TCP; locally the Docker container is used.
+  // CI reaches its database service over TCP, where the psql client is on the
+  // runner. On a developer machine the client is often not installed, so the
+  // same script is run inside the PostgreSQL container instead.
   if (process.env.E2E_DATABASE_URL) {
-    await execFileAsync("psql", [process.env.E2E_DATABASE_URL, "-v", "ON_ERROR_STOP=1", "-f", file]);
-    return;
+    try {
+      await execFileAsync("psql", [process.env.E2E_DATABASE_URL, "-v", "ON_ERROR_STOP=1", "-f", file]);
+      return;
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code !== "ENOENT") throw err;
+      console.log("psql is not installed here; using the PostgreSQL container instead");
+    }
   }
   await execFileAsync("docker", ["cp", file, `${PG_CONTAINER}:/tmp/make-admin.sql`]);
-  await execFileAsync("docker", ["exec", PG_CONTAINER, "psql", "-U", "ebook", "-d", DATABASE, "-v", "ON_ERROR_STOP=1", "-f", "/tmp/make-admin.sql"]);
+  await execFileAsync("docker", ["exec", PG_CONTAINER, "psql", "-U", "ebook", "-d", DATABASE_IN_URL ?? DATABASE, "-v", "ON_ERROR_STOP=1", "-f", "/tmp/make-admin.sql"]);
 }
 
 async function inputValue(page: Page, selector: string) {

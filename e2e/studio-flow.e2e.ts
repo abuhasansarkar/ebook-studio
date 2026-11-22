@@ -15,9 +15,14 @@ import { execFile } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+
+// This package is ESM, so `__dirname` does not exist. The journey's own
+// directory comes from the module URL instead.
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * Reads a variable from the e2e environment file.
@@ -27,7 +32,7 @@ const execFileAsync = promisify(execFile);
  * with is the same file the journey reads, so the two cannot drift apart.
  */
 function envFileValue(key: string): string | undefined {
-  const file = path.resolve(__dirname, "..", ".env.e2e");
+  const file = path.resolve(HERE, "..", ".env.e2e");
   try {
     for (const line of readFileSync(file, "utf8").split(/\r?\n/)) {
       const match = new RegExp(`^\\s*${key}\\s*=\\s*(.*)$`).exec(line);
@@ -146,10 +151,18 @@ async function grantSupportRole(target: string): Promise<boolean> {
   `;
   const file = path.join(SHOTS, "grant-role.sql");
   writeFileSync(file, script, "utf8");
-  // CI reaches its database service over TCP; locally the Docker container is used.
+  // CI reaches its database service over TCP, where the psql client is on the
+  // runner. On a developer machine the client is often not installed, so the
+  // same script is run inside the PostgreSQL container instead.
   if (process.env.E2E_DATABASE_URL) {
-    await execFileAsync("psql", [process.env.E2E_DATABASE_URL, "-v", "ON_ERROR_STOP=1", "-f", file]);
-    return true;
+    try {
+      await execFileAsync("psql", [process.env.E2E_DATABASE_URL, "-v", "ON_ERROR_STOP=1", "-f", file]);
+      return true;
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code !== "ENOENT") throw err;
+      console.log("psql is not installed here; using the PostgreSQL container instead");
+    }
   }
   await execFileAsync("docker", ["cp", file, `${container}:/tmp/grant-role.sql`]);
   await execFileAsync("docker", ["exec", container, "psql", "-U", "ebook", "-d", database, "-f", "/tmp/grant-role.sql"]);

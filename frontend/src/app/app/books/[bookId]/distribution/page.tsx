@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { Distribution } from "@/app/app/distribution/page";
+import { Distribution } from "@/components/studio/distribution-screen";
 
 /**
  * The distribution screen, reached from a book's tab.

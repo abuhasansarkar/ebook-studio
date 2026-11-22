@@ -100,7 +100,11 @@ try {
   await page.waitForFunction(() => location.pathname === "/app/dashboard", { timeout: 20_000 });
   log("signed up and verified");
 
-  // The support link is in the navigation.
+  // The support link is in the navigation. The sidebar is server-rendered but
+  // the session is not, so the nav is only in the DOM once the client has
+  // mounted; the wait is what makes this check deterministic rather than a
+  // race against hydration.
+  await page.waitForSelector('a[href="/app/support"]', { timeout: 20_000 });
   const navLink = await page.$('a[href="/app/support"]');
   check(Boolean(navLink), "the navigation links to the Support Center");
 

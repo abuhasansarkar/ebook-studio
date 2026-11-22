@@ -40,6 +40,12 @@ x-backend-env: &backend-env
   S3_SECRET_KEY: ${S3_SECRET_KEY:-}
   S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-false}
   ALERT_DESTINATION: ${ALERT_DESTINATION:-}
+  # Backups are written inside the container. The "backups" volume keeps them
+  # when the container is recreated, so a restart cannot silently discard them.
+  BACKUP_DIR: ${BACKUP_DIR:-/app/backend/backups}
+  # The PostgreSQL container used for pg_dump when the client tools are not on
+  # the host. It must match the postgres service name below.
+  PG_CONTAINER: ${PG_CONTAINER:-ebook-studio-postgres-1}
 
 services:
   postgres:
@@ -75,7 +81,9 @@ services:
     build: { context: ., dockerfile: backend/Dockerfile }
     command: ["sh", "-c", "pnpm exec prisma migrate deploy && node dist/server.js"]
     environment: *backend-env
-    volumes: [storage:/app/backend/storage]
+    volumes:
+      - storage:/app/backend/storage
+      - backups:/app/backend/backups
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -89,7 +97,9 @@ services:
     build: { context: ., dockerfile: backend/Dockerfile }
     command: ["node", "dist/worker.js"]
     environment: *backend-env
-    volumes: [storage:/app/backend/storage]
+    volumes:
+      - storage:/app/backend/storage
+      - backups:/app/backend/backups
     depends_on:
       backend: { condition: service_healthy }
 
@@ -112,3 +122,4 @@ volumes:
   pgdata:
   redisdata:
   storage:
+  backups:

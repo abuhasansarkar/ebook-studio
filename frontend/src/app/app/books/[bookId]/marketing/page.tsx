@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { MarketingStudio } from "@/app/app/marketing/page";
+import { MarketingStudio } from "@/components/studio/marketing-screen";
 
 /**
  * The marketing studio, reached from a book's tab.

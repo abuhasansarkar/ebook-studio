@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { ListingStudio } from "@/app/app/listing/page";
+import { ListingStudio } from "@/components/studio/listing-screen";
 
 /**
  * The listing screen, reached from a book's tab.
