@@ -100,21 +100,42 @@ function PlanCard({
   onBuy: () => void;
 }) {
   const entitlements = Object.entries(plan.entitlements) as [EntitlementKey, string | number | boolean][];
+  const isYearly = plan.interval === "year" || plan.id.endsWith("-yearly");
+  const monthlyEquivalent = isYearly ? Math.round(plan.priceMinor / 12) : plan.priceMinor;
+  const discountLabel = plan.id === "studio-yearly" ? "Save 20%" : isYearly ? "2 months free" : null;
+
   return (
     <Card className={cn("flex flex-col p-6 transition-all duration-200", isCurrentPlan && "border-primary/50 ring-2 ring-primary/20 bg-primary-soft/10")}>
       <div className="flex items-start justify-between gap-3">
-        <h3 className="text-base font-semibold">{plan.name}</h3>
+        <div>
+          <h3 className="text-base font-semibold">{plan.name}</h3>
+          {discountLabel && (
+            <span className="mt-1 inline-block rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 text-[11px] font-semibold">
+              {discountLabel}
+            </span>
+          )}
+        </div>
         {isCurrentPlan ? (
           <Badge tone="success">Current Plan</Badge>
         ) : plan.recurring ? (
-          <Badge tone="primary">Recurring</Badge>
+          <Badge tone={isYearly ? "success" : "primary"}>{isYearly ? "Annual" : "Recurring"}</Badge>
         ) : null}
       </div>
       <p className="mt-1 text-sm text-muted-foreground">{plan.description}</p>
-      <p className="mt-4 text-3xl font-bold">
-        {formatPrice(plan.priceMinor, plan.currency)}
-      </p>
-      <p className="mt-1 text-sm text-muted-foreground">{formatNumber(plan.credits)} credits</p>
+      <div className="mt-4">
+        <p className="text-3xl font-bold">
+          {formatPrice(monthlyEquivalent, plan.currency)}
+          <span className="text-sm font-normal text-muted-foreground"> /month</span>
+        </p>
+        {isYearly ? (
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Billed annually ({formatPrice(plan.priceMinor, plan.currency)}/yr)
+          </p>
+        ) : (
+          <p className="mt-0.5 text-xs text-muted-foreground">Billed monthly</p>
+        )}
+      </div>
+      <p className="mt-1 text-sm font-medium text-foreground">{formatNumber(plan.credits)} credits {isYearly ? "/yr" : "/mo"}</p>
       {entitlements.length > 0 && (
         <ul className="mt-4 space-y-1.5 text-sm">
           {entitlements.map(([key, value]) => (
@@ -155,6 +176,7 @@ function BillingContent() {
   const [notice, setNotice] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [billingCycle, setBillingCycle] = useState<"month" | "year">("month");
 
   useEffect(() => {
     const status = searchParams.get("checkout");
@@ -179,6 +201,12 @@ function BillingContent() {
   const subscriptions = state?.subscriptions ?? (subscription ? [subscription] : []);
   const payments = state?.payments ?? [];
   const pendingPayment = payments.find((p) => p.status === "pending");
+
+  useEffect(() => {
+    if (currentPlan?.interval === "year" || currentPlan?.id.endsWith("-yearly")) {
+      setBillingCycle("year");
+    }
+  }, [currentPlan?.interval, currentPlan?.id]);
 
   const entitlements = Object.entries(state?.entitlements ?? {}) as [EntitlementKey, string | number | boolean][];
   const paidEntitlements = entitlements.filter(([key, value]) => {
@@ -267,8 +295,12 @@ function BillingContent() {
                     <div>
                       <span className="text-muted-foreground">Plan Price: </span>
                       <span className="font-semibold text-foreground">
-                        {currentPlan?.priceMinor && currentPlan.priceMinor > 0 ? formatPrice(currentPlan.priceMinor, currentPlan.currency) : "Free"}
-                        {currentPlan?.recurring ? " / month" : ""}
+                        {currentPlan?.priceMinor && currentPlan.priceMinor > 0 ? (
+                          <>
+                            {formatPrice(currentPlan.priceMinor, currentPlan.currency)}
+                            {currentPlan?.recurring ? (currentPlan.interval === "year" || currentPlan.id.endsWith("-yearly") ? " / year" : " / month") : ""}
+                          </>
+                        ) : "Free"}
                       </span>
                     </div>
                     <div>
@@ -344,38 +376,90 @@ function BillingContent() {
             </Card>
           </Section>
 
-          <h2 className="mb-3 text-lg font-semibold">Available plans</h2>
+          <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold">Available plans</h2>
+              <p className="text-xs text-muted-foreground">
+                Select your preferred billing frequency. Annual plans include up to 20% discount.
+              </p>
+            </div>
+            {/* Monthly / Annual Toggle */}
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface p-1 shadow-xs self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={() => setBillingCycle("month")}
+                className={cn(
+                  "rounded-full px-4 py-1.5 text-xs font-semibold transition-all duration-200 cursor-pointer",
+                  billingCycle === "month"
+                    ? "bg-foreground text-background shadow-xs font-bold"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                Monthly billing
+              </button>
+              <button
+                type="button"
+                onClick={() => setBillingCycle("year")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold transition-all duration-200 cursor-pointer",
+                  billingCycle === "year"
+                    ? "bg-[#e8603c] text-white shadow-xs font-bold"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <span>Annual billing</span>
+                <span
+                  className={cn(
+                    "rounded-full px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider",
+                    billingCycle === "year"
+                      ? "bg-white/20 text-white"
+                      : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+                  )}
+                >
+                  Save ~20%
+                </span>
+              </button>
+            </div>
+          </div>
+
           {catalog && catalog.plans.length > 0 ? (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <FreePlanCard isCurrentPlan={!currentPlan || currentPlan.id === "free"} />
-              {catalog.plans.map((plan) => (
-                <PlanCard
-                  key={plan.id}
-                  plan={plan}
-                  isCurrentPlan={currentPlan?.id === plan.id}
-                  busy={busyPlanId === plan.id}
-                  onBuy={() => {
-                    setProblem(null);
-                    setNotice(null);
-                    checkout.mutate(plan.id, {
-                      onSuccess: (result) => {
-                        const url = result.checkout.url;
-                        if (url) {
-                          if (url.startsWith("http://") || url.startsWith("https://")) {
-                            window.location.href = url;
-                          } else {
-                            router.push(url);
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {billingCycle === "month" && (
+                <FreePlanCard isCurrentPlan={!currentPlan || currentPlan.id === "free"} />
+              )}
+              {catalog.plans
+                .filter((p) => {
+                  const isYearly = p.interval === "year" || p.id.endsWith("-yearly");
+                  return billingCycle === "year" ? isYearly : !isYearly;
+                })
+                .map((plan) => (
+                  <PlanCard
+                    key={plan.id}
+                    plan={plan}
+                    isCurrentPlan={currentPlan?.id === plan.id}
+                    busy={busyPlanId === plan.id}
+                    onBuy={() => {
+                      setProblem(null);
+                      setNotice(null);
+                      checkout.mutate(plan.id, {
+                        onSuccess: (result) => {
+                          const url = result.checkout.url;
+                          if (url) {
+                            if (url.startsWith("http://") || url.startsWith("https://")) {
+                              window.location.href = url;
+                            } else {
+                              router.push(url);
+                            }
+                            return;
                           }
-                          return;
-                        }
-                        setNotice("Checkout started. Credits are added once payment is confirmed.");
-                        void billingQuery.refetch();
-                      },
-                      onError: (err) => setProblem(errorMessage(err)),
-                    });
-                  }}
-                />
-              ))}
+                          setNotice("Checkout started. Credits are added once payment is confirmed.");
+                          void billingQuery.refetch();
+                        },
+                        onError: (err) => setProblem(errorMessage(err)),
+                      });
+                    }}
+                  />
+                ))}
             </div>
           ) : (
             <EmptyState icon={<CreditCard className="h-6 w-6" />} title="No plans on offer" description="Plans will appear here when they are published." />
@@ -449,7 +533,12 @@ function BillingContent() {
 
           <Section title="Compare every plan" description="What each plan unlocks, next to what every author gets for free." className="mt-10">
             {catalog && catalog.plans.length > 0 ? (
-              <PricingComparison plans={catalog.plans} />
+              <PricingComparison
+                plans={catalog.plans.filter((p) => {
+                  const isYearly = p.interval === "year" || p.id.endsWith("-yearly");
+                  return billingCycle === "year" ? isYearly : !isYearly;
+                })}
+              />
             ) : (
               <Card className="p-6 text-sm text-muted-foreground">
                 The plan catalog is empty right now, so there is nothing to compare.

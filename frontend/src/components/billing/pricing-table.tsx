@@ -90,6 +90,9 @@ export function PricingCard({
   cta?: React.ReactNode;
 }) {
   const entitlements = Object.entries(plan.entitlements) as [EntitlementKey, string | number | boolean][];
+  const isYearly = plan.interval === "year" || plan.id.endsWith("-yearly");
+  const monthlyEquivalent = isYearly ? Math.round(plan.priceMinor / 12) : plan.priceMinor;
+
   return (
     <div
       className={cn(
@@ -102,16 +105,29 @@ export function PricingCard({
         <h3 className="text-base font-semibold">{plan.name}</h3>
         <div className="flex flex-wrap justify-end gap-1.5">
           {highlighted && <span className="rounded-full bg-primary-soft px-2.5 py-0.5 text-xs font-medium text-primary-hover">Most capable</span>}
-          {plan.recurring && <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">Recurring</span>}
+          {isYearly ? (
+            <span className="rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2.5 py-0.5 text-xs font-semibold">
+              Save ~20%
+            </span>
+          ) : plan.recurring ? (
+            <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">Monthly</span>
+          ) : null}
         </div>
       </div>
       <p className="mt-1 min-h-10 text-sm text-muted-foreground">{plan.description}</p>
-      <p className="mt-4 text-3xl font-bold">
-        {formatPrice(plan.priceMinor, plan.currency)}
-        {plan.recurring && <span className="text-sm font-normal text-muted-foreground"> /month</span>}
-      </p>
+      <div className="mt-4">
+        <p className="text-3xl font-bold">
+          {formatPrice(monthlyEquivalent, plan.currency)}
+          {plan.recurring && <span className="text-sm font-normal text-muted-foreground"> /month</span>}
+        </p>
+        {isYearly && (
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Billed annually ({formatPrice(plan.priceMinor, plan.currency)}/yr)
+          </p>
+        )}
+      </div>
       <p className="mt-1 text-sm text-muted-foreground">
-        {new Intl.NumberFormat("en").format(plan.credits)} credits
+        {new Intl.NumberFormat("en").format(plan.credits)} credits {isYearly ? "/year" : ""}
       </p>
       {entitlements.length > 0 && (
         <ul className="mt-5 space-y-2 text-sm">
@@ -205,7 +221,11 @@ export function PricingComparison({ plans }: { plans: Plan[] }) {
             {plans.map((plan) => (
               <td key={plan.id} className="px-5 py-3.5 font-medium text-foreground">
                 {formatPrice(plan.priceMinor, plan.currency)}
-                {plan.recurring && <span className="font-normal text-muted-foreground"> /mo</span>}
+                {plan.recurring && (
+                  <span className="font-normal text-muted-foreground">
+                    {plan.interval === "year" || plan.id.endsWith("-yearly") ? " /yr" : " /mo"}
+                  </span>
+                )}
               </td>
             ))}
           </tr>

@@ -117,11 +117,16 @@ export function LandingPricing() {
                 href="/signup"
                 className="shimmer-mask mt-8 flex w-full items-center justify-center gap-2 rounded-xl bg-[#e8603c] hover:bg-[#d4512e] py-3.5 text-sm font-bold text-white shadow-md transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 active:scale-98 group/btn"
               >
-                <span>Start 14-Day Free Trial</span>
+                <span>Start Free (100 Welcome Credits)</span>
                 <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover/btn:translate-x-1" />
               </Link>
+              <div className="mt-3 flex items-center justify-center gap-4 text-xs text-muted-foreground">
+                <Link href="/pricing" className="hover:text-foreground font-medium underline underline-offset-4">
+                  Compare all plans & quotas →
+                </Link>
+              </div>
               <p className="mt-2 text-[11px] text-muted-foreground">
-                Instant access • Includes 1,000 monthly credits • No risk
+                Instant access • Includes 100 welcome credits • Cancel anytime
               </p>
             </div>
 
