@@ -2,9 +2,7 @@
 
 import Link from "next/link";
 import {
-  BookOpen,
   Calendar,
-  CheckCircle2,
   Download,
   Eye,
   Layers,
@@ -13,9 +11,8 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge, Card, EmptyState, PageLoader, Progress } from "@/components/ui/misc";
+import { Badge, Card, EmptyState, PageLoader } from "@/components/ui/misc";
 import { useColoringBooks } from "@/lib/coloring-queries";
-import { formatNumber } from "@/lib/utils";
 
 export default function ColoringStudioDashboardPage() {
   const { data, isLoading } = useColoringBooks();

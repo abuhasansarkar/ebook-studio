@@ -18,6 +18,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Alert } from "@/components/ui/misc";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { qk } from "@/lib/queries";
+import { parseChapterBackup, type ChapterBackup } from "@/lib/chapter-backup";
 import type { ChapterFull, ChapterMeta } from "@/lib/types";
 import { formatNumber } from "@/lib/utils";
 import { AiAssist } from "./ai-assist";
@@ -26,7 +27,10 @@ import { EditorToolbar } from "./toolbar";
 import { useAutosave, type ChapterPatch, type SavedChapter } from "./use-autosave";
 import { SaveIndicator } from "./save-indicator";
 
-export function ChapterEditor({ ownerId, chapter, bookId, language, findingId }: { ownerId: string; chapter: ChapterFull; bookId: string; language: string; findingId?: string | null }) {
+/** Saves everything pending; resolves `false` if something could not be saved. */
+export type LeaveGuard = () => Promise<boolean>;
+
+export function ChapterEditor({ ownerId, chapter, bookId, language, findingId, onLeaveGuardChange }: { ownerId: string; chapter: ChapterFull; bookId: string; language: string; findingId?: string | null; onLeaveGuardChange?: (guard: LeaveGuard | null) => void }) {
   const qc = useQueryClient();
   const lang = getLanguage(language);
   const [title, setTitle] = useState(chapter.title);
@@ -34,7 +38,7 @@ export function ChapterEditor({ ownerId, chapter, bookId, language, findingId }:
   const [historyOpen, setHistoryOpen] = useState(false);
   const [discardDraftsOpen, setDiscardDraftsOpen] = useState(false);
   const restoreFileRef = useRef<HTMLInputElement>(null);
-  const [restoreConfirm, setRestoreConfirm] = useState<{ title?: string; contentJson?: Record<string, unknown> } | null>(null);
+  const [restoreConfirm, setRestoreConfirm] = useState<ChapterBackup | null>(null);
 
   const onSaved = useCallback(
     (saved: SavedChapter, payload: ChapterPatch) => {
@@ -49,6 +53,14 @@ export function ChapterEditor({ ownerId, chapter, bookId, language, findingId }:
     [qc, bookId],
   );
   const save = useAutosave(ownerId, chapter.id, chapter.version, chapter.updatedAt, onSaved);
+  const { flushAll } = save;
+
+  // Lets the chapter list save this chapter before it switches to another one.
+  useEffect(() => {
+    if (!onLeaveGuardChange) return;
+    onLeaveGuardChange(flushAll);
+    return () => onLeaveGuardChange(null);
+  }, [onLeaveGuardChange, flushAll]);
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -108,12 +120,9 @@ export function ChapterEditor({ ownerId, chapter, bookId, language, findingId }:
               const file = e.target.files?.[0];
               if (!file) return;
               try {
-                const text = await file.text();
-                const data = JSON.parse(text) as { title?: string; contentJson?: Record<string, unknown> };
-                if (!data.contentJson && !data.title) throw new Error("Invalid backup format");
-                setRestoreConfirm(data);
-              } catch {
-                toast.error("Could not parse chapter backup file. Ensure it is a valid JSON backup.");
+                setRestoreConfirm(parseChapterBackup(await file.text()));
+              } catch (err) {
+                toast.error(`Could not restore this backup. ${err instanceof Error ? err.message : "Ensure it is a valid JSON backup."}`);
               } finally {
                 e.target.value = "";
               }
@@ -157,11 +166,17 @@ export function ChapterEditor({ ownerId, chapter, bookId, language, findingId }:
         onClose={() => setRestoreConfirm(null)}
         onConfirm={() => {
           if (!restoreConfirm || !editor) return;
-          if (restoreConfirm.title) setTitle(restoreConfirm.title);
-          if (restoreConfirm.contentJson) {
-            editor.commands.setContent(restoreConfirm.contentJson, { emitUpdate: true });
-            save.schedule({ title: restoreConfirm.title ?? title, contentJson: restoreConfirm.contentJson });
+          const patch: ChapterPatch = {};
+          if (restoreConfirm.title) {
+            setTitle(restoreConfirm.title);
+            patch.title = restoreConfirm.title;
           }
+          if (restoreConfirm.contentJson) {
+            editor.commands.setContent(restoreConfirm.contentJson, { emitUpdate: false });
+            // Save what the editor actually holds, so the server and the screen agree.
+            patch.contentJson = editor.getJSON() as Record<string, unknown>;
+          }
+          save.schedule(patch);
           toast.success("Chapter restored from backup");
           setRestoreConfirm(null);
         }}
@@ -178,11 +193,14 @@ export function ChapterEditor({ ownerId, chapter, bookId, language, findingId }:
           value={title}
           onChange={(e) => {
             setTitle(e.target.value);
-            save.schedule({ title: e.target.value.trim() });
+            // An empty title would be rejected by the server; keep the last saved one until it is filled in.
+            const next = e.target.value.trim();
+            if (next) save.schedule({ title: next });
           }}
           dir={lang.dir}
           lang={lang.code}
           aria-label="Chapter title"
+          maxLength={200}
           className="mb-8 w-full border-0 bg-transparent text-3xl font-bold leading-tight tracking-tight outline-none placeholder:text-muted-foreground"
           placeholder="Chapter title"
           style={{ fontFamily: lang.fontFamily }}
@@ -208,7 +226,7 @@ export function ChapterEditor({ ownerId, chapter, bookId, language, findingId }:
         setHistoryOpen(false);
       }} />}
 
-      <Dialog open={save.conflict !== null} onClose={() => undefined} title="This chapter was changed elsewhere" description="It was edited in another tab or on another device after you opened it. Choose which version to keep.">
+      <Dialog open={save.conflict !== null} onClose={() => undefined} dismissable={false} title="This chapter was changed elsewhere" description="It was edited in another tab or on another device after you opened it. Choose which version to keep.">
         <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
           <Button
             variant="secondary"

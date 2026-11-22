@@ -1,7 +1,18 @@
 import type { PMMark, PMNode } from "../editor/markdownToTiptap.js";
 
+/**
+ * Characters XML 1.0 forbids: C0 controls other than tab, newline and carriage
+ * return, the non-characters U+FFFE/U+FFFF and unpaired surrogates. One of them
+ * makes an EPUB/XHTML file unparseable, and they never carry visible text.
+ */
+const XML_ILLEGAL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffe\uffff]|[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g;
+
+export function stripXmlIllegal(s: string): string {
+  return s.replace(XML_ILLEGAL, "");
+}
+
 export function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  return stripXmlIllegal(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 function safeHref(href: unknown): string | null {

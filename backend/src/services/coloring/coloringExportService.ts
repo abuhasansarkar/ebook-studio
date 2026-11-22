@@ -5,7 +5,11 @@ import { badRequest, notFound } from "../../utils/errors.js";
 import { getOwnedBook } from "../books/bookService.js";
 import { storage } from "../storage/storage.js";
 import { renderPdf } from "../exports/pdfRenderer.js";
+import { escapeHtml } from "../exports/tiptapToHtml.js";
 import { requireEntitlement } from "../billing/entitlements.js";
+import { isUsableAsset, readAssetBytes } from "./coloringAssets.js";
+
+const PRINTABLE_MIME = new Set(["image/webp", "image/png", "image/jpeg"]);
 
 export interface KdpPreflightReport {
   meetsMinPages: boolean; // >= 24 pages
@@ -55,8 +59,8 @@ export const coloringExportService = {
     ].slice(0, 7);
 
     const amazonDescriptionHtml = `
-<h2>✨ ${book.title} ✨</h2>
-<p><strong>${book.subtitle || `${totalPages} Delightful Coloring Pages`}</strong></p>
+<h2>✨ ${escapeHtml(book.title)} ✨</h2>
+<p><strong>${escapeHtml(book.subtitle || `${totalPages} Delightful Coloring Pages`)}</strong></p>
 <p>Welcome to a creative world of relaxing line art! Specially designed for <strong>${plan.targetAudience}</strong> in beautiful <strong>${styleMeta.label}</strong> style.</p>
 
 <h3>🎨 Why You'll Love This Coloring Book:</h3>
@@ -121,7 +125,8 @@ export const coloringExportService = {
       include: { asset: true },
     });
 
-    const completed = pages.filter((p) => p.status === "completed" && p.asset);
+    // Only images this author owns are ever read into their PDF.
+    const completed = pages.filter((p) => p.status === "completed" && isUsableAsset(p.asset, userId));
     if (!completed.length) {
       throw badRequest("No completed coloring pages found. Generate illustrations first.");
     }
@@ -129,12 +134,9 @@ export const coloringExportService = {
     // Load raster buffers and convert to data URIs
     const pageDataUris: { pageNumber: number; title: string; dataUri: string; caption?: string | null }[] = [];
     for (const page of completed) {
-      if (!page.asset) continue;
-      const { stream } = await storage.getStream(page.asset.storageKey);
-      const chunks: Buffer[] = [];
-      for await (const chunk of stream) chunks.push(Buffer.from(chunk));
-      const buffer = Buffer.concat(chunks);
-      const mime = page.asset.mediaType || "image/webp";
+      if (!isUsableAsset(page.asset, userId)) continue;
+      const buffer = await readAssetBytes(page.asset.storageKey);
+      const mime = PRINTABLE_MIME.has(page.asset.mediaType) ? page.asset.mediaType : "image/webp";
       const dataUri = `data:${mime};base64,${buffer.toString("base64")}`;
       pageDataUris.push({
         pageNumber: page.pageNumber,
@@ -154,6 +156,7 @@ export const coloringExportService = {
 <html>
 <head>
   <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'" />
   <style>
     @page {
       size: ${widthIn} ${heightIn};
@@ -238,8 +241,8 @@ export const coloringExportService = {
   <div class="page title-page">
     <div></div>
     <div>
-      <h1>${book.title}</h1>
-      ${book.subtitle ? `<h2>${book.subtitle}</h2>` : ""}
+      <h1>${escapeHtml(book.title)}</h1>
+      ${book.subtitle ? `<h2>${escapeHtml(book.subtitle)}</h2>` : ""}
     </div>
     <div class="copyright">
       <p>Published with eBookStudio</p>
@@ -256,8 +259,8 @@ export const coloringExportService = {
       (p) => `
     <div class="page illustration-page">
       <div class="art-container">
-        <img src="${p.dataUri}" alt="${p.title}" />
-        ${p.caption ? `<div class="caption">${p.caption}</div>` : ""}
+        <img src="${p.dataUri}" alt="${escapeHtml(p.title)}" />
+        ${p.caption ? `<div class="caption">${escapeHtml(p.caption)}</div>` : ""}
       </div>
     </div>
     ${plan.singleSided ? `<div class="page blank-page"></div>` : ""}
@@ -301,7 +304,6 @@ export const coloringExportService = {
       exportId: exportRecord.id,
       pageCount: rendered.pageCount,
       fileSize: rendered.buffer.length,
-      storageKey,
       kdpCompliant: rendered.pageCount >= 24,
     };
   },

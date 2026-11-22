@@ -122,18 +122,23 @@ try {
   });
   if (!comparison) throw new Error("the billing page has no plan comparison table");
   if (!comparison.headers.includes("Free")) throw new Error("the comparison table has no free column");
+  const freeColumn = comparison.headers.indexOf("Free");
+  const missing = (cell: string | undefined) => cell === undefined || cell === "—" || cell === "" || cell === "Not included";
   for (const row of comparison.rows) {
-    // Export and source import are free for every author, so no paid column
-    // may show them as missing.
-    if (row[0] === "PDF, EPUB and DOCX export" || row[0] === "Private source import") {
-      for (const cell of row.slice(1)) {
-        if (cell === "—" || cell === "") {
-          throw new Error(`the comparison table shows "${row[0]}" as missing for a plan that includes it`);
+    // Source import is free for every author, so no column may show it missing.
+    // Export is a paid capability: missing under Free, included in every paid plan.
+    if (row[0] === "Private source import" || row[0] === "PDF, EPUB and DOCX export") {
+      row.slice(1).forEach((cell, i) => {
+        const isFree = i + 1 === freeColumn;
+        if (row[0] === "PDF, EPUB and DOCX export" && isFree) {
+          if (!missing(cell)) throw new Error("the comparison table shows export as included on the free plan");
+          return;
         }
-      }
+        if (missing(cell)) throw new Error(`the comparison table shows "${row[0]}" as missing for a plan that includes it`);
+      });
     }
   }
-  log("the comparison table lists every plan and keeps the free capabilities included");
+  log("the comparison table lists every plan, keeps source import free and export on paid plans");
 
   // The author's balance before the purchase.
   const balanceBefore = await creditBalance(page);
@@ -190,7 +195,7 @@ try {
 
   // The credits and the entitlements appear on the billing page.
   await page.goto(`${BASE}/app/credits/billing`, { waitUntil: "networkidle0" });
-  await waitText(page, "Your subscription");
+  await waitText(page, "Current plan & subscription");
   // The plan's paid capabilities are listed separately from the capabilities
   // the product publishes as free, which every author has.
   await waitText(page, "What your plan unlocks");
@@ -226,7 +231,7 @@ try {
   await confirm!.click();
   await waitText(page, "Subscription cancelled", 30_000);
   await page.reload({ waitUntil: "networkidle0" });
-  await waitText(page, "stay active until", 30_000);
+  await waitText(page, "remain active until", 30_000);
   await waitText(page, "What your plan unlocks", 30_000);
   await shot(page, "cancelled");
   log("the subscription was cancelled after confirmation and keeps its capabilities until the paid period ends");

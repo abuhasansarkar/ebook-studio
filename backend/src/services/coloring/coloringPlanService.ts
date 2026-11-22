@@ -1,16 +1,22 @@
 import { z } from "zod";
 import {
   coloringBookBriefSchema,
+  COLORING_LIMITS,
   COLORING_STYLE_CATALOG,
   type ColoringBookBrief,
+  type ColoringPageCreateInput,
   type ColoringPageUpdateInput,
-  type ColoringStyle,
+  type ColoringPlanUpdateInput,
 } from "@ebook/shared";
 import { prisma } from "../../database/prisma.js";
 import { env } from "../../config/env.js";
-import { badRequest, notFound } from "../../utils/errors.js";
-import { openaiProvider, type AiUsage } from "../ai/openaiClient.js";
+import { badRequest, conflict, notFound } from "../../utils/errors.js";
+import { logger } from "../../utils/logger.js";
+import { openaiProvider } from "../ai/openaiClient.js";
 import { getOwnedBook } from "../books/bookService.js";
+import { lockProject } from "../books/libraryService.js";
+import { attachAsset, collectReleasedAssets, releaseAsset } from "./coloringAssets.js";
+import { coloringGenerationService, pageAssetInclude, toPublicPage } from "./coloringGenerationService.js";
 
 const aiPlanSchema = z.object({
   title: z.string(),
@@ -23,8 +29,6 @@ const aiPlanSchema = z.object({
     }),
   ),
 });
-
-const mockUsage: AiUsage = { model: "mock-coloring-planner", inputTokens: 0, outputTokens: 0 };
 
 function mockGeneratePages(brief: ColoringBookBrief) {
   const styleMeta = COLORING_STYLE_CATALOG[brief.artStyle] || COLORING_STYLE_CATALOG.cute_animals;
@@ -77,6 +81,10 @@ function capitalize(str: string): string {
 export const coloringPlanService = {
   async createPlan(userId: string, input: ColoringBookBrief) {
     const brief = coloringBookBriefSchema.parse(input);
+    // Refuse another user's (or an archived) project before spending an AI call; re-checked under lock below.
+    if (brief.projectId && !(await prisma.project.findFirst({ where: { id: brief.projectId, userId, deletedAt: null, archivedAt: null } }))) {
+      throw notFound("Active project");
+    }
 
     let planData: { title: string; subtitle: string; pages: { title: string; description: string; prompt: string }[] };
 
@@ -126,6 +134,7 @@ export const coloringPlanService = {
     }
 
     return prisma.$transaction(async (tx) => {
+      if (brief.projectId) await lockProject(tx, userId, brief.projectId, true);
       const book = await tx.book.create({
         data: {
           userId,
@@ -182,22 +191,16 @@ export const coloringPlanService = {
     const plan = await prisma.coloringPlan.findUnique({ where: { bookId } });
     if (!plan) throw notFound("Coloring book plan");
 
-    const pages = await prisma.coloringPage.findMany({
+    // Self-heal pages a dead worker or a previous release left generating (cheap: scoped to this book).
+    if (await prisma.coloringPage.count({ where: { bookId, status: "generating" } })) {
+      await coloringGenerationService.recoverStale({ bookId }).catch((err) => logger.warn({ err, bookId }, "Coloring recovery deferred"));
+    }
+
+    const pages = (await prisma.coloringPage.findMany({
       where: { bookId },
       orderBy: { pageNumber: "asc" },
-      include: {
-        asset: {
-          select: {
-            id: true,
-            storageKey: true,
-            width: true,
-            height: true,
-            status: true,
-            createdAt: true,
-          },
-        },
-      },
-    });
+      include: pageAssetInclude,
+    })).map((p) => toPublicPage(p, userId));
 
     const cover = await prisma.coverDesign.findFirst({
       where: { bookId },
@@ -221,7 +224,7 @@ export const coloringPlanService = {
     };
   },
 
-  async updatePlan(userId: string, bookId: string, updates: { title?: string; subtitle?: string; approved?: boolean }) {
+  async updatePlan(userId: string, bookId: string, updates: ColoringPlanUpdateInput) {
     await getOwnedBook(userId, bookId);
     return prisma.$transaction(async (tx) => {
       const bookUpdates: { title?: string; subtitle?: string } = {};
@@ -245,20 +248,32 @@ export const coloringPlanService = {
 
   async updatePage(userId: string, bookId: string, pageId: string, updates: ColoringPageUpdateInput) {
     await getOwnedBook(userId, bookId);
-    const page = await prisma.coloringPage.findFirst({ where: { id: pageId, bookId } });
-    if (!page) throw notFound("Coloring page");
-
-    return prisma.coloringPage.update({
-      where: { id: pageId },
-      data: {
-        ...(updates.title !== undefined ? { title: updates.title } : {}),
-        ...(updates.description !== undefined ? { description: updates.description } : {}),
-        ...(updates.prompt !== undefined ? { prompt: updates.prompt } : {}),
-        ...(updates.negativePrompt !== undefined ? { negativePrompt: updates.negativePrompt } : {}),
-        ...(updates.caption !== undefined ? { caption: updates.caption } : {}),
-        ...(updates.assetId ? { assetId: updates.assetId, status: "completed", error: null } : {}),
-      },
+    const { page, released } = await prisma.$transaction(async (tx) => {
+      const current = await tx.coloringPage.findFirst({ where: { id: pageId, bookId } });
+      if (!current) throw notFound("Coloring page");
+      const swapAsset = Boolean(updates.assetId) && updates.assetId !== current.assetId;
+      if (swapAsset) {
+        if (current.status === "generating") throw conflict("This page is generating. Wait for it to finish before choosing another image.");
+        // Only an image the author owns, and that is ready, may be placed on a page.
+        await attachAsset(tx, userId, bookId, updates.assetId!);
+      }
+      const updated = await tx.coloringPage.update({
+        where: { id: pageId },
+        data: {
+          ...(updates.title !== undefined ? { title: updates.title } : {}),
+          ...(updates.description !== undefined ? { description: updates.description } : {}),
+          ...(updates.prompt !== undefined ? { prompt: updates.prompt } : {}),
+          ...(updates.negativePrompt !== undefined ? { negativePrompt: updates.negativePrompt } : {}),
+          ...(updates.caption !== undefined ? { caption: updates.caption } : {}),
+          ...(swapAsset ? { assetId: updates.assetId, status: "completed", error: null } : {}),
+        },
+        include: pageAssetInclude,
+      });
+      const released = swapAsset && current.assetId ? await releaseAsset(tx, userId, bookId, current.assetId) : null;
+      return { page: updated, released };
     });
+    await collectReleasedAssets([released]);
+    return toPublicPage(page, userId);
   },
 
   async reorderPages(userId: string, bookId: string, pageIds: string[]) {
@@ -302,8 +317,11 @@ export const coloringPlanService = {
     });
   },
 
-  async addPage(userId: string, bookId: string, data: { title: string; prompt: string; description?: string }) {
+  async addPage(userId: string, bookId: string, data: ColoringPageCreateInput) {
     await getOwnedBook(userId, bookId);
+    if ((await prisma.coloringPage.count({ where: { bookId } })) >= COLORING_LIMITS.maxPages) {
+      throw badRequest(`A coloring book can hold up to ${COLORING_LIMITS.maxPages} pages.`);
+    }
     const maxPage = await prisma.coloringPage.aggregate({
       where: { bookId },
       _max: { pageNumber: true },
@@ -341,8 +359,9 @@ export const coloringPlanService = {
       throw badRequest("A coloring book must have at least one page");
     }
 
-    return prisma.$transaction(async (tx) => {
+    const { result, released } = await prisma.$transaction(async (tx) => {
       await tx.coloringPage.delete({ where: { id: pageId } });
+      const released = page.assetId ? await releaseAsset(tx, userId, bookId, page.assetId) : null;
       const remainingPages = await tx.coloringPage.findMany({
         where: { bookId },
         orderBy: { pageNumber: "asc" },
@@ -367,7 +386,9 @@ export const coloringPlanService = {
         data: { pageCount: remainingPages.length },
       });
 
-      return { remainingCount: remainingPages.length };
+      return { result: { remainingCount: remainingPages.length }, released };
     });
+    await collectReleasedAssets([released]);
+    return result;
   },
 };

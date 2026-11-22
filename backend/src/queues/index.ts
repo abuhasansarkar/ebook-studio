@@ -11,6 +11,8 @@ export const QUEUE_NAMES = {
   outline: "outline",
   chapters: "chapters",
   exports: "exports",
+  /** One job per coloring-book page illustration (a `coloring_page` generation job). */
+  coloring: "coloring",
 } as const;
 
 export interface GenerationJobData {
@@ -57,7 +59,7 @@ const defaultJobOptions = {
   removeOnFail: { age: 7 * 24 * 3600 },
 };
 
-let queues: { images: Queue<GenerationJobData>; quality: Queue<GenerationJobData>; outline: Queue<GenerationJobData>; chapters: Queue<GenerationJobData>; exports: Queue<ExportJobData> } | null = null;
+let queues: { images: Queue<GenerationJobData>; quality: Queue<GenerationJobData>; outline: Queue<GenerationJobData>; chapters: Queue<GenerationJobData>; exports: Queue<ExportJobData>; coloring: Queue<GenerationJobData> } | null = null;
 
 export function getQueues() {
   queues ??= {
@@ -66,6 +68,7 @@ export function getQueues() {
     outline: new Queue<GenerationJobData>(QUEUE_NAMES.outline, { connection: redisConnection(), prefix: workerQueuePrefix, defaultJobOptions }),
     chapters: new Queue<GenerationJobData>(QUEUE_NAMES.chapters, { connection: redisConnection(), prefix: workerQueuePrefix, defaultJobOptions }),
     exports: new Queue<ExportJobData>(QUEUE_NAMES.exports, { connection: redisConnection(), prefix: workerQueuePrefix, defaultJobOptions }),
+    coloring: new Queue<GenerationJobData>(QUEUE_NAMES.coloring, { connection: redisConnection(), prefix: workerQueuePrefix, defaultJobOptions }),
   };
   return queues;
 }
@@ -127,7 +130,7 @@ export async function reconcileGenerationDispatches() {
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([(async () => {
-        const queue = getQueues()[row.queue as 'outline' | 'chapters' | 'images' | 'quality'];
+        const queue = getQueues()[row.queue as 'outline' | 'chapters' | 'images' | 'quality' | 'coloring'];
         if (!queue) return;
         const delivery = await queue.getJob(row.jobId);
         if (delivery) {

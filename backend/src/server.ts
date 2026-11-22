@@ -5,6 +5,8 @@ import { prisma } from "./database/prisma.js";
 import { closeQueues, startDispatcher } from "./queues/index.js";
 import { billingService } from "./services/billing/billingService.js";
 import { logger } from "./utils/logger.js";
+import { closeServer, installProcessHandlers } from "./utils/processLifecycle.js";
+import { closeBrowser } from "./services/exports/pdfRenderer.js";
 
 const stopDispatcher = startDispatcher();
 const stopEmailDispatcher = startEmailDispatcher();
@@ -21,13 +23,16 @@ billingService.seedPlans().catch((err) => {
   logger.error({ err: (err as Error).message }, "Could not seed the plan catalog");
 });
 
-async function shutdown(signal: string) {
-  logger.info({ signal }, "Shutting down API");
-  stopDispatcher();
-  stopEmailDispatcher();
-  server.close();
-  await Promise.allSettled([closeQueues(), prisma.$disconnect()]);
-  process.exit(0);
-}
-process.on("SIGTERM", () => void shutdown("SIGTERM"));
-process.on("SIGINT", () => void shutdown("SIGINT"));
+// Stop intake first, let in-flight requests finish (bounded), then close
+// resources. The whole sequence has a hard deadline below the orchestrator's
+// kill timeout (Docker/Kubernetes default: 30 s).
+installProcessHandlers({
+  name: "API",
+  deadlineMs: Number(process.env.SHUTDOWN_DEADLINE_MS) || 25_000,
+  shutdown: async () => {
+    stopDispatcher();
+    stopEmailDispatcher();
+    await closeServer(server, 20_000).catch((err) => logger.error({ err }, "HTTP server did not close cleanly"));
+    await Promise.allSettled([closeQueues(), closeBrowser(), prisma.$disconnect()]);
+  },
+});

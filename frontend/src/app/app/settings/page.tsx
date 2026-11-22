@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/app/app-shell";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/form";
 import { Alert, Card, DetailList, DetailRow, Section } from "@/components/ui/misc";
+import { api, ApiError } from "@/lib/api";
 import { authClient, signOut, useSession } from "@/lib/auth-client";
 import { useAccount } from "@/lib/queries";
 
@@ -110,8 +111,70 @@ export default function SettingsPage() {
             </Button>
           </Card>
         </Section>
+
+        <DeleteAccount email={session?.user.email ?? ""} />
       </div>
     </div>
+  );
+}
+
+/**
+ * Account deletion.
+ *
+ * Deleting removes the books, files and sign-in details. Payment and credit
+ * records are kept, anonymised, because they are financial records. The author
+ * types the account's email to confirm, and the server checks it again.
+ */
+function DeleteAccount({ email }: { email: string }) {
+  const router = useRouter();
+  const [confirm, setConfirm] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const matches = email.length > 0 && confirm.trim().toLowerCase() === email.toLowerCase();
+
+  return (
+    <Section title="Delete account" description="Permanently remove your account and everything in it.">
+      <Card className="space-y-4 border-danger/40 p-6" data-testid="delete-account">
+        <p className="text-sm text-muted-foreground">
+          This deletes your books, coloring books, covers and uploaded files, and signs you out everywhere. It cannot be
+          undone. Payment and credit records are kept in anonymised form, as financial records must be. Cancel any active
+          subscription first.
+        </p>
+        <form
+          className="space-y-4"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!matches || deleting) return;
+            setDeleting(true);
+            setError(null);
+            try {
+              await api.delete("/users/me", { confirmEmail: confirm.trim() });
+              toast.success("Your account was deleted");
+              await signOut().catch(() => undefined);
+              router.replace("/login");
+            } catch (err) {
+              setError(err instanceof ApiError || err instanceof Error ? err.message : "The account could not be deleted.");
+              setDeleting(false);
+            }
+          }}
+        >
+          <Field label={`Type ${email || "your email"} to confirm`} htmlFor="confirm-delete">
+            <Input
+              id="confirm-delete"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+              data-testid="confirm-delete"
+            />
+          </Field>
+          {error && <Alert tone="danger">{error}</Alert>}
+          <Button type="submit" variant="danger" loading={deleting} disabled={!matches} data-testid="delete-account-submit">
+            Delete my account
+          </Button>
+        </form>
+      </Card>
+    </Section>
   );
 }
 

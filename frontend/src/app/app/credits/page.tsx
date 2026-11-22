@@ -8,11 +8,11 @@ import { PageHeader } from "@/components/app/app-shell";
 import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader, Section } from "@/components/ui/misc";
 import { api, errorMessage } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { OneTimeCreditPacks } from "@/components/billing/one-time-credit-packs";
+import { useCheckoutRedirect } from "@/components/billing/use-checkout-redirect";
 import type { CreditTransaction } from "@/lib/types";
-import { useCredits, usePlans, useStartCheckout } from "@/lib/queries";
+import { useCredits, usePlans } from "@/lib/queries";
 import { formatNumber, timeAgo } from "@/lib/utils";
-import { useRouter } from "next/navigation";
-import { Zap, Sparkles } from "lucide-react";
 
 const TYPE_LABEL = { grant: "Added", reserve: "Reserved", charge: "Used", release: "Returned", refund: "Refunded" } as const;
 
@@ -66,29 +66,16 @@ function CheckoutReturnNotice({ balance, refetch }: { balance: number | undefine
   return null;
 }
 
-function OneTimeCreditPacks() {
-  const router = useRouter();
+function TopUpPacks() {
   const plansQuery = usePlans();
-  const checkout = useStartCheckout();
+  const checkout = useCheckoutRedirect();
   const [error, setError] = useState<string | null>(null);
 
   const packs = (plansQuery.data?.plans ?? []).filter((p) => !p.recurring);
 
   const handleBuy = (planId: string) => {
     setError(null);
-    checkout.mutate(planId, {
-      onSuccess: (result) => {
-        const url = result.checkout.url;
-        if (url) {
-          if (url.startsWith("http://") || url.startsWith("https://")) {
-            window.location.href = url;
-          } else {
-            router.push(url);
-          }
-        }
-      },
-      onError: (err) => setError(errorMessage(err)),
-    });
+    checkout.start(planId, { onError: (err) => setError(errorMessage(err)) });
   };
 
   if (packs.length === 0) return null;
@@ -96,36 +83,7 @@ function OneTimeCreditPacks() {
   return (
     <div id="top-up">
       {error && <Alert tone="danger" className="mb-4">{error}</Alert>}
-      <div className="grid gap-4 sm:grid-cols-3">
-        {packs.map((pack) => (
-          <Card key={pack.id} className="p-5 flex flex-col justify-between hover:border-primary/40 transition-colors">
-            <div>
-              <div className="flex items-center justify-between gap-2">
-                <h4 className="font-bold text-base text-foreground">{pack.name}</h4>
-                <Badge tone="neutral">One-Time</Badge>
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">{pack.description}</p>
-              <div className="mt-4">
-                <span className="text-3xl font-black text-foreground">
-                  ${(pack.priceMinor / 100).toFixed(2)}
-                </span>
-              </div>
-              <p className="mt-1 text-xs font-semibold text-primary">
-                +{formatNumber(pack.credits)} generation credits
-              </p>
-            </div>
-            <Button
-              variant="secondary"
-              className="mt-5 w-full text-xs font-bold"
-              loading={checkout.isPending && checkout.variables === pack.id}
-              disabled={checkout.isPending}
-              onClick={() => handleBuy(pack.id)}
-            >
-              Buy {formatNumber(pack.credits)} credits
-            </Button>
-          </Card>
-        ))}
-      </div>
+      <OneTimeCreditPacks packs={packs} pendingPlanId={checkout.pendingPlanId} onBuy={handleBuy} />
     </div>
   );
 }
@@ -192,7 +150,7 @@ export default function CreditsPage() {
             description="Need credits without a monthly subscription? Top up on demand. Credits never expire."
             className="mt-8"
           >
-            <OneTimeCreditPacks />
+            <TopUpPacks />
           </Section>
 
           <Section title="History" description="Every credit movement on your account." className="mt-10">

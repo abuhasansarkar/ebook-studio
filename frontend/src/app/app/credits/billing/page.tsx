@@ -2,16 +2,17 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { Coins, CreditCard, RefreshCw, Sparkles, Check } from "lucide-react";
-import { FREE_TIER_ENTITLEMENTS, type EntitlementKey, type Plan, type SubscriptionStatus, type CurrentPlanInfo, type Subscription } from "@ebook/shared";
+import { Coins, CreditCard, RefreshCw, Sparkles } from "lucide-react";
+import { FREE_TIER_ENTITLEMENTS, type EntitlementKey, type Plan, type SubscriptionStatus } from "@ebook/shared";
 import { PageHeader } from "@/components/app/app-shell";
 import { PricingComparison } from "@/components/billing/pricing-table";
+import { OneTimeCreditPacks } from "@/components/billing/one-time-credit-packs";
+import { useCheckoutRedirect } from "@/components/billing/use-checkout-redirect";
 import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader, Section } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { errorMessage } from "@/lib/api";
-import { qk, useBilling, useCancelSubscription, useCredits, usePayments, usePlans, useStartCheckout, useSyncBilling } from "@/lib/queries";
+import { useBilling, useCancelSubscription, useCredits, usePayments, usePlans, useSyncBilling } from "@/lib/queries";
 import { cn, formatNumber, timeAgo } from "@/lib/utils";
 
 /**
@@ -106,11 +107,14 @@ function PlanCard({
   plan,
   isCurrentPlan,
   busy,
+  disabled,
   onBuy,
 }: {
   plan: Plan;
   isCurrentPlan?: boolean;
   busy: boolean;
+  /** Another checkout is starting or redirecting. */
+  disabled?: boolean;
   onBuy: () => void;
 }) {
   const entitlements = Object.entries(plan.entitlements) as [EntitlementKey, string | number | boolean][];
@@ -161,14 +165,14 @@ function PlanCard({
         </ul>
       )}
       <p className="mt-4 text-xs text-muted-foreground">
-        Export and private source import are included on every plan, free.
+        PDF, EPUB and DOCX export are included with every Pro plan. Private source import is free on every account.
       </p>
       {isCurrentPlan ? (
         <Button variant="secondary" disabled className="mt-6 w-full">
           Current plan ✓
         </Button>
       ) : (
-        <Button className="mt-6 w-full" loading={busy} onClick={onBuy} data-testid={`buy-plan-${plan.id}`}>
+        <Button className="mt-6 w-full" loading={busy} disabled={disabled} onClick={onBuy} data-testid={`buy-plan-${plan.id}`}>
           Buy plan
         </Button>
       )}
@@ -179,11 +183,10 @@ function PlanCard({
 function BillingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const qc = useQueryClient();
   const plansQuery = usePlans();
   const billingQuery = useBilling();
   const creditsQuery = useCredits();
-  const checkout = useStartCheckout();
+  const checkout = useCheckoutRedirect();
   const cancel = useCancelSubscription();
   const sync = useSyncBilling();
 
@@ -235,7 +238,18 @@ function BillingContent() {
     return value !== freeVal;
   });
 
-  const busyPlanId = checkout.isPending ? (checkout.variables ?? null) : null;
+  const busyPlanId = checkout.pendingPlanId;
+  const buy = (planId: string) => {
+    setProblem(null);
+    setNotice(null);
+    checkout.start(planId, {
+      onNoRedirect: () => {
+        setNotice("Checkout started. Credits are added once payment is confirmed.");
+        void billingQuery.refetch();
+      },
+      onError: (err) => setProblem(errorMessage(err)),
+    });
+  };
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-8">
@@ -278,7 +292,7 @@ function BillingContent() {
               });
             }}
           >
-            <RefreshCw className="h-3.5 w-3.5 mr-1" /> Sync with Stripe
+            <RefreshCw className="h-3.5 w-3.5 mr-1" /> Refresh payment status
           </Button>
         </Alert>
       )}
@@ -345,12 +359,12 @@ function BillingContent() {
                       setProblem(null);
                       setNotice(null);
                       sync.mutate(undefined, {
-                        onSuccess: () => setNotice("Plan and subscriptions synced with Stripe!"),
+                        onSuccess: () => setNotice("Plan and subscription status refreshed."),
                         onError: (err) => setProblem(errorMessage(err)),
                       });
                     }}
                   >
-                    <RefreshCw className="h-3.5 w-3.5 mr-1" /> Sync with Stripe
+                    <RefreshCw className="h-3.5 w-3.5 mr-1" /> Refresh payment status
                   </Button>
                   {subscription && !subscription.canceledAt && (
                     <Button
@@ -463,26 +477,8 @@ function BillingContent() {
                     plan={plan}
                     isCurrentPlan={currentPlan?.id === plan.id}
                     busy={busyPlanId === plan.id}
-                    onBuy={() => {
-                      setProblem(null);
-                      setNotice(null);
-                      checkout.mutate(plan.id, {
-                        onSuccess: (result) => {
-                          const url = result.checkout.url;
-                          if (url) {
-                            if (url.startsWith("http://") || url.startsWith("https://")) {
-                              window.location.href = url;
-                            } else {
-                              router.push(url);
-                            }
-                            return;
-                          }
-                          setNotice("Checkout started. Credits are added once payment is confirmed.");
-                          void billingQuery.refetch();
-                        },
-                        onError: (err) => setProblem(errorMessage(err)),
-                      });
-                    }}
+                    disabled={checkout.busy}
+                    onBuy={() => buy(plan.id)}
                   />
                 ))}
             </div>
@@ -497,57 +493,7 @@ function BillingContent() {
               description="Buy one-time generation credit packs on demand without a recurring monthly plan. Credits never expire."
               className="mt-10"
             >
-              <div className="grid gap-4 sm:grid-cols-3">
-                {catalog.plans
-                  .filter((p) => !p.recurring)
-                  .map((pack) => (
-                    <Card key={pack.id} className="p-5 flex flex-col justify-between hover:border-primary/40 transition-colors">
-                      <div>
-                        <div className="flex items-center justify-between gap-2">
-                          <h4 className="font-bold text-base text-foreground">{pack.name}</h4>
-                          <Badge tone="neutral">One-Time</Badge>
-                        </div>
-                        <p className="mt-1 text-xs text-muted-foreground">{pack.description}</p>
-                        <div className="mt-4">
-                          <span className="text-3xl font-black text-foreground">
-                            ${(pack.priceMinor / 100).toFixed(2)}
-                          </span>
-                        </div>
-                        <p className="mt-1 text-xs font-semibold text-primary">
-                          +{formatNumber(pack.credits)} generation credits
-                        </p>
-                      </div>
-                      <Button
-                        variant="secondary"
-                        className="mt-5 w-full text-xs font-bold"
-                        loading={busyPlanId === pack.id}
-                        disabled={checkout.isPending}
-                        onClick={() => {
-                          setProblem(null);
-                          setNotice(null);
-                          checkout.mutate(pack.id, {
-                            onSuccess: (result) => {
-                              const url = result.checkout.url;
-                              if (url) {
-                                if (url.startsWith("http://") || url.startsWith("https://")) {
-                                  window.location.href = url;
-                                } else {
-                                  router.push(url);
-                                }
-                                return;
-                              }
-                              setNotice("Checkout started. Credits are added once payment is confirmed.");
-                              void billingQuery.refetch();
-                            },
-                            onError: (err) => setProblem(errorMessage(err)),
-                          });
-                        }}
-                      >
-                        Buy {formatNumber(pack.credits)} credits
-                      </Button>
-                    </Card>
-                  ))}
-              </div>
+              <OneTimeCreditPacks packs={catalog.plans.filter((p) => !p.recurring)} pendingPlanId={busyPlanId} onBuy={buy} />
             </Section>
           )}
 

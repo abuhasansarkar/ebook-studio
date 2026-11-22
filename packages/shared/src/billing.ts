@@ -162,15 +162,16 @@ export function planEntitlements(plan: Plan): Partial<Record<EntitlementKey, str
 /**
  * The capabilities every author holds, whether or not they have paid.
  *
- * The product publishes these as free: the export screen says "Free to
- * export", and the credits screen prices "PDF export" at Free. Private source
- * import is part of the research workspace, which every author can reach.
+ * Private source import is part of the research workspace, which every author
+ * can reach, and the free tier carries one book of up to ten chapters. These
+ * are **not** paid entitlements: a plan cannot withdraw them, and a refund
+ * does not take them away, because they were never bought.
  *
- * These are therefore **not** paid entitlements. A plan cannot withdraw them,
- * and a refund does not take them away, because they were never bought.
+ * File export (PDF, EPUB, DOCX) is **not** free: it is the `exports` paid
+ * entitlement, and a free author sees the upgrade prompt on the export screen.
  *
- * What a plan adds is on top of this: more books, more chapters per book,
- * priority job handling, and the extra credits that buy more AI work.
+ * What a plan adds is on top of this: exports, more books, more chapters per
+ * book, priority job handling, and the extra credits that buy more AI work.
  */
 export const FREE_TIER_ENTITLEMENTS: Partial<Record<EntitlementKey, string | number | boolean>> = {
   sourceImports: true,
@@ -216,7 +217,7 @@ export function entitlementAllows(
 /**
  * The events a provider can send.
  *
- * Only `payment.succeeded` grants credits; every other event changes state
+ * Only `payment.succeeded` and `invoice.paid` grant credits; every other event changes state
  * but grants nothing.
  */
 export const PAYMENT_EVENT_TYPES = [
@@ -224,13 +225,22 @@ export const PAYMENT_EVENT_TYPES = [
   'payment.succeeded',
   'payment.failed',
   'payment.refunded',
+  'payment.disputed',
+  'payment.dispute_closed',
+  'invoice.paid',
+  'invoice.payment_failed',
   'subscription.updated',
   'subscription.canceled',
 ] as const;
 export type PaymentEventType = typeof PAYMENT_EVENT_TYPES[number];
 
-/** The events that grant credits. */
-export const CREDIT_GRANTING_EVENTS: readonly PaymentEventType[] = ['payment.succeeded'];
+/**
+ * The events that grant credits.
+ *
+ * `payment.succeeded` settles a one-time purchase; `invoice.paid` settles a
+ * subscription's first period and every renewal.
+ */
+export const CREDIT_GRANTING_EVENTS: readonly PaymentEventType[] = ['payment.succeeded', 'invoice.paid'];
 
 /**
  * Whether an event grants credits.

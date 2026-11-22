@@ -3,6 +3,7 @@ import { badRequest } from "../utils/errors.js";
 import type { Request, Response } from "express";
 import { userId } from "../middleware/requireAuth.js";
 import { chapterService } from "../services/editor/chapterService.js";
+import { submitOperation } from "../services/operations/operationService.js";
 
 export const chapterController = {
   async reorder(req: Request, res: Response) {
@@ -29,8 +30,21 @@ export const chapterController = {
   async restoreVersion(req: Request, res: Response) {
     res.json({ chapter: await chapterService.restoreVersion(userId(req), String(req.params.chapterId), String(req.params.versionId), req.body.version) });
   },
+  /**
+   * AI writing assist.
+   *
+   * Recorded as an operation keyed by the request's Idempotency-Key: a retry
+   * with the same key replays the stored suggestion instead of calling the AI
+   * again, so a replayed key can never buy a second, uncharged AI call. Each
+   * real execution is charged under its own ledger key. The operation is not
+   * attached to the book (bookId null) so it stays out of the book's activity
+   * list; the book's ownership is still checked by the assist itself.
+   */
   async assist(req: Request, res: Response) {
-    const key = req.header("Idempotency-Key")?.slice(0, 100);
-    res.json(await chapterService.assist(userId(req), req.body, key));
+    const uid = userId(req);
+    await submitOperation(req, res, uid, "ai_assist", null, async () => ({
+      status: 200,
+      body: await chapterService.assist(uid, req.body),
+    }));
   },
 };

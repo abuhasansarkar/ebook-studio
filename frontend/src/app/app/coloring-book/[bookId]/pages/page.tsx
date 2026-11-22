@@ -5,14 +5,11 @@ import Link from "next/link";
 import { toast } from "sonner";
 import {
   AlertCircle,
-  AlertTriangle,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Download,
   Edit2,
   Eye,
-  Filter,
   Image as ImageIcon,
   Loader2,
   RefreshCw,
@@ -20,6 +17,7 @@ import {
   Wand2,
   Zap,
 } from "lucide-react";
+import { COLORING_CREDIT_COSTS } from "@ebook/shared";
 import { Button } from "@/components/ui/button";
 import { Badge, Card, PageLoader } from "@/components/ui/misc";
 import {
@@ -52,14 +50,12 @@ export default function ColoringBookPagesPage({ params }: { params: Promise<{ bo
     return <PageLoader label="Loading coloring pages…" />;
   }
 
-  const book = detail?.book;
-  const plan = detail?.plan;
   const pages = detail?.pages ?? [];
   const stats = detail?.stats;
 
   const pendingPages = pages.filter((p) => p.status === "pending" || p.status === "failed");
   const pendingCount = pendingPages.length;
-  const batchCredits = pendingCount * 8;
+  const batchCredits = pendingCount * COLORING_CREDIT_COSTS.perIllustration;
 
   const filteredPages = pages.filter((p) => {
     if (filter === "completed") return p.status === "completed";
@@ -76,16 +72,14 @@ export default function ColoringBookPagesPage({ params }: { params: Promise<{ bo
   const handleConfirmRegenerate = async () => {
     if (!regenPage) return;
     try {
-      toast.loading(`Regenerating Page ${regenPage.pageNumber}… (8 credits)`);
       await generatePage.mutateAsync({
         pageId: regenPage.id,
         promptOverride: regenPromptTweak,
       });
-      toast.dismiss();
-      toast.success(`Page ${regenPage.pageNumber} regenerated!`);
+      // Generation continues in the background; the grid polls until the page is ready.
+      toast.success(`Page ${regenPage.pageNumber} queued (${COLORING_CREDIT_COSTS.perIllustration} credits reserved). It updates automatically when ready.`);
       setRegenPage(null);
     } catch (err) {
-      toast.dismiss();
       toast.error((err as Error).message || "Regeneration failed");
     }
   };
@@ -133,12 +127,11 @@ export default function ColoringBookPagesPage({ params }: { params: Promise<{ bo
     }
 
     try {
-      toast.loading(`Generating remaining ${pendingCount} pages in queue…`);
-      const res = await generateBatch.mutateAsync();
-      toast.dismiss();
-      toast.success(`Batch generation finished! ${res.completed} pages completed.`);
+      const res = await generateBatch.mutateAsync(undefined);
+      toast.success(
+        `${res.queued} page${res.queued === 1 ? "" : "s"} queued (${res.creditsReserved} credits reserved). Pages appear as they finish.`,
+      );
     } catch (err) {
-      toast.dismiss();
       toast.error((err as Error).message || "Batch generation failed");
     }
   };
@@ -287,6 +280,9 @@ export default function ColoringBookPagesPage({ params }: { params: Promise<{ bo
                 <div className="mt-3">
                   <h4 className="font-semibold text-sm line-clamp-1">{page.title}</h4>
                   <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{page.prompt}</p>
+                  {page.error && !isGenerating && (
+                    <p className="mt-1 text-[11px] text-danger" role="status">{page.error}</p>
+                  )}
                 </div>
               </div>
 
@@ -296,6 +292,7 @@ export default function ColoringBookPagesPage({ params }: { params: Promise<{ bo
                   size="sm"
                   variant={isDone ? "secondary" : "primary"}
                   onClick={() => handleOpenRegenModal(page)}
+                  disabled={isGenerating}
                   className="flex-1 gap-1.5 text-xs"
                 >
                   <RefreshCw className="h-3.5 w-3.5" />

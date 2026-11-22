@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { Star, Sparkles } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 interface TestimonialItem {
   id: string;
@@ -148,6 +147,9 @@ function TestimonialCard({ item }: { item: TestimonialItem }) {
         {/* Header: Avatar + Name + Subtitle */}
         <div className="flex items-center gap-3">
           {item.avatarUrl && !imgError ? (
+            // Remote 40px avatars with an initials fallback on error; next/image would need
+            // remotePatterns for every avatar host and gives no benefit at this size.
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={item.avatarUrl}
               alt={item.name}

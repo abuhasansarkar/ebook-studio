@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { cacheLife } from "next/cache";
 import Link from "next/link";
 import { CheckCircle2, CreditCard, ShieldCheck, Sparkles } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
@@ -24,11 +25,14 @@ export const metadata: Metadata = {
  * price that was invented here.
  */
 async function readCatalog(): Promise<{ plans: PlanRow[]; providerLive: boolean }> {
+  // Cache Components refuses an uncached fetch while prerendering; the catalog
+  // is public, so cache it with the same five-minute refresh it had before.
+  "use cache";
+  cacheLife({ revalidate: 300 });
   const base = process.env.BACKEND_INTERNAL_URL ?? "http://localhost:4000";
   try {
     const response = await fetch(`${base}/api/v1/billing/plans`, {
       headers: { accept: "application/json" },
-      next: { revalidate: 300 },
     });
     if (!response.ok) return { plans: [], providerLive: false };
     const data = (await response.json()) as { plans?: PlanRow[]; providerLive?: boolean };

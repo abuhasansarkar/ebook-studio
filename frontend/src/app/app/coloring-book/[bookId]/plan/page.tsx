@@ -7,14 +7,10 @@ import {
   ArrowDown,
   ArrowRight,
   ArrowUp,
-  Check,
   CheckCircle2,
   Edit2,
-  Layers,
-  Palette,
   Plus,
   Save,
-  Sparkles,
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";

@@ -1,12 +1,43 @@
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
+import { existsSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { prisma } from "../src/database/prisma.js";
 import { closeQueues } from "../src/queues/index.js";
-import { createBackup, getBackup, listBackups, rehearseRestore } from "../src/services/admin/backupService.js";
+import { createBackup, getBackup, listBackups, pgConnection, rehearseRestore } from "../src/services/admin/backupService.js";
 import { createUser } from "./helpers.js";
 
+// Backups hold full database dumps (password hashes, sessions). They are
+// written to a throwaway directory, never the repository's backend/backups,
+// and removed afterwards. This runs before the service reads BACKUP_DIR.
+const backupDir = vi.hoisted(() => {
+  const dir = `${(process.env.TMPDIR ?? "/tmp").replace(/\/+$/, "")}/ebook-backup-test-${process.pid}-${Date.now()}`;
+  process.env.BACKUP_DIR = dir;
+  return dir;
+});
+
 afterAll(async () => {
+  await prisma.backupManifest.deleteMany({ where: { databaseFile: { startsWith: backupDir } } });
+  await rm(backupDir, { recursive: true, force: true });
   await closeQueues();
   await prisma.$disconnect();
+});
+
+describe("backup connection", () => {
+  it("connects with the application's DATABASE_URL, keeping libpq options and dropping Prisma-only ones", () => {
+    const c = pgConnection("postgresql://app:s%40cret@db.internal:6543/ebook?schema=public&sslmode=require&connection_limit=5", "ebook_restore_x");
+    expect(c.args[0]).toBe("--dbname");
+    const url = new URL(c.args[1]);
+    expect(url.hostname).toBe("db.internal");
+    expect(url.port).toBe("6543");
+    expect(url.username).toBe("app");
+    expect(url.pathname).toBe("/ebook_restore_x");
+    expect(url.searchParams.get("sslmode")).toBe("require");
+    expect(url.searchParams.has("schema")).toBe(false);
+    expect(url.searchParams.has("connection_limit")).toBe(false);
+    // The password is passed in the environment, never on the command line.
+    expect(c.args.join(" ")).not.toContain("s@cret");
+    expect(c.env).toEqual({ PGPASSWORD: "s@cret" });
+  });
 });
 
 /**
@@ -19,7 +50,7 @@ afterAll(async () => {
 
 describe("S13 backups", () => {
   it("takes a backup and records its checksums and counts", async () => {
-    const customer = await createUser("s13-backup");
+    await createUser("s13-backup");
     const before = await prisma.book.count();
 
     const backup = await createBackup({ name: `backup-test-${Date.now()}` });
@@ -33,6 +64,10 @@ describe("S13 backups", () => {
     expect(stored.databaseSha256).toBe(backup.databaseSha256);
     expect(stored.restoredAt).toBeNull();
     expect(stored.restoreVerified).toBe(false);
+    // Written under the throwaway directory, not the repository.
+    const manifest = await prisma.backupManifest.findUniqueOrThrow({ where: { name: backup.name } });
+    expect(manifest.databaseFile.startsWith(backupDir)).toBe(true);
+    expect(existsSync(manifest.databaseFile)).toBe(true);
   }, 120_000);
 
   it("lists the backups it has taken", async () => {
@@ -42,7 +77,7 @@ describe("S13 backups", () => {
   });
 
   it("rehearses the restore into an isolated database and leaves the live one alone", async () => {
-    const customer = await createUser("s13-restore");
+    await createUser("s13-restore");
     const liveBefore = await prisma.user.count();
 
     const backup = await createBackup({ name: `backup-restore-${Date.now()}` });

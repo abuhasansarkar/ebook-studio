@@ -55,7 +55,7 @@ export const libraryService = {
     const where: Prisma.ProjectWhereInput = { userId, deletedAt: null, ...archiveWhere(query.archived), ...(query.search ? { name: { contains: query.search, mode: 'insensitive' } } : {}) };
     if (query.cursor && !await prisma.project.findFirst({ where: { ...where, id: query.cursor } })) throw badRequest('This page changed. Refresh projects.');
     const orderBy: Prisma.ProjectOrderByWithRelationInput[] = query.sort === 'title' ? [{ name: 'asc' }, { id: 'asc' }] : [{ createdAt: query.sort === 'oldest' ? 'asc' : 'desc' }, { id: query.sort === 'oldest' ? 'asc' : 'desc' }];
-    const rows = await prisma.project.findMany({ where, orderBy, take: query.limit + 1, ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}), include: { _count: { select: { books: { where: { deletedAt: null } } } } } });
+    const rows = await prisma.project.findMany({ where, orderBy, take: query.limit + 1, ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}), include: { _count: { select: { books: { where: { userId, deletedAt: null } } } } } });
     return { projects: rows.slice(0, query.limit), nextCursor: rows.length > query.limit ? rows[query.limit - 1].id : null };
   },
   async updateProject(userId: string, projectId: string, input: { name?: string; description?: string; archived?: boolean }) {

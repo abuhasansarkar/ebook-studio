@@ -6,6 +6,7 @@
  *   BASE_URL=http://localhost:3000 MAILPIT_URL=http://localhost:8025 pnpm e2e
  */
 import puppeteer, { type Page } from "puppeteer";
+import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 
@@ -24,6 +25,26 @@ let step = 0;
 
 function log(msg: string) {
   console.log(`✓ ${msg}`);
+}
+
+/**
+ * Grants a plan entitlement directly in the database the journey's API reads.
+ *
+ * CI reaches PostgreSQL over TCP with its own psql (E2E_DATABASE_URL); on a
+ * developer machine the statement runs inside the PostgreSQL container instead.
+ */
+async function grantEntitlement(target: string, key: string) {
+  const sql = `INSERT INTO entitlements (id, "userId", key, value, source, "updatedAt")
+    SELECT 'e2e-ent-' || substr(md5(random()::text), 1, 12), u.id, '${key}', 'true'::jsonb, 'plan', now()
+    FROM "user" u WHERE u.email = '${target.replace(/'/g, "''")}'
+    ON CONFLICT ("userId", key) DO UPDATE SET value = 'true'::jsonb, "expiresAt" = NULL;`;
+  if (process.env.E2E_DATABASE_URL) {
+    execFileSync("psql", [process.env.E2E_DATABASE_URL, "-v", "ON_ERROR_STOP=1", "-c", sql]);
+    return;
+  }
+  const container = process.env.PG_CONTAINER ?? "ebook-studio-postgres-1";
+  const database = process.env.E2E_PG_DB ?? "ebook_studio";
+  execFileSync("docker", ["exec", container, "psql", "-U", "ebook", "-d", database, "-v", "ON_ERROR_STOP=1", "-c", sql]);
 }
 
 async function shot(page: Page, name: string) {
@@ -79,7 +100,7 @@ page.on("console", (m) => m.type() === "error" && !m.text().includes("Failed to 
 try {
   // Landing
   await page.goto(BASE, { waitUntil: "networkidle0" });
-  await waitText(page, "publish-ready");
+  await waitText(page, "Let it earn forever");
   await shot(page, "landing");
   log("landing page");
 
@@ -126,7 +147,8 @@ try {
       if (!db.objectStoreNames.contains('drafts')) { db.close(); resolve(false); return; }
       const tx = db.transaction('drafts', 'readonly');
       const rows = tx.objectStore('drafts').getAll();
-      tx.oncomplete = () => { db.close(); resolve(rows.result.some((r: { topic?: string }) => r.topic === "A beginner's guide to meal prep for busy parents")); };
+      // Drafts are stored as { v: 2, ownerId, scope, updatedAt, value }; older records kept the brief at the top level.
+      tx.oncomplete = () => { db.close(); resolve(rows.result.some((r: { topic?: string; value?: { topic?: string } }) => (r.value?.topic ?? r.topic) === "A beginner's guide to meal prep for busy parents")); };
     };
     request.onerror = () => resolve(false);
   }));
@@ -202,7 +224,9 @@ try {
   await page.waitForFunction(() => !document.querySelector("dialog[open]"));
   log("version preview, restore, and subsequent autosave");
 
-  // Failed saves retain a durable browser draft; reload must not silently submit it.
+  // A save that fails on the network is retried automatically with backoff, and
+  // succeeds on its own once the connection is back. While it keeps failing the
+  // edit is kept as a durable browser draft; a reload must not silently submit it.
   let rejectSaves = true;
   let patchAttempts = 0;
   await page.setRequestInterception(true);
@@ -215,20 +239,30 @@ try {
     void request.continue();
   });
   await page.$eval('input[aria-label="Chapter title"]', el => (el as HTMLInputElement).select());
-  await page.type('input[aria-label="Chapter title"]', 'Recovered manuscript title');
-  await waitText(page, 'Not saved');
-  const failedAttempts = patchAttempts;
-  await new Promise(r => setTimeout(r, 2600));
-  if (patchAttempts !== failedAttempts) throw new Error('Failed save is retrying without permission');
-  page.on('dialog', dialog => void dialog.accept());
+  await page.type('input[aria-label="Chapter title"]', 'Auto-retried manuscript title');
+  await waitText(page, 'retrying');
+  const firstFailures = patchAttempts;
+  await new Promise(r => setTimeout(r, 3500));
+  if (patchAttempts <= firstFailures) throw new Error('A failed save was not retried automatically');
+  // The connection comes back: the pending retry saves without any click.
   rejectSaves = false;
+  await waitText(page, 'Saved just now', 70_000);
+  log('failed save retries automatically and recovers when the connection returns');
+
+  rejectSaves = true;
+  await page.$eval('input[aria-label="Chapter title"]', el => (el as HTMLInputElement).select());
+  await page.type('input[aria-label="Chapter title"]', 'Recovered manuscript title');
+  await waitText(page, 'retrying');
+  page.on('dialog', dialog => void dialog.accept());
+  // Saves still fail while the page reloads, so the edit can only survive as a browser draft.
   await page.reload({ waitUntil: 'networkidle0' });
   await waitText(page, 'Unsaved browser drafts found');
+  rejectSaves = false;
   await clickButton(page, 'Recover ');
   if (await page.$eval('input[aria-label="Chapter title"]', el => (el as HTMLInputElement).value) !== 'Recovered manuscript title') throw new Error('Draft title lost on reload');
   await page.click("::-p-xpath(//button[normalize-space(.)='Save' and not(@disabled)])");
   await page.waitForFunction(() => Array.from(document.querySelectorAll('button')).some(b => b.textContent?.trim() === 'History' && !b.disabled));
-  log('failed save pauses, draft survives reload, explicit recovery and manual save');
+  log('draft survives reload while saves fail, explicit recovery and manual save');
 
   // A concurrent server edit must produce one conflict and wait for a decision.
   const currentBookId = new URL(page.url()).pathname.split('/')[3];
@@ -325,8 +359,14 @@ try {
   await page.click('dialog button[aria-label="Close"]');
   log('private upload, metadata, chapter insertion, persisted preview and deletion protection');
 
-  // Export
+  // Export is a paid capability: a free account sees the upgrade prompt, not a file.
   await page.goto(`${page.url().replace(/\/editor$/, "/export")}`, { waitUntil: "networkidle0" });
+  await waitText(page, 'Upgrade to Pro to Export');
+  log('free plan sees the export paywall');
+  // The rest of the journey exercises exports as a paying author. The entitlement
+  // row is the one a Pro purchase writes; billing-flow covers the purchase itself.
+  await grantEntitlement(email, 'exports');
+  await page.reload({ waitUntil: "networkidle0" });
   await waitText(page, 'Prepare for a marketplace');
   await waitText(page, 'Preparation needed');
   await page.select('select[aria-label="Publishing destination"]', 'etsy');

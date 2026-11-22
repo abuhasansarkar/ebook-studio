@@ -1,19 +1,12 @@
 "use client";
 
 import { use, useState } from "react";
-import Link from "next/link";
 import {
-  ArrowLeft,
-  ArrowRight,
-  BookOpen,
   ChevronLeft,
   ChevronRight,
-  Eye,
-  Layers,
-  Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge, Card, PageLoader } from "@/components/ui/misc";
+import { PageLoader } from "@/components/ui/misc";
 import { useColoringBook } from "@/lib/coloring-queries";
 
 export default function ColoringBookPreviewPage({ params }: { params: Promise<{ bookId: string }> }) {
@@ -28,7 +21,6 @@ export default function ColoringBookPreviewPage({ params }: { params: Promise<{ 
   }
 
   const book = detail?.book;
-  const plan = detail?.plan;
   const pages = detail?.pages ?? [];
   const completed = pages.filter((p) => p.status === "completed" && p.asset);
 

@@ -132,7 +132,7 @@ describe("environment and worker readiness", () => {
   });
 
   it("requires fresh heartbeat capabilities and a readable storage probe", async () => {
-    const stop = await startWorkerHeartbeat(["outline", "chapters", "exports", "images", "quality"]);
+    const stop = await startWorkerHeartbeat(["outline", "chapters", "exports", "images", "quality", "coloring"]);
     try {
       expect(await runtimeReadiness()).toEqual({ database: true, redis: true, workers: true, storage: true });
       const client = await getRuntimeRedis();

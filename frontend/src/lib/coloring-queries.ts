@@ -1,9 +1,10 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   ColoringBookBriefInput,
-  ColoringPageItem,
+  ColoringGenerationAccepted,
   ColoringPageQuality,
   ColoringPageUpdateInput,
 } from "@ebook/shared";
@@ -23,7 +24,6 @@ export interface ColoringPageRecord {
   assetId?: string | null;
   asset?: {
     id: string;
-    storageKey: string;
     width: number;
     height: number;
     status: string;
@@ -96,15 +96,42 @@ export function useColoringBooks() {
 
 export function useColoringBook(bookId: string) {
   const { data: session } = useSession();
-  return useQuery({
+  const queryClient = useQueryClient();
+  const query = useQuery({
     queryKey: coloringKeys.book(bookId),
     queryFn: () => api.get<ColoringBookDetail>(`/coloring/books/${bookId}`),
     enabled: Boolean(session?.user?.id && bookId),
     refetchInterval: (query) => {
-      // Auto-poll if any page is generating
+      // Generation runs in the background: poll while any page is generating.
       const hasGenerating = query.state.data?.pages.some((p) => p.status === "generating");
       return hasGenerating ? 3000 : false;
     },
+  });
+  // When background pages finish, credits were settled server-side: refresh the balance.
+  const generating = query.data?.stats.generating ?? 0;
+  const previous = useRef(generating);
+  useEffect(() => {
+    if (generating < previous.current) {
+      void queryClient.invalidateQueries({ queryKey: ["credits"] });
+      void queryClient.invalidateQueries({ queryKey: coloringKeys.quality(bookId) });
+    }
+    previous.current = generating;
+  }, [generating, bookId, queryClient]);
+  return query;
+}
+
+/** Marks queued pages as generating in the cached book so polling starts immediately. */
+function applyAccepted(queryClient: ReturnType<typeof useQueryClient>, bookId: string, accepted: ColoringGenerationAccepted) {
+  const statuses = new Map(accepted.pages.map((p) => [p.id, p.status]));
+  queryClient.setQueryData<ColoringBookDetail>(coloringKeys.book(bookId), (current) => {
+    if (!current) return current;
+    const pages = current.pages.map((p) => (statuses.has(p.id) ? { ...p, status: statuses.get(p.id)!, error: null } : p));
+    const count = (status: ColoringPageRecord["status"]) => pages.filter((p) => p.status === status).length;
+    return {
+      ...current,
+      pages,
+      stats: { ...current.stats, pending: count("pending"), generating: count("generating"), completed: count("completed"), failed: count("failed") },
+    };
   });
 }
 
@@ -177,8 +204,9 @@ export function useGenerateColoringPage(bookId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ pageId, promptOverride }: { pageId: string; promptOverride?: string }) =>
-      api.post<{ page: ColoringPageRecord }>(`/coloring/books/${bookId}/pages/${pageId}/generate`, { promptOverride }),
-    onSuccess: () => {
+      api.post<ColoringGenerationAccepted>(`/coloring/books/${bookId}/pages/${pageId}/generate`, promptOverride ? { promptOverride } : {}),
+    onSuccess: (accepted) => {
+      applyAccepted(queryClient, bookId, accepted);
       void queryClient.invalidateQueries({ queryKey: coloringKeys.book(bookId) });
       void queryClient.invalidateQueries({ queryKey: ["credits"] });
     },
@@ -189,8 +217,9 @@ export function useGenerateBatchColoring(bookId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (pageIds?: string[]) =>
-      api.post<{ total: number; completed: number; failed: number }>(`/coloring/books/${bookId}/generate-batch`, { pageIds }),
-    onSuccess: () => {
+      api.post<ColoringGenerationAccepted>(`/coloring/books/${bookId}/generate-batch`, pageIds?.length ? { pageIds } : {}),
+    onSuccess: (accepted) => {
+      applyAccepted(queryClient, bookId, accepted);
       void queryClient.invalidateQueries({ queryKey: coloringKeys.book(bookId) });
       void queryClient.invalidateQueries({ queryKey: ["credits"] });
     },
@@ -242,7 +271,7 @@ export function useColoringCover(bookId: string) {
         book: { id: string; title: string; subtitle: string };
         plan: ColoringPlanRecord;
         cover?: unknown;
-        coverArtworkAsset?: { id: string; storageKey: string; width: number; height: number } | null;
+        coverArtworkAsset?: { id: string; width: number; height: number } | null;
         spine: {
           interiorPages: number;
           totalPhysicalPages: number;
@@ -251,7 +280,7 @@ export function useColoringCover(bookId: string) {
           meetsKdpSpineTextThreshold: boolean;
           singleSided: boolean;
         };
-        sampleThumbnails: Array<{ pageNumber: number; title: string; assetId?: string; storageKey?: string }>;
+        sampleThumbnails: Array<{ pageNumber: number; title: string; assetId?: string }>;
       }>(`/coloring/books/${bookId}/cover`),
     enabled: Boolean(bookId),
   });
@@ -301,7 +330,7 @@ export function useCompileColoringPdf(bookId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () =>
-      api.post<{ exportId: string; pageCount: number; fileSize: number; storageKey: string; kdpCompliant: boolean }>(
+      api.post<{ exportId: string; pageCount: number; fileSize: number; kdpCompliant: boolean }>(
         `/coloring/books/${bookId}/export/compile`,
       ),
     onSuccess: () => {

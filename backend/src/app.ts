@@ -4,9 +4,10 @@ import helmet from "helmet";
 import { pinoHttp } from "pino-http";
 import { randomUUID } from "node:crypto";
 import { toNodeHandler } from "better-auth/node";
-import { env } from "./config/env.js";
+import { env, parseTrustProxy } from "./config/env.js";
+import { clientIpHeader } from "./middleware/clientIp.js";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
-import { apiLimiter } from "./middleware/rateLimits.js";
+import { apiLimiter, authLimiter } from "./middleware/rateLimits.js";
 import { apiRouter } from "./routes/index.js";
 import { billingWebhookRouter } from "./routes/billing.js";
 import { localProviderRouter } from "./routes/local-provider.js";
@@ -15,8 +16,12 @@ import { logger } from "./utils/logger.js";
 
 export function createApp() {
   const app = express();
-  app.set("trust proxy", 1);
+  // Which proxies may report the client address. Every rate limit keys on
+  // req.ip, so this must match the deployment: 1 behind the compose nginx,
+  // loopback for local development. See TRUST_PROXY in config/env.ts.
+  app.set("trust proxy", parseTrustProxy(env.TRUST_PROXY));
   app.disable("x-powered-by");
+  app.use(clientIpHeader);
 
   app.use(helmet());
   app.use(cors({ origin: [env.APP_URL, env.BETTER_AUTH_URL], credentials: true }));
@@ -39,16 +44,17 @@ export function createApp() {
   );
 
   // Better Auth must see the raw body, so it is mounted before express.json().
-  app.all("/api/v1/auth/*splat", toNodeHandler(auth));
+  app.all("/api/v1/auth/*splat", authLimiter, toNodeHandler(auth));
 
   // The payment webhook is verified against the raw bytes, so it is mounted
   // before express.json() parses them. It needs no session: the signature is
   // the authentication.
   app.use("/api/v1", billingWebhookRouter);
 
-  // The local provider's own checkout server. It is only reachable while the
-  // build talks to the local provider, which cannot take money.
-  app.use("/api/v1/local-provider", localProviderRouter);
+  // The local provider's own checkout server. It is mounted only while the
+  // build talks to the local provider, which cannot take money; with Stripe
+  // the path does not exist.
+  if (env.PAYMENT_PROVIDER === "local") app.use("/api/v1/local-provider", authLimiter, localProviderRouter);
 
   app.use(express.json({ limit: "5mb" }));
   app.use("/api/v1", apiLimiter, apiRouter);

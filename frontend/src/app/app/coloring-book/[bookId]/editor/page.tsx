@@ -6,9 +6,6 @@ import {
   AlertTriangle,
   Check,
   CheckCircle2,
-  Eye,
-  Layers,
-  Maximize2,
   RefreshCw,
   Save,
   Sparkles,
@@ -49,7 +46,6 @@ export default function ColoringBookEditorPage({ params }: { params: Promise<{ b
     return <PageLoader label="Loading editor canvas…" />;
   }
 
-  const book = detail?.book;
   const plan = detail?.plan;
   const pages = detail?.pages ?? [];
 
@@ -90,15 +86,13 @@ export default function ColoringBookEditorPage({ params }: { params: Promise<{ b
   const handleRegenerate = async () => {
     if (!activePage) return;
     try {
-      toast.loading(`Regenerating Page ${activePage.pageNumber}… (8 credits)`);
       await generatePage.mutateAsync({
         pageId: activePage.id,
         promptOverride: editPrompt || activePage.prompt,
       });
-      toast.dismiss();
-      toast.success(`Page ${activePage.pageNumber} regenerated!`);
+      // The page polls in the background until the new illustration is ready.
+      toast.success(`Page ${activePage.pageNumber} queued for regeneration. It updates automatically when ready.`);
     } catch (err) {
-      toast.dismiss();
       toast.error((err as Error).message || "Regeneration failed");
     }
   };
@@ -362,7 +356,8 @@ export default function ColoringBookEditorPage({ params }: { params: Promise<{ b
                 variant="primary"
                 size="sm"
                 onClick={handleRegenerate}
-                loading={generatePage.isPending}
+                loading={generatePage.isPending || activePage?.status === "generating"}
+                disabled={activePage?.status === "generating"}
                 className="flex-1 gap-1.5 shadow-md"
               >
                 <RefreshCw className="h-3.5 w-3.5" /> Regenerate (8 cr)

@@ -3,15 +3,12 @@
 import { use, useState } from "react";
 import { toast } from "sonner";
 import {
-  BookCheck,
   Check,
   CheckCircle2,
   Copy,
   Download,
-  FileCheck,
   FileDown,
   FileText,
-  ListOrdered,
   Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -27,7 +24,7 @@ import { cn } from "@/lib/utils";
 
 export default function ColoringBookExportPage({ params }: { params: Promise<{ bookId: string }> }) {
   const { bookId } = use(params);
-  const { data: detail, isLoading: loadingBook } = useColoringBook(bookId);
+  const { isLoading: loadingBook } = useColoringBook(bookId);
   const { data: pkg, isLoading: loadingPkg } = useColoringPublishingPackage(bookId);
   const compilePdf = useCompileColoringPdf(bookId);
   const billing = useBilling();
@@ -42,8 +39,6 @@ export default function ColoringBookExportPage({ params }: { params: Promise<{ b
     return <PageLoader label="Checking KDP print readiness…" />;
   }
 
-  const book = detail?.book;
-  const plan = detail?.plan;
   const preflight = pkg?.preflight;
 
   const handleCopyKeywords = () => {

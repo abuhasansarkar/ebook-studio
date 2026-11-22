@@ -1,4 +1,4 @@
-import puppeteer, { type Browser } from "puppeteer";
+import puppeteer, { type Browser, type Page } from "puppeteer";
 import { PDFDict, PDFDocument, PDFName } from "pdf-lib";
 import { FONT_FACE_IDS, INTERIOR_FONTS, TRIM_SIZES, type BookDesign } from "@ebook/shared";
 import { fontRegistry, postscriptName } from "../design/fonts.js";
@@ -6,12 +6,25 @@ import { EXPORT_FONT_ORIGIN } from "./bookHtml.js";
 
 let browserPromise: Promise<Browser> | null = null;
 
+/**
+ * Chromium's sandbox stays on unless the operator opts out.
+ *
+ * Some container runtimes (Docker's default seccomp profile with a non-root
+ * user) cannot create the namespaces the sandbox needs. Those deployments set
+ * `CHROMIUM_NO_SANDBOX=1` explicitly; it is never the silent default.
+ */
+export function chromiumArgs(env: NodeJS.ProcessEnv = process.env): string[] {
+  const args = ["--disable-dev-shm-usage", "--font-render-hinting=none"];
+  if (/^(1|true|yes)$/i.test(env.CHROMIUM_NO_SANDBOX ?? "")) args.unshift("--no-sandbox");
+  return args;
+}
+
 export function getBrowser(): Promise<Browser> {
   browserPromise ??= puppeteer
     .launch({
       headless: true,
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-      args: ["--no-sandbox", "--disable-dev-shm-usage", "--font-render-hinting=none"],
+      args: chromiumArgs(),
     })
     .then((b) => {
       b.on("disconnected", () => {
@@ -24,6 +37,66 @@ export function getBrowser(): Promise<Browser> {
       throw err;
     });
   return browserPromise;
+}
+
+/** A counting semaphore: at most `limit` holders at once, the rest wait in FIFO order. */
+export class Semaphore {
+  private active = 0;
+  private readonly waiting: (() => void)[] = [];
+  constructor(readonly limit: number) {}
+  get inUse() { return this.active; }
+  get queued() { return this.waiting.length; }
+  async acquire(): Promise<() => void> {
+    if (this.active >= this.limit) await new Promise<void>((resolve) => this.waiting.push(resolve));
+    else this.active++;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const next = this.waiting.shift();
+      // The slot passes straight to the next waiter, so the count never dips below the true holders.
+      if (next) next();
+      else this.active--;
+    };
+  }
+  async run<T>(task: () => Promise<T>): Promise<T> {
+    const release = await this.acquire();
+    try { return await task(); } finally { release(); }
+  }
+}
+
+/** Every Chromium tab this process opens for rendering goes through this cap. */
+export const renderSlots = new Semaphore(Math.max(1, Number(process.env.CHROMIUM_MAX_PAGES) || 4));
+
+/** Rejects after `ms` with a clear message; the caller's `finally` closes the page. */
+export function withTimeout<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${what} timed out after ${Math.round(ms / 1000)} s`)), ms);
+    timer.unref?.();
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Opens one tab under the render cap and always closes it.
+ *
+ * Content scripts are disabled by default: book HTML is data, never code.
+ * `page.evaluate` still runs, because DevTools evaluation is not page script.
+ * Other Chromium users (covers, marketing graphics) should open their tabs here
+ * too, so the per-process cap covers every tab.
+ */
+export async function withBrowserPage<T>(task: (page: Page) => Promise<T>, options: { javascript?: boolean } = {}): Promise<T> {
+  return renderSlots.run(async () => {
+    const browser = await getBrowser();
+    const page = await browser.newPage();
+    try {
+      if (!options.javascript) await page.setJavaScriptEnabled(false);
+      return await task(page);
+    } finally {
+      await page.close().catch(() => undefined);
+    }
+  });
 }
 
 export async function closeBrowser() {
@@ -53,9 +126,7 @@ export interface RenderedPdf {
  * Fonts are answered from manifest-verified bytes; every other network request is blocked.
  */
 export async function renderPdf(html: string, options: { textBlockWidthIn?: number } = {}): Promise<RenderedPdf> {
-  const browser = await getBrowser();
-  const page = await browser.newPage();
-  try {
+  return withBrowserPage(async (page) => {
     await page.setRequestInterception(true);
     page.on("request", (req) => {
       const url = req.url();
@@ -68,23 +139,32 @@ export async function renderPdf(html: string, options: { textBlockWidthIn?: numb
         () => req.abort("failed"),
       );
     });
-    await page.setContent(html, { waitUntil: "load", timeout: 60_000 });
-    const fontState = await page.evaluate(async () => {
-      await Promise.race([document.fonts.ready, new Promise((resolve) => setTimeout(resolve, 30_000))]);
+    await withTimeout(page.setContent(html, { waitUntil: "load", timeout: 60_000 }), 65_000, "Loading the book into the PDF renderer");
+    // The wait for fonts is bounded here, in Node: page timers do not run while content scripts are disabled.
+    const fontState = await withTimeout(page.evaluate(async () => {
+      await document.fonts.ready;
       const failed: string[] = [];
-      document.fonts.forEach((face) => { if (face.status === "error") failed.push(face.family); });
+      // Iterated rather than forEach'd: native code may not call back into script while scripts are disabled.
+      for (const face of Array.from(document.fonts as unknown as Iterable<FontFace>)) if (face.status === "error") failed.push(face.family);
       return { pending: document.fonts.status !== "loaded", failed };
-    });
+    }), 30_000, "Loading the bundled fonts");
     if (fontState.pending) throw new Error("Bundled fonts did not finish loading in the PDF renderer");
     if (fontState.failed.length) throw new Error(`Bundled font failed to load: ${[...new Set(fontState.failed)].join(", ")}`);
-    await page.waitForFunction(() => Array.from(document.images).every((image) => image.complete), { timeout: 15000 });
-    if (!(await page.evaluate(() => Array.from(document.images).every((image) => image.naturalWidth > 0)))) throw new Error("An image failed to load in the PDF renderer");
+    // Images are inlined data URLs, so the load event has already fetched them; decoding proves they are usable.
+    const imagesOk = await withTimeout(page.evaluate(async () => {
+      const images = Array.from(document.images);
+      for (const image of images) {
+        try { await image.decode(); } catch { return false; }
+      }
+      return images.every((image) => image.complete && image.naturalWidth > 0);
+    }), 15_000, "Loading the images");
+    if (!imagesOk) throw new Error("An image failed to load in the PDF renderer");
     let overflow: string[] = [];
     if (options.textBlockWidthIn) {
       // Approximates the printed text block with print media at the same CSS width (96 px per inch).
       await page.emulateMediaType("print");
       await page.setViewport({ width: Math.round(options.textBlockWidthIn * 96), height: 1200 });
-      overflow = await page.evaluate(() => {
+      overflow = await withTimeout(page.evaluate(() => {
         const limit = document.documentElement.clientWidth + 1;
         const found: HTMLElement[] = [];
         for (const el of Array.from(document.querySelectorAll<HTMLElement>(".book *"))) {
@@ -94,52 +174,18 @@ export async function renderPdf(html: string, options: { textBlockWidthIn?: numb
           if (found.length >= 5) break;
         }
         return found.map((el) => `${el.tagName.toLowerCase()}: ${(el.textContent ?? "").trim().slice(0, 60)}`);
-      });
+      }), 30_000, "Checking the layout");
     }
-    const data = await page.pdf({ preferCSSPageSize: true, printBackground: true, outline: true, tagged: true, timeout: 120_000 });
+    const data = await withTimeout(page.pdf({ preferCSSPageSize: true, printBackground: true, outline: true, tagged: true, timeout: 120_000 }), 125_000, "Printing the PDF");
     const buffer = Buffer.from(data);
     const { pageCount, fonts, type3 } = await inspectPdf(buffer);
     return { buffer, pageCount, foreignFonts: await foreignFonts(fonts), overflow, type3Fonts: type3 };
-  } finally {
-    await page.close().catch(() => undefined);
-  }
+  });
 }
 
 /** Never report success for a file we have not re-opened and checked. */
 export async function validatePdf(buffer: Buffer): Promise<number> {
   return (await inspectPdf(buffer)).pageCount;
-}
-
-/**
- * Extracts the text layer of a PDF.
- *
- * Chromium's PDF viewer is used because it is the only PDF text extractor this
- * server has. The document is opened from a data URL with no network access, so
- * a PDF that references an external resource cannot reach the network.
- *
- * A PDF whose pages carry no text (a scan) yields an empty string, which the
- * caller reports as `scanned` rather than as an empty source.
- */
-export async function extractPdfPageText(buffer: Buffer): Promise<string> {
-  const browser = await getBrowser();
-  const page = await browser.newPage();
-  try {
-    await page.setRequestInterception(true);
-    // Nothing is loaded from the network: the PDF is inlined and every request is refused.
-    page.on("request", (req) => void req.abort("blockedbyclient"));
-    const dataUrl = `data:application/pdf;base64,${buffer.toString('base64')}`;
-    await page.goto(dataUrl, { waitUntil: "load", timeout: 60_000 });
-    // Chromium's viewer renders the PDF into an embedded plugin; the text layer
-    // is read back through the accessibility tree.
-    await page.waitForFunction(() => document.querySelector('embed') !== null || document.body.innerText.length > 0, { timeout: 30_000 }).catch(() => undefined);
-    const text = await page.evaluate(() => {
-      const body = document.body?.innerText ?? '';
-      return body.replace(/\r\n/g, '\n');
-    });
-    return text;
-  } finally {
-    await page.close().catch(() => undefined);
-  }
 }
 
 async function inspectPdf(buffer: Buffer) {

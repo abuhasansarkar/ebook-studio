@@ -20,6 +20,7 @@ import type {
   GenerationJob,
   HealthStatus,
   LiveStatus,
+  OutlineRecord,
   Payment,
   PlanCatalog,
   ReadyStatus,
@@ -353,10 +354,21 @@ export function useDeleteBook() {
 }
 
 export function useBookAction(bookId: string) {
+  const qc = useQueryClient();
   const invalidate = useInvalidateBook(bookId);
   return {
     generateOutline: useMutation({ mutationFn: () => operationRequest(`/books/${bookId}/outline/generate`), onSettled: invalidate }),
-    saveOutline: useMutation({ mutationFn: (o: Outline & { baseVersion: number }) => api.put<{ outline: { version: number } }>(`/books/${bookId}/outline`, o), onSettled: invalidate }),
+    saveOutline: useMutation({
+      mutationFn: (o: Outline & { baseVersion: number }) => api.put<{ outline: OutlineRecord }>(`/books/${bookId}/outline`, o),
+      // Write the saved outline into the book cache before anything re-renders, so
+      // the outline screen never reloads the previous version (whose number would
+      // make the next save fail with a conflict) while the refetch is in flight.
+      onSuccess: ({ outline }) => {
+        if (!outline || typeof outline.version !== "number") return;
+        qc.setQueryData<BookDetail>(qk.book(bookId), (b) => (b ? { ...b, title: outline.data?.title ?? b.title, subtitle: outline.data?.subtitle ?? b.subtitle, outline } : b));
+      },
+      onSettled: invalidate,
+    }),
     approveOutline: useMutation({ mutationFn: (version: number) => api.post(`/books/${bookId}/outline/approve`, { version }), onSettled: invalidate }),
     startGeneration: useMutation({ mutationFn: () => operationRequest<{ job: GenerationJob }>(`/books/${bookId}/generate`), onSettled: invalidate }),
     cancelGeneration: useMutation({ mutationFn: () => api.post(`/books/${bookId}/generate/cancel`), onSettled: invalidate }),
@@ -365,9 +377,21 @@ export function useBookAction(bookId: string) {
 
 /** Puts the book's chapters in a new order (every chapter, each once). */
 export function useReorderChapters(bookId: string) {
+  const qc = useQueryClient();
   const invalidate = useInvalidateBook(bookId);
   return useMutation({
     mutationFn: (chapterIds: string[]) => api.put<{ chapters: { id: string; position: number }[] }>(`/books/${bookId}/chapters/order`, { chapterIds }),
+    // Single-chapter caches never refetch on their own (the editor owns them), so
+    // patch their positions here or the editor keeps showing the old "Chapter N".
+    onSuccess: (res, chapterIds) => {
+      const positions = new Map<string, number>(res?.chapters?.length ? res.chapters.map((c) => [c.id, c.position]) : chapterIds.map((id, index) => [id, index]));
+      for (const [id, position] of positions) {
+        qc.setQueryData<ChapterFull>(qk.chapter(id), (c) => (c && c.position !== position ? { ...c, position } : c));
+      }
+      qc.setQueryData<ChapterMeta[]>(qk.chapters(bookId), (list) =>
+        list?.map((c) => (positions.has(c.id) ? { ...c, position: positions.get(c.id)! } : c)).sort((a, b) => a.position - b.position),
+      );
+    },
     onSettled: invalidate,
   });
 }

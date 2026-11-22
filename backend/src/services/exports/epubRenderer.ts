@@ -1,6 +1,6 @@
 import type { EpubExportOptions } from '@ebook/shared';
 import type { PMNode } from '../editor/markdownToTiptap.js';
-import { escapeHtml } from './tiptapToHtml.js';
+import { stripXmlIllegal } from './tiptapToHtml.js';
 import { buildZip } from './zip.js';
 import { documentLanguage, type PinnedImage, type RenderInput } from './renderTypes.js';
 
@@ -34,14 +34,13 @@ export interface EpubRenderResult {
 
 /** XML text escaping, including the characters that are invalid in XML 1.0. */
 function xmlText(value: string): string {
-  return value
+  // Characters that are not permitted in XML 1.0 make the whole file unparseable, so they are dropped.
+  return stripXmlIllegal(value)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;')
-    // Control characters are not permitted in XML 1.0 and make the file unparseable.
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '');
+    .replace(/'/g, '&apos;');
 }
 
 function xmlAttr(value: string): string { return xmlText(value); }
@@ -49,7 +48,7 @@ function xmlAttr(value: string): string { return xmlText(value); }
 /** Plain-text matter paragraphs: blank lines separate paragraphs, single newlines are breaks. */
 function matterParagraphs(value: string): string {
   return value.trim().split(/\n\s*\n/).filter((p) => p.trim())
-    .map((p) => `<p>${p.split("\n").map((line) => escapeHtml(line.normalize('NFC'))).join('<br/>')}</p>`)
+    .map((p) => `<p>${p.split("\n").map((line) => xmlText(line.normalize('NFC'))).join('<br/>')}</p>`)
     .join('');
 }
 
@@ -110,11 +109,11 @@ function renderBlocks(node: PMNode | null | undefined, ctx: InlineContext): stri
       if (!file) {
         ctx.missing(assetId);
         // The alt text is kept so the information is not lost when an image is unavailable.
-        return `<p class="missing-image">${escapeHtml(String(node.attrs?.alt ?? '').normalize('NFC'))}</p>`;
+        return `<p class="missing-image">${xmlText(String(node.attrs?.alt ?? '').normalize('NFC'))}</p>`;
       }
       ctx.used.add(assetId);
-      const alt = escapeHtml(String(node.attrs?.alt ?? '').normalize('NFC'));
-      const caption = node.attrs?.caption ? `<figcaption>${escapeHtml(String(node.attrs.caption).normalize('NFC'))}</figcaption>` : '';
+      const alt = String(node.attrs?.alt ?? '').normalize('NFC');
+      const caption = node.attrs?.caption ? `<figcaption>${xmlText(String(node.attrs.caption).normalize('NFC'))}</figcaption>` : '';
       return `<figure><img src="${xmlAttr(file)}" alt="${xmlAttr(alt)}"/>${caption}</figure>`;
     }
     case 'pageBreak': return '<p class="page-break"/>';
@@ -124,7 +123,7 @@ function renderBlocks(node: PMNode | null | undefined, ctx: InlineContext): stri
 
 /** Renders a text node with its marks applied. */
 function renderInline(node: PMNode, ctx: InlineContext): string {
-  let html = escapeHtml((node.text ?? '').normalize('NFC'));
+  let html = xmlText((node.text ?? '').normalize('NFC'));
   for (const mark of node.marks ?? []) {
     switch (mark.type) {
       case 'bold': html = `<strong>${html}</strong>`; break;
@@ -254,10 +253,10 @@ export function renderEpub(input: RenderInput, options: EpubExportOptions): Epub
     if (m.titlePage) {
       const body = `<section class="title-page" epub:type="titlepage">
 ${cover ? `<div class="cover"><img src="${xmlAttr(coverFile)}" alt="${xmlAttr(doc.book.title)}"/></div>` : ''}
-<h1 class="book-title">${escapeHtml(doc.book.title)}</h1>
-${doc.book.subtitle ? `<p class="subtitle">${escapeHtml(doc.book.subtitle)}</p>` : ''}
+<h1 class="book-title">${xmlText(doc.book.title)}</h1>
+${doc.book.subtitle ? `<p class="subtitle">${xmlText(doc.book.subtitle)}</p>` : ''}
 <div class="rule"></div>
-${doc.book.author ? `<p class="author">${escapeHtml(doc.book.author)}</p>` : ''}
+${doc.book.author ? `<p class="author">${xmlText(doc.book.author)}</p>` : ''}
 </section>`;
       sections.push({ file: 'titlepage.xhtml', id: 'titlepage', title: doc.book.title, body, matter: true });
     }
@@ -278,7 +277,7 @@ ${doc.book.author ? `<p class="author">${escapeHtml(doc.book.author)}</p>` : ''}
   doc.chapters.forEach((chapter, index) => {
     const number = index + 1;
     const body = `<section class="chapter" epub:type="chapter" role="doc-chapter">
-<h1>${escapeHtml(chapter.title)}</h1>
+<h1>${xmlText(chapter.title)}</h1>
 ${renderBlocks(chapter.content as PMNode, ctx)}
 </section>`;
     sections.push({ file: `chapter-${number}.xhtml`, id: `chapter-${number}`, title: chapter.title, body, matter: false });
@@ -288,15 +287,15 @@ ${renderBlocks(chapter.content as PMNode, ctx)}
     if (m.aboutAuthor.enabled) {
       sections.push({
         file: 'about-author.xhtml', id: 'about-author', title: m.aboutAuthor.title,
-        body: `<section class="back about">\n<h1>${escapeHtml(m.aboutAuthor.title)}</h1>\n${matterParagraphs(m.aboutAuthor.text)}</section>`, matter: true,
+        body: `<section class="back about">\n<h1>${xmlText(m.aboutAuthor.title)}</h1>\n${matterParagraphs(m.aboutAuthor.text)}</section>`, matter: true,
       });
     }
     if (m.references.enabled) {
       const list = m.references.text.split(/\n+/).filter((l) => l.trim())
-        .map((l) => `<p class="reference">${escapeHtml(l.trim().normalize('NFC'))}</p>`).join('');
+        .map((l) => `<p class="reference">${xmlText(l.trim().normalize('NFC'))}</p>`).join('');
       sections.push({
         file: 'references.xhtml', id: 'references', title: m.references.title,
-        body: `<section class="back references">\n<h1>${escapeHtml(m.references.title)}</h1>\n${list}</section>`, matter: true,
+        body: `<section class="back references">\n<h1>${xmlText(m.references.title)}</h1>\n${list}</section>`, matter: true,
       });
     }
   }
@@ -332,7 +331,7 @@ ${renderBlocks(chapter.content as PMNode, ctx)}
 </head>
 <body>
 <nav epub:type="toc" id="toc" role="doc-toc">
-<h1>${escapeHtml(m.contents.title)}</h1>
+<h1>${xmlText(m.contents.title)}</h1>
 <ol>
 ${navEntries}
 </ol>

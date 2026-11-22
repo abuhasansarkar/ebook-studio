@@ -10,7 +10,7 @@ import { AuthHeader, GoogleButton, safeNext } from "@/components/auth/auth-ui";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/form";
 import { Alert } from "@/components/ui/misc";
-import { authClient } from "@/lib/auth-client";
+import { authClient, useSession } from "@/lib/auth-client";
 
 const schema = z.object({
   email: z.string().trim().email("Enter a valid email address"),
@@ -23,6 +23,7 @@ export function LoginForm() {
   const params = useSearchParams();
   const next = safeNext(params.get("next"));
   const [serverError, setServerError] = useState<string | null>(null);
+  const { refetch: refetchSession } = useSession();
   const { register, handleSubmit, formState } = useForm<Values>({ resolver: zodResolver(schema) });
 
   const onSubmit = handleSubmit(async (v) => {
@@ -37,6 +38,10 @@ export function LoginForm() {
       setServerError(error.message ?? "Invalid email or password");
       return;
     }
+    // After a sign-out in this tab the client session store holds "no session".
+    // The app shell would read that stale value and send the author straight
+    // back here, so the new session is loaded before navigating.
+    await refetchSession();
     router.replace(next);
     router.refresh();
   });

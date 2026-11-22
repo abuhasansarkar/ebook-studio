@@ -236,7 +236,7 @@ try {
 
   // ---- The image library ----
   await page.goto(`${BASE}/app/image-studio`, { waitUntil: "networkidle0" });
-  await waitText(page, "Image library");
+  await waitText(page, "Cover & Illustration Studio");
   await waitText(page, "Upload an image");
   await waitText(page, "Choose an image");
   await waitText(page, "No images yet");

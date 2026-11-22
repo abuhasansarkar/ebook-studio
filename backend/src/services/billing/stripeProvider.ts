@@ -30,16 +30,22 @@ import { STRIPE_SIGNATURE_HEADER } from "./provider.js";
  */
 
 /** The Stripe event types this product acts on. */
+//
+// `invoice.payment_succeeded` is deliberately not handled: Stripe sends it
+// alongside `invoice.paid` for the same invoice, and one settlement event per
+// invoice is enough.
 const HANDLED_EVENTS = new Set([
   "checkout.session.completed",
   "payment_intent.succeeded",
   "payment_intent.payment_failed",
   "charge.refunded",
+  "charge.dispute.created",
+  "charge.dispute.closed",
   "customer.subscription.created",
   "customer.subscription.updated",
   "customer.subscription.deleted",
-  "invoice.payment_succeeded",
   "invoice.paid",
+  "invoice.payment_failed",
 ]);
 
 export class StripeProvider implements PaymentProvider {
@@ -68,6 +74,7 @@ export class StripeProvider implements PaymentProvider {
    * processor, not only in this database.
    */
   async createCheckout(request: CheckoutRequest): Promise<CheckoutResult> {
+    if (request.recurring) return this.createSubscriptionCheckout(request);
     // The session id is only known once Stripe has created the session, but
     // the payment intent's metadata must carry it so that the settled event
     // can be matched to this checkout. Stripe copies the session's metadata
@@ -141,6 +148,83 @@ export class StripeProvider implements PaymentProvider {
   }
 
   /**
+   * Opens a Stripe Checkout session that starts a real subscription.
+   *
+   * A recurring plan is billed by Stripe on every period, against the plan's
+   * Stripe Price: the first invoice and every renewal each arrive as
+   * `invoice.paid`, and only those grant credits and extend the plan. A plan
+   * without a Stripe Price is refused rather than charged once and treated as
+   * a subscription it is not.
+   */
+  private async createSubscriptionCheckout(request: CheckoutRequest): Promise<CheckoutResult> {
+    if (!request.providerPriceId) {
+      throw new Error(`The recurring plan "${request.planId}" has no Stripe price configured.`);
+    }
+    const metadata = {
+      planId: request.planId,
+      credits: String(request.credits),
+      customerReference: request.customerReference,
+    };
+    const session = await this.client.checkout.sessions.create(
+      {
+        mode: "subscription",
+        client_reference_id: request.idempotencyKey,
+        success_url: `${request.returnUrl}?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${request.returnUrl}?checkout=cancelled`,
+        line_items: [{ price: request.providerPriceId, quantity: 1 }],
+        metadata,
+        // Copied onto the subscription and from there onto every invoice it
+        // raises, so a renewal names the customer and the plan.
+        subscription_data: { metadata },
+      },
+      { idempotencyKey: request.idempotencyKey },
+    );
+    if (!session.url) throw new Error("Stripe did not return a checkout URL.");
+    return {
+      providerCheckoutId: session.id,
+      // A subscription's payment is named by its first invoice, which does not
+      // exist yet. The placeholder is replaced when the invoice is paid.
+      providerPaymentId: `pending_${session.id}`,
+      customerReference: request.customerReference,
+      url: session.url,
+    };
+  }
+
+  /**
+   * Stops a subscription at Stripe.
+   *
+   * At period end the author keeps what they paid for and is not billed
+   * again; otherwise (a refund) it ends now. A subscription Stripe no longer
+   * has, or one already cancelled, is already in the state asked for.
+   */
+  async cancelSubscription(providerSubscriptionId: string, options: { atPeriodEnd: boolean }): Promise<void> {
+    try {
+      if (options.atPeriodEnd) {
+        await this.client.subscriptions.update(providerSubscriptionId, { cancel_at_period_end: true });
+      } else {
+        await this.client.subscriptions.cancel(providerSubscriptionId);
+      }
+    } catch (err) {
+      const e = err as { code?: string; message?: string };
+      if (e.code === "resource_missing") return;
+      if (/cancel(l)?ed subscription/i.test(e.message ?? "")) return;
+      throw err;
+    }
+  }
+
+  /** The payment intent an invoice was paid with. */
+  async paymentIntentForInvoice(providerInvoiceId: string): Promise<string | undefined> {
+    try {
+      const payments = await this.client.invoicePayments.list({ invoice: providerInvoiceId, limit: 1 });
+      const intent = payments.data[0]?.payment?.payment_intent;
+      return typeof intent === "string" ? intent : intent?.id;
+    } catch (err) {
+      logger.warn({ reason: (err as Error).message, providerInvoiceId }, "Could not read the payment for an invoice");
+      return undefined;
+    }
+  }
+
+  /**
    * Writes the session id onto the session's payment intent.
    *
    * Stripe creates the payment intent for a session when the customer starts
@@ -201,7 +285,7 @@ export class StripeProvider implements PaymentProvider {
 
   /** Converts a Stripe event into the provider-neutral event. */
   private toProviderEvent(event: Stripe.Event): ProviderEvent {
-    const object = event.data.object as Stripe.Checkout.Session | Stripe.PaymentIntent | Stripe.Charge | Stripe.Subscription;
+    const object = event.data.object as Stripe.Checkout.Session | Stripe.PaymentIntent | Stripe.Charge | Stripe.Subscription | Stripe.Dispute;
     const base = {
       providerEventId: event.id,
       occurredAt: new Date(event.created * 1000),
@@ -215,6 +299,7 @@ export class StripeProvider implements PaymentProvider {
         customerReference: session.metadata?.customerReference ?? customerRefFromMetadata(event),
         providerCheckoutId: session.id,
         providerPaymentId: typeof session.payment_intent === "string" ? session.payment_intent : undefined,
+        providerSubscriptionId: typeof session.subscription === "string" ? session.subscription : session.subscription?.id,
         planId: session.metadata?.planId,
         credits: session.metadata?.credits ? Number(session.metadata.credits) : undefined,
         amountMinor: session.amount_total ?? undefined,
@@ -247,28 +332,58 @@ export class StripeProvider implements PaymentProvider {
       return {
         ...base,
         type: "payment.refunded",
+        // Often empty: Stripe does not copy the intent's metadata onto the
+        // charge. The local payment found by the payment intent then names
+        // the customer.
         customerReference: customerRefFromMetadata(event),
         providerPaymentId: intent,
         providerCheckoutId: charge.metadata?.checkout_session_id ?? charge.metadata?.checkout_session,
+        // Cumulative: a second partial refund reports the total refunded so far.
         amountMinor: charge.amount_refunded,
+        totalAmountMinor: charge.amount,
         currency: toCurrency(charge.currency),
       };
     }
 
-    if (event.type === "invoice.payment_succeeded" || event.type === "invoice.paid") {
-      const invoice = event.data.object as any;
-      const intent = typeof invoice.payment_intent === "string" ? invoice.payment_intent : undefined;
-      const subId = typeof invoice.subscription === "string" ? invoice.subscription : undefined;
+    if (event.type === "charge.dispute.created" || event.type === "charge.dispute.closed") {
+      const dispute = object as Stripe.Dispute;
+      const intent = typeof dispute.payment_intent === "string" ? dispute.payment_intent : dispute.payment_intent?.id;
+      const charge = typeof dispute.charge === "string" ? undefined : dispute.charge;
       return {
         ...base,
-        type: "payment.succeeded",
-        customerReference: invoice.metadata?.customerReference ?? customerRefFromMetadata(event),
+        type: event.type === "charge.dispute.created" ? "payment.disputed" : "payment.dispute_closed",
+        customerReference: customerRefFromMetadata(event),
         providerPaymentId: intent,
-        providerSubscriptionId: subId,
-        planId: invoice.metadata?.planId,
-        credits: invoice.metadata?.credits ? Number(invoice.metadata.credits) : undefined,
+        providerDisputeId: dispute.id,
+        disputeStatus: dispute.status,
+        amountMinor: dispute.amount,
+        totalAmountMinor: charge?.amount,
+        currency: toCurrency(dispute.currency),
+      };
+    }
+
+    if (event.type === "invoice.paid" || event.type === "invoice.payment_failed") {
+      const invoice = object as unknown as InvoiceLike;
+      const details = invoice.parent?.subscription_details;
+      const metadata = details?.metadata ?? invoice.subscription_details?.metadata ?? invoice.metadata ?? {};
+      const subscriptionRef = details?.subscription ?? invoice.subscription;
+      const legacyIntent = invoice.payment_intent;
+      const paidIntent = invoice.payments?.data?.[0]?.payment?.payment_intent;
+      const intent = idOf(legacyIntent) ?? idOf(paidIntent);
+      const lineEnd = invoice.lines?.data?.[0]?.period?.end;
+      return {
+        ...base,
+        type: event.type,
+        customerReference: metadata.customerReference ?? "",
+        providerPaymentId: intent,
+        providerInvoiceId: invoice.id,
+        providerSubscriptionId: idOf(subscriptionRef),
+        billingReason: invoice.billing_reason ?? undefined,
+        planId: metadata.planId,
+        credits: metadata.credits ? Number(metadata.credits) : undefined,
         amountMinor: invoice.amount_paid ?? invoice.amount_due,
         currency: toCurrency(invoice.currency),
+        currentPeriodEnd: typeof lineEnd === "number" ? new Date(lineEnd * 1000) : null,
       };
     }
 
@@ -283,6 +398,7 @@ export class StripeProvider implements PaymentProvider {
       credits: subscription.metadata?.credits ? Number(subscription.metadata.credits) : undefined,
       subscriptionStatus: status,
       currentPeriodEnd: periodEnd(subscription),
+      cancelAtPeriodEnd: subscription.cancel_at_period_end ?? undefined,
     };
   }
 
@@ -338,8 +454,10 @@ export class StripeProvider implements PaymentProvider {
   async fetchCheckoutSession(providerCheckoutId: string): Promise<{
     status: string | null;
     paymentStatus: string;
+    mode?: string;
     paymentIntentId?: string;
     subscriptionId?: string;
+    invoiceId?: string;
     amountTotal?: number | null;
     currency?: string | null;
   } | null> {
@@ -348,6 +466,8 @@ export class StripeProvider implements PaymentProvider {
       return {
         status: session.status,
         paymentStatus: session.payment_status,
+        mode: session.mode,
+        invoiceId: typeof session.invoice === "string" ? session.invoice : session.invoice?.id,
         paymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id,
         subscriptionId: typeof session.subscription === "string" ? session.subscription : session.subscription?.id,
         amountTotal: session.amount_total,
@@ -379,6 +499,33 @@ export class StripeProvider implements PaymentProvider {
     });
     return created.id;
   }
+}
+
+/**
+ * The parts of a Stripe invoice this product reads, across API versions.
+ *
+ * Newer API versions moved the subscription and its metadata under
+ * `parent.subscription_details` and the payment under `payments`; older ones
+ * had `subscription`, `subscription_details` and `payment_intent` at the top.
+ */
+interface InvoiceLike {
+  id: string;
+  billing_reason?: string | null;
+  amount_paid?: number;
+  amount_due?: number;
+  currency?: string | null;
+  metadata?: Record<string, string> | null;
+  subscription?: string | { id: string } | null;
+  subscription_details?: { metadata?: Record<string, string> | null } | null;
+  payment_intent?: string | { id: string } | null;
+  parent?: { subscription_details?: { subscription?: string | { id: string }; metadata?: Record<string, string> | null } | null } | null;
+  payments?: { data?: { payment?: { payment_intent?: string | { id: string } } }[] };
+  lines?: { data?: { period?: { end?: number } }[] };
+}
+
+function idOf(value: string | { id: string } | null | undefined): string | undefined {
+  if (!value) return undefined;
+  return typeof value === "string" ? value : value.id;
 }
 
 /** The period end of a Stripe subscription, across API shape changes. */

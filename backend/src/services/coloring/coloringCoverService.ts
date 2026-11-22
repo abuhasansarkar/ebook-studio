@@ -10,9 +10,12 @@ import {
 } from "@ebook/shared";
 import { prisma } from "../../database/prisma.js";
 import { env } from "../../config/env.js";
-import { notFound, serviceUnavailable } from "../../utils/errors.js";
+import { conflict, notFound, serviceUnavailable } from "../../utils/errors.js";
+import { logger } from "../../utils/logger.js";
 import { reserveInTransaction, settleInTransaction } from "../credits/creditService.js";
 import { getOwnedBook } from "../books/bookService.js";
+import { lockBook } from "../generation/jobRuntime.js";
+import { publicAssetSelect } from "./coloringAssets.js";
 import { sanitizeImage } from "../assets/assetService.js";
 import { storage } from "../storage/storage.js";
 
@@ -133,6 +136,9 @@ async function requestOpenAiCoverImage(prompt: string): Promise<Buffer> {
   throw new Error("Invalid or missing image returned from provider");
 }
 
+/** A cover reservation older than this, never settled, belongs to a request that died. */
+const COVER_STALE_MS = 10 * 60_000;
+
 export const coloringCoverService = {
   async getCoverDetails(userId: string, bookId: string) {
     const book = await getOwnedBook(userId, bookId);
@@ -148,17 +154,18 @@ export const coloringCoverService = {
     if (cover) {
       const coverData = cover.data as Record<string, unknown>;
       if (coverData?.artworkId && typeof coverData.artworkId === "string") {
-        coverArtworkAsset = await prisma.asset.findUnique({
-          where: { id: coverData.artworkId },
+        coverArtworkAsset = await prisma.asset.findFirst({
+          where: { id: coverData.artworkId, userId, status: "ready" },
+          select: publicAssetSelect,
         });
       }
     }
 
     const completedPages = await prisma.coloringPage.findMany({
-      where: { bookId, status: "completed", assetId: { not: null } },
+      where: { bookId, status: "completed", asset: { userId, status: "ready" } },
       orderBy: { pageNumber: "asc" },
       take: 4,
-      include: { asset: true },
+      select: { pageNumber: true, title: true, assetId: true },
     });
 
     const spine = calculateSpine(plan.pageCount, plan.singleSided);
@@ -173,7 +180,6 @@ export const coloringCoverService = {
         pageNumber: p.pageNumber,
         title: p.title,
         assetId: p.assetId,
-        storageKey: p.asset?.storageKey,
       })),
     };
   },
@@ -184,11 +190,30 @@ export const coloringCoverService = {
     if (!plan) throw notFound("Coloring book plan");
 
     const cost = COLORING_CREDIT_COSTS.cover; // 10 credits
-    const reference = `coloring-cover:${bookId}:${Date.now()}`;
+    const prefix = `coloring-cover:${bookId}:`;
 
-    // Reserve 10 credits atomically
-    await prisma.$transaction(async (tx) => {
-      await reserveInTransaction(tx, userId, cost, reference);
+    // Reserve under a stable, sequential reference (`coloring-cover:<book>:<attempt>`), with the
+    // book locked so concurrent requests serialize. An attempt still in flight refuses a second one,
+    // so a double click never charges twice and a stale reservation is identifiable by the sweeper.
+    const reference = await prisma.$transaction(async (tx) => {
+      await lockBook(tx, bookId, userId);
+      const reservations = await tx.creditTransaction.findMany({
+        where: { userId, type: "reserve", reference: { startsWith: prefix } },
+        select: { reference: true, amount: true, createdAt: true },
+      });
+      const settledKeys = new Set((await tx.creditTransaction.findMany({
+        where: { idempotencyKey: { in: reservations.map((r) => `settle:${r.reference}`) } },
+        select: { idempotencyKey: true },
+      })).map((r) => r.idempotencyKey));
+      for (const r of reservations) {
+        if (!r.reference || settledKeys.has(`settle:${r.reference}`)) continue;
+        // A request that died mid-generation: release its hold instead of blocking the author.
+        if (r.createdAt.getTime() < Date.now() - COVER_STALE_MS) await settleInTransaction(tx, userId, -r.amount, 0, r.reference);
+        else throw conflict("A cover is already being generated for this book.");
+      }
+      const next = `${prefix}${reservations.length + 1}`;
+      await reserveInTransaction(tx, userId, cost, next);
+      return next;
     });
 
     try {
@@ -266,13 +291,16 @@ export const coloringCoverService = {
 
       return result;
     } catch (err) {
-      await prisma.$transaction(async (tx) => {
-        try {
-          await settleInTransaction(tx, userId, cost, 0, reference);
-        } catch {
-          // ignore refund settle error
-        }
-      });
+      try {
+        await prisma.$transaction((tx) => settleInTransaction(tx, userId, cost, 0, reference));
+      } catch (refundError) {
+        // The reservation sweeper releases it later; never mask the original failure.
+        logger.error({ err: refundError, reference }, "Coloring cover refund deferred");
+      }
+      if (err instanceof Error && err.name !== "AppError") {
+        logger.error({ err, bookId }, "Coloring cover generation failed");
+        throw serviceUnavailable("Cover generation failed. Reserved credits were returned. Please try again.");
+      }
       throw err;
     }
   },

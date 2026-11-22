@@ -1,5 +1,6 @@
 import type { DocxExportOptions } from '@ebook/shared';
 import type { PMNode } from '../editor/markdownToTiptap.js';
+import { stripXmlIllegal } from './tiptapToHtml.js';
 import { buildZip } from './zip.js';
 import type { PinnedImage, RenderInput } from './renderTypes.js';
 
@@ -22,13 +23,12 @@ export interface DocxRenderResult {
 
 /** XML text escaping. */
 function xmlText(value: string): string {
-  return value
+  return stripXmlIllegal(value)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;')
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '');
+    .replace(/'/g, '&apos;');
 }
 
 /** Word requires the first character of a paragraph to be its literal text. */

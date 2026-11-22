@@ -146,12 +146,20 @@ export const chapterService = {
     });
   },
 
-  /** AI writing assistant: returns a suggestion only — the client decides to accept or reject. */
-  async assist(userId: string, input: { bookId: string; action: AssistAction; text: string; instruction?: string }, idempotencyKey?: string) {
+  /**
+   * AI writing assistant: returns a suggestion only — the client decides to accept or reject.
+   *
+   * Every call that reaches the AI is charged: the spend key is fresh per
+   * execution, never the client's request key (a replayed request key would
+   * otherwise make the spend a no-op while the AI still ran). Request-level
+   * idempotency — returning the stored suggestion for a retried request — is
+   * the caller's job (the controller records the call as an operation).
+   */
+  async assist(userId: string, input: { bookId: string; action: AssistAction; text: string; instruction?: string }) {
     const book = await getOwnedBook(userId, input.bookId);
     if (input.action === "custom" && !input.instruction?.trim()) throw badRequest("Please describe what you want the AI to do.");
 
-    const key = `assist:${userId}:${idempotencyKey || randomUUID()}`;
+    const key = `assist:${userId}:${randomUUID()}`;
     await creditService.spend(userId, CREDIT_COSTS.assist, key, `AI assist: ${input.action}`);
     try {
       const { text, usage } = await aiService.assist(input.action, input.text, book.language, input.instruction);

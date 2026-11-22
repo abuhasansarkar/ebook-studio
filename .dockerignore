@@ -1,12 +1,37 @@
+# Build context hygiene. Everything here stays out of `COPY backend backend`
+# and friends: secrets, runtime data, and anything only a developer needs.
+
 **/node_modules
 **/.next
 **/dist
 **/.env
 **/.env.*
 !.env.example
-backend/storage
-backend/src/generated
-e2e
-**/*.log
 .git
+.github
+**/*.log
+**/*.log.err
+**/*-dev.err
+**/.DS_Store
+**/coverage
+
+# Runtime data. backups/ holds plain-SQL dumps with password hashes and
+# sessions; storage*/ holds customer files. Neither may enter an image layer.
+backend/backups
+backend/storage
+backend/storage-*
+backend/e2e-exports-check.sql
+
+# Generated at build time inside the image.
+backend/src/generated
 backend/assets/fonts/fetched
+
+# Tests and their artefacts are not shipped.
+backend/tests
+e2e
+e2e-shots
+e2e-shots*
+playwright-report
+test-results
+.tmp-*
+fails.txt

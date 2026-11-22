@@ -8,7 +8,7 @@ import { badRequest, conflict, notFound, serviceUnavailable } from '../../utils/
 import { getBrief, getOwnedBook } from '../books/bookService.js';
 import { lockBook } from '../generation/jobRuntime.js';
 import { assetService, pinImages } from '../assets/assetService.js';
-import { getBrowser } from '../exports/pdfRenderer.js';
+import { withBrowserPage } from '../exports/pdfRenderer.js';
 import { escapeHtml } from '../exports/tiptapToHtml.js';
 
 const FONT_BASE_DIR = process.env.FONT_DIR
@@ -64,8 +64,8 @@ export const coverService = {
         artwork = images[saved.data.artworkId];
       }
       const html = await coverHtml(saved.data, artwork);
-      const page = await (await getBrowser()).newPage();
-      try {
+      // Shared render slots cap open tabs; page scripts stay disabled for user-supplied cover text.
+      return await withBrowserPage(async page => {
         await page.setViewport({ width: COVER_WIDTH, height: COVER_HEIGHT, deviceScaleFactor: 1 });
         await page.setRequestInterception(true);
         page.on('request', req => { void (req.url().startsWith('data:') ? req.continue() : req.abort()); });
@@ -81,7 +81,7 @@ export const coverService = {
         const info = await sharp(buffer).metadata();
         if (info.width !== COVER_WIDTH || info.height !== COVER_HEIGHT || info.format !== 'jpeg') throw new Error('Invalid cover output');
         return buffer;
-      } finally { await page.close(); }
+      });
     } finally { rendering--; }
   },
 };

@@ -25,17 +25,24 @@ export const bookService = {
     // allowed. The count excludes archived and deleted books, so archiving
     // frees a slot, and the check is on the server so a direct API call is
     // subject to it too.
-    const headroom = await entitlementHeadroom(userId, "maxBooks");
-    if (headroom !== null) {
-      const live = await prisma.book.count({ where: { userId, deletedAt: null, archivedAt: null } });
-      if (live >= headroom) {
-        throw forbidden(
-          `This plan includes ${headroom} ${headroom === 1 ? "book" : "books"}. Archive or delete a book, or upgrade your plan to add more.`,
-          { entitlement: "maxBooks", limit: headroom, used: live },
-        );
-      }
-    }
+    //
+    // The count and the insert happen in one transaction that holds the
+    // author's row lock, so two concurrent creates cannot both see the last
+    // free slot: the second waits, then counts the first one's book.
+    // (NO KEY UPDATE serializes creates without blocking unrelated inserts
+    // that only reference the user.)
     return prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM "user" WHERE id = ${userId} FOR NO KEY UPDATE`;
+      const headroom = await entitlementHeadroom(userId, "maxBooks", tx);
+      if (headroom !== null) {
+        const live = await tx.book.count({ where: { userId, deletedAt: null, archivedAt: null } });
+        if (live >= headroom) {
+          throw forbidden(
+            `This plan includes ${headroom} ${headroom === 1 ? "book" : "books"}. Archive or delete a book, or upgrade your plan to add more.`,
+            { entitlement: "maxBooks", limit: headroom, used: live },
+          );
+        }
+      }
       if (projectId) await lockProject(tx, userId, projectId, true);
       return tx.book.create({ data: { userId, projectId: projectId ?? null, title: brief.title || 'Untitled book', language: brief.language, bookType: brief.bookType, brief: { create: { data: brief } } } });
     });

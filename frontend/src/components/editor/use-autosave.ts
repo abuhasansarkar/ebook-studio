@@ -2,9 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { readDrafts, writeDraft, removeDraft, type DraftRecord } from "@/lib/draft-journal";
-import { api, ApiError } from "@/lib/api";
+import { api, errorMessage } from "@/lib/api";
+import { classifySaveError, retryDelayMs } from "@/lib/save-retry";
 
-export type SaveState = "saved" | "dirty" | "saving" | "error" | "conflict" | "offline";
+/**
+ * - `retrying`: a transient failure (network, timeout, 429, 5xx); autosave retries
+ *   on its own with exponential backoff, edits keep being journaled meanwhile.
+ * - `error`: a non-retryable failure; autosave is paused until the user retries.
+ * - `conflict`: the server copy changed elsewhere; the user must pick a version.
+ */
+export type SaveState = "saved" | "dirty" | "saving" | "retrying" | "error" | "conflict" | "offline";
 
 export interface ChapterPatch {
   title?: string;
@@ -32,6 +39,8 @@ export interface SavedChapter {
  * - Saves are serialized (never two PATCHes in flight for the same chapter).
  * - Every PATCH carries the last known server `version`; a 409 surfaces a conflict
  *   instead of silently overwriting changes from another tab or device.
+ * - Transient failures retry automatically (see lib/save-retry); only conflicts and
+ *   non-retryable 4xx responses pause autosave.
  */
 export function useAutosave(ownerId: string, chapterId: string, initialVersion: number, initialSavedAt: string, onSaved: (c: SavedChapter, saved: ChapterPatch) => void, delay = 1200) {
   const blocked = useRef(false);
@@ -65,10 +74,12 @@ export function useAutosave(ownerId: string, chapterId: string, initialVersion: 
   const versionRef = useRef(initialVersion);
   const pending = useRef<ChapterPatch | null>(null);
   const activePayload = useRef<ChapterPatch | null>(null);
-  const inFlight = useRef<Promise<void> | null>(null);
+  const inFlight = useRef<Promise<boolean> | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const attempts = useRef(0);
   const onSavedRef = useRef(onSaved);
-  const flushRef = useRef<() => Promise<void>>(async () => undefined);
+  const flushRef = useRef<() => Promise<boolean>>(async () => true);
   const [state, setState] = useState<SaveState>("saved");
   const [lastSavedAt, setLastSavedAt] = useState<Date>(new Date(initialSavedAt));
   const [conflict, setConflict] = useState<ConflictInfo | null>(null);
@@ -78,16 +89,21 @@ export function useAutosave(ownerId: string, chapterId: string, initialVersion: 
     onSavedRef.current = onSaved;
   }, [onSaved]);
 
-  const flush = useCallback(async (): Promise<void> => {
+  /** Saves the pending patch now. Resolves `false` if the save did not succeed. */
+  const flush = useCallback(async (): Promise<boolean> => {
     if (timer.current) {
       clearTimeout(timer.current);
       timer.current = null;
     }
-    if (inFlight.current) { await inFlight.current; return; }
-    if (blocked.current) return;
+    if (retryTimer.current) {
+      clearTimeout(retryTimer.current);
+      retryTimer.current = null;
+    }
+    if (inFlight.current) return inFlight.current;
+    if (blocked.current) return false;
     const payload = pending.current;
-    if (!payload) return;
-    if (!navigator.onLine) { setState('offline'); return; }
+    if (!payload) return true;
+    if (!navigator.onLine) { setState('offline'); return false; }
     pending.current = null;
     activePayload.current = payload;
     setState("saving");
@@ -96,6 +112,7 @@ export function useAutosave(ownerId: string, chapterId: string, initialVersion: 
       .patch<{ chapter: SavedChapter }>(`/chapters/${chapterId}`, { ...payload, version: versionRef.current })
       .then(({ chapter }) => {
         versionRef.current = chapter.version;
+        attempts.current = 0;
         setLastSavedAt(new Date(chapter.updatedAt));
         setErrorMsg(null);
         setState(pending.current ? "dirty" : "saved");
@@ -106,31 +123,53 @@ export function useAutosave(ownerId: string, chapterId: string, initialVersion: 
           journalQueue.current = journalQueue.current.then(() => removeDraft(old.id, old.updatedAt)).catch(() => undefined);
         }
         onSavedRef.current(chapter, payload);
+        return true;
       })
       .catch((err: unknown) => {
         // Keep the unsaved changes; newer edits win over the failed payload.
         pending.current = { ...payload, ...pending.current };
-        if (err instanceof ApiError && err.status === 409 && err.details) {
+        const failure = classifySaveError(err);
+        const details = failure.kind === "conflict" ? (err as { details?: unknown }).details : undefined;
+        if (details) {
           blocked.current = true;
-          setConflict(err.details as ConflictInfo);
+          setConflict(details as ConflictInfo);
           setState("conflict");
+        } else if (failure.kind === "retry") {
+          attempts.current += 1;
+          setErrorMsg(errorMessage(err));
+          // A debounce set by edits typed during this save must not undercut the backoff.
+          if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+          if (!navigator.onLine) {
+            // The `online` listener resumes saving once the connection is back.
+            setState("offline");
+          } else {
+            setState("retrying");
+            if (mounted.current) {
+              retryTimer.current = setTimeout(() => {
+                retryTimer.current = null;
+                void flushRef.current();
+              }, retryDelayMs(attempts.current, failure.retryAfterMs));
+            }
+          }
         } else {
-          setErrorMsg(err instanceof Error ? err.message : "Save failed");
+          setErrorMsg(errorMessage(err));
           blocked.current = true;
-          setState(navigator.onLine ? "error" : "offline");
+          setState("error");
         }
         journal({ ...activePayload.current, ...pending.current }, versionRef.current);
+        return false;
       })
       .finally(() => {
         activePayload.current = null;
         inFlight.current = null;
       });
     inFlight.current = run;
-    await run;
+    const ok = await run;
     // Edits made while this save was in flight get their own save.
-    if (mounted.current && !blocked.current && pending.current && !timer.current) {
+    if (mounted.current && !blocked.current && pending.current && !timer.current && !retryTimer.current) {
       timer.current = setTimeout(() => void flushRef.current(), delay);
     }
+    return ok;
   }, [chapterId, delay, journal]);
 
   useEffect(() => {
@@ -142,6 +181,8 @@ export function useAutosave(ownerId: string, chapterId: string, initialVersion: 
       pending.current = { ...pending.current, ...patch };
       journal({ ...activePayload.current, ...pending.current }, versionRef.current);
       if (blocked.current) return;
+      // Waiting out a backoff: the scheduled retry will carry this edit too.
+      if (retryTimer.current) return;
       setState(navigator.onLine ? 'dirty' : 'offline');
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => void flush(), delay);
@@ -181,8 +222,24 @@ export function useAutosave(ownerId: string, chapterId: string, initialVersion: 
     return theirs;
   }, [conflict, journal]);
 
+  /**
+   * Saves until nothing is pending (edits typed while a save is in flight get
+   * their own save). Resolves `true` only when everything reached the server.
+   * Used before switching chapters inside the editor.
+   */
+  const flushAll = useCallback(async (): Promise<boolean> => {
+    for (let i = 0; i < 10; i += 1) {
+      if (!pending.current && !inFlight.current) return true;
+      if (!(await flushRef.current())) return false;
+    }
+    return !pending.current && !inFlight.current;
+  }, []);
+
   // Never start an untracked HTTP write during unmount. The journal survives navigation.
-  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+    if (retryTimer.current) clearTimeout(retryTimer.current);
+  }, []);
 
   const retry = useCallback(async () => {
     if (conflict) return;
@@ -219,14 +276,27 @@ export function useAutosave(ownerId: string, chapterId: string, initialVersion: 
       }
     };
     const navigation = (event: MouseEvent) => {
-      const target = event.target instanceof Element ? event.target.closest('a[href], [data-editor-navigation]') : null;
-      if (target && (pending.current || inFlight.current) && !window.confirm('This chapter has unsaved changes. Leave and recover the browser draft later? If browser recovery is unavailable, download a backup first.')) {
+      if (!(pending.current || inFlight.current) || !(event.target instanceof Element)) return;
+      const target = event.target.closest('a[href], [data-editor-navigation]');
+      if (!target || leavesNothing(target, event)) return;
+      if (window.confirm('This chapter has unsaved changes. Leave and recover the browser draft later? If browser recovery is unavailable, download a backup first.')) {
+        // Best effort: the journal still holds the draft if this save does not land.
+        void flushRef.current();
+      } else {
         event.preventDefault(); event.stopPropagation();
       }
     };
+    // Browser Back/Forward cannot be cancelled in the App Router; start the save
+    // so it usually lands, while the journal keeps the draft if it does not.
+    const popstate = () => { if (pending.current) void flushRef.current(); };
     window.addEventListener("beforeunload", handler);
+    window.addEventListener("popstate", popstate);
     document.addEventListener('click', navigation, true);
-    return () => { window.removeEventListener("beforeunload", handler); document.removeEventListener('click', navigation, true); };
+    return () => {
+      window.removeEventListener("beforeunload", handler);
+      window.removeEventListener("popstate", popstate);
+      document.removeEventListener('click', navigation, true);
+    };
   }, []);
 
   // History is opened only when saved, and editing stays paused until it closes.
@@ -238,5 +308,17 @@ export function useAutosave(ownerId: string, chapterId: string, initialVersion: 
     setErrorMsg(null);
   }, []);
 
-  return { ready, drafts, recover, discardDrafts, storageError, retry, state, lastSavedAt, conflict, errorMsg, schedule, flush, resolveKeepMine, resolveTakeTheirs, adoptRestored };
+  return { ready, drafts, recover, discardDrafts, storageError, retry, state, lastSavedAt, conflict, errorMsg, schedule, flush, flushAll, resolveKeepMine, resolveTakeTheirs, adoptRestored };
+}
+
+/** Clicks that do not leave the chapter: links inside the document being edited,
+ * new-tab/download links, modified clicks and same-page anchors. */
+function leavesNothing(target: Element, event: MouseEvent): boolean {
+  if (target.closest('.ProseMirror')) return true;
+  if (target instanceof HTMLAnchorElement) {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return true;
+    if (target.target === '_blank' || target.hasAttribute('download')) return true;
+    if (target.getAttribute('href')?.startsWith('#')) return true;
+  }
+  return false;
 }

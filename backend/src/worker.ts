@@ -11,8 +11,11 @@ import { prisma } from "./database/prisma.js";
 import { QUEUE_NAMES, closeQueues, startDispatcher, type ExportJobData, type GenerationJobData } from "./queues/index.js";
 import { generationService } from "./services/generation/generationService.js";
 import { outlineService } from "./services/outline/outlineService.js";
-import { exportService } from "./services/exports/exportService.js";
+import { exportService, reconcileExports } from "./services/exports/exportService.js";
+import { installProcessHandlers } from "./utils/processLifecycle.js";
+import { creditService } from "./services/credits/creditService.js";
 import { closeBrowser } from "./services/exports/pdfRenderer.js";
+import { coloringGenerationService } from "./services/coloring/coloringGenerationService.js";
 import { raiseIncident } from "./services/admin/operationsService.js";
 import { logger } from "./utils/logger.js";
 
@@ -41,6 +44,13 @@ const workers = [
     concurrency: 2,
     lockDuration: 180_000,
   }),
+  // One job per coloring page; the provider call can take up to 120s.
+  new Worker<GenerationJobData>(QUEUE_NAMES.coloring, (job) => { assertCompatible(job.data); return coloringGenerationService.process(job.data.generationJobId); }, {
+    connection: redisConnection(),
+    prefix: workerQueuePrefix,
+    concurrency: 2,
+    lockDuration: 180_000,
+  }),
 ];
 
 for (const w of workers) {
@@ -63,7 +73,7 @@ for (const w of workers) {
 }
 
 await Promise.all(workers.map((w) => w.waitUntilReady()));
-const stopHeartbeat = await startWorkerHeartbeat(["outline", "chapters", "exports", "images", "quality"]);
+const stopHeartbeat = await startWorkerHeartbeat(["outline", "chapters", "exports", "images", "quality", "coloring"]);
 const stopDispatcher = startDispatcher();
 const stopEmailDispatcher = startEmailDispatcher();
 let cleaningAssets = false;
@@ -73,18 +83,50 @@ const cleanupTimer = setInterval(() => {
   void cleanupAssets().catch(err => logger.error({ err }, 'Asset cleanup failed')).finally(() => { cleaningAssets = false; });
 }, 60000);
 cleanupTimer.unref();
+// Pages a dead worker or a previous release left generating are failed and their credits released.
+let recoveringColoring = false;
+const coloringRecoveryTimer = setInterval(() => {
+  if (recoveringColoring) return;
+  recoveringColoring = true;
+  void coloringGenerationService.recoverStale().catch(err => logger.error({ err }, 'Coloring recovery failed')).finally(() => { recoveringColoring = false; });
+}, 60000);
+coloringRecoveryTimer.unref();
+// Exports a dead worker left processing (lapsed lease) or queued without delivery are failed or re-dispatched.
+let reconcilingExports = false;
+const exportReconcileTimer = setInterval(() => {
+  if (reconcilingExports) return;
+  reconcilingExports = true;
+  void reconcileExports().catch(err => logger.error({ err }, 'Export reconciliation failed')).finally(() => { reconcilingExports = false; });
+}, 15_000);
+exportReconcileTimer.unref();
+// Credits held by synchronous requests (listing, marketing, covers) that crashed before settling are released.
+// Job-owned reservations (`job:<id>`) are never swept; their jobs settle them.
+let sweepingReservations = false;
+const reservationSweepTimer = setInterval(() => {
+  if (sweepingReservations) return;
+  sweepingReservations = true;
+  void creditService.sweepStaleReservations().catch(err => logger.error({ err }, 'Reservation sweep failed')).finally(() => { sweepingReservations = false; });
+}, 5 * 60_000);
+reservationSweepTimer.unref();
 
 logger.info({ mock: env.AI_MOCK }, "eBookStudio worker started");
 
-async function shutdown(signal: string) {
-  logger.info({ signal }, "Shutting down worker");
-  clearInterval(cleanupTimer);
-  stopDispatcher();
-  stopEmailDispatcher();
-  await stopHeartbeat().catch(() => undefined);
-  await Promise.allSettled(workers.map((w) => w.close()));
-  await Promise.allSettled([closeQueues(), closeBrowser(), prisma.$disconnect()]);
-  process.exit(0);
-}
-process.on("SIGTERM", () => void shutdown("SIGTERM"));
-process.on("SIGINT", () => void shutdown("SIGINT"));
+installProcessHandlers({
+  name: "worker",
+  deadlineMs: 25_000,
+  shutdown: async () => {
+    clearInterval(cleanupTimer);
+    clearInterval(coloringRecoveryTimer);
+    clearInterval(exportReconcileTimer);
+    clearInterval(reservationSweepTimer);
+    stopDispatcher();
+    stopEmailDispatcher();
+    await stopHeartbeat().catch(() => undefined);
+    // Long chapter jobs may not stop quickly; their leases expire and another worker resumes them.
+    await Promise.race([
+      Promise.allSettled(workers.map((w) => w.close())),
+      new Promise((resolve) => setTimeout(resolve, 20_000)),
+    ]);
+    await Promise.allSettled([closeQueues(), closeBrowser(), prisma.$disconnect()]);
+  },
+});

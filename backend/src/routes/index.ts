@@ -22,7 +22,7 @@ import { badRequest } from "../utils/errors.js";
 import { z } from "zod";
 import { Router } from "express";
 import { assistSchema, bookBriefSchema, chapterOrderSchema, createBookSchema, outlineSchema, updateChapterSchema } from "@ebook/shared";
-import { accountController, createProjectSchema } from "../controllers/accountController.js";
+import { accountController, createProjectSchema, deleteAccountSchema } from "../controllers/accountController.js";
 import { bookController } from "../controllers/bookController.js";
 import { chapterController } from "../controllers/chapterController.js";
 import { createExportSchema, exportController } from "../controllers/exportController.js";
@@ -66,6 +66,7 @@ apiRouter.get("/books/:bookId/operations", async (req, res) => {
 });
 
 apiRouter.get("/users/me", accountController.me);
+apiRouter.delete("/users/me", validateBody(deleteAccountSchema), accountController.deleteMe);
 apiRouter.get("/users/me/dashboard", bookController.dashboard);
 apiRouter.get("/credits", accountController.credits);
 apiRouter.get("/credits/transactions", accountController.creditHistory);

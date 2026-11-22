@@ -183,15 +183,35 @@ try {
 
   // ---- Role management ---------------------------------------------------
   await makeAdministrator(email);
-  await page.goto(`${BASE}/app/admin`, { waitUntil: "networkidle0" });
-  await clickButton(page, "Roles");
-  await page.waitForSelector('[data-testid="role-user-search"]');
-  await page.type('[data-testid="role-user-search"]', email);
-  await clickButton(page, "Search");
-  await page.waitForSelector('ul[aria-label="Matching customers"] button', { timeout: 20_000 });
-  await page.click('ul[aria-label="Matching customers"] button');
-  await page.waitForSelector('[data-testid="role-target"]');
-  await page.select('[data-testid="role-select"]', "finance");
+  // A second account to grant a role to: operators cannot grant roles to themselves.
+  const colleague = `e2e-colleague-${Date.now()}@example.com`;
+  const signUp = await fetch(`${BASE}/api/v1/auth/sign-up/email`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: BASE },
+    body: JSON.stringify({ email: colleague, password: "password123", name: "Colleague" }),
+  });
+  if (!signUp.ok) throw new Error(`Could not create the colleague account (${signUp.status})`);
+
+  const pickCustomer = async (target: string) => {
+    await page.goto(`${BASE}/app/admin`, { waitUntil: "networkidle0" });
+    await clickButton(page, "Roles");
+    await page.waitForSelector('[data-testid="role-user-search"]');
+    await page.type('[data-testid="role-user-search"]', target);
+    await clickButton(page, "Search");
+    await page.waitForSelector('ul[aria-label="Matching customers"] button', { timeout: 20_000 });
+    await page.click('ul[aria-label="Matching customers"] button');
+    await page.waitForSelector('[data-testid="role-target"]');
+    await page.select('[data-testid="role-select"]', "finance");
+  };
+
+  // Granting a role to one's own account is refused and recorded.
+  await pickCustomer(email);
+  await page.type('[data-testid="role-reason"]', "Trying to grant myself finance.");
+  await page.click('[data-testid="grant-role"]');
+  await waitText(page, "You cannot perform this action on your own account");
+  log("an operator cannot grant a role to their own account");
+
+  await pickCustomer(colleague);
   const grantDisabled = await page.$eval('[data-testid="grant-role"]', (el) => (el as HTMLButtonElement).disabled);
   if (!grantDisabled) throw new Error("Grant was available without a reason");
   await page.type('[data-testid="role-reason"]', "Covering month-end refunds this week.");

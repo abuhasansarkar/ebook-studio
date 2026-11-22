@@ -261,14 +261,20 @@ describe('source PDF extraction', () => {
     const pdf = await buildPdf(['Batch cooking saves time on busy weeknights.', 'Freezing keeps food safe.']);
     const res = await upload(a.agent, a.url, pdf, 'application/pdf', { title: 'Research PDF', format: 'pdf' });
     expect(res.status).toBe(201);
-    // A PDF with a text layer extracts; a PDF without one is reported as a scan.
-    expect(['ready', 'scanned']).toContain(res.body.source.status);
-    if (res.body.source.status === 'ready') {
-      expect(res.body.version.passageCount).toBeGreaterThan(0);
-    } else {
-      // A scanned document is described, not silently imported as empty.
-      expect(res.body.source.error).toBeTruthy();
-      expect(res.body.version.warnings[0].code).toBe('pdf.no_text_layer');
-    }
+    // A PDF with a text layer must extract; only a PDF without one is a scan.
+    expect(res.body.source.status).toBe('ready');
+    expect(res.body.version.passageCount).toBeGreaterThan(0);
+  });
+
+  it('describes a PDF without a text layer as a scan', async () => {
+    const a = await setup('pdf-scan');
+    const pdf = await PDFDocument.create();
+    pdf.addPage([595, 842]).drawRectangle({ x: 20, y: 20, width: 200, height: 200 });
+    const res = await upload(a.agent, a.url, Buffer.from(await pdf.save()), 'application/pdf', { title: 'Scanned PDF', format: 'pdf' });
+    expect(res.status).toBe(201);
+    expect(res.body.source.status).toBe('scanned');
+    // A scanned document is described, not silently imported as empty.
+    expect(res.body.source.error).toBeTruthy();
+    expect(res.body.version.warnings[0].code).toBe('pdf.no_text_layer');
   });
 });

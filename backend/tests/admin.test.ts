@@ -334,6 +334,39 @@ describe("S13 administration", () => {
       expect(after?.balance).toBe(before);
     });
 
+    it("refuses an operator adjusting their own credits, and audits the attempt", async () => {
+      const before = (await prisma.creditWallet.findUnique({ where: { userId: finance.user.id } }))?.balance ?? 0;
+      const res = await finance.agent.post("/api/v1/admin/credits/adjust").send({
+        userId: finance.user.id,
+        credits: 10_000,
+        reason: "Topping up my own wallet should need a second person.",
+      });
+      expect(res.status).toBe(403);
+      expect((await prisma.creditWallet.findUnique({ where: { userId: finance.user.id } }))?.balance ?? 0).toBe(before);
+      const audit = await prisma.adminAuditEntry.findFirst({ where: { actorId: finance.user.id, action: "credits.adjust", outcome: "refused" } });
+      expect(audit?.targetId).toBe(finance.user.id);
+    });
+
+    it("refuses an administrator granting themselves a role", async () => {
+      const res = await administrator.agent.post("/api/v1/admin/roles/grant").send({
+        userId: administrator.user.id,
+        role: "finance",
+        reason: "Granting myself another role should need a second person.",
+      });
+      expect(res.status).toBe(403);
+      expect(await prisma.adminRole.findUnique({ where: { userId_role: { userId: administrator.user.id, role: "finance" } } })).toBeNull();
+    });
+
+    it("refuses an operator refunding their own payment", async () => {
+      const payment = await settledPayment(finance.user.id, "self-refund");
+      const res = await finance.agent.post("/api/v1/admin/payments/refund").send({
+        paymentId: payment.id,
+        reason: "Refunding my own payment should need a second person.",
+      });
+      expect(res.status).toBe(403);
+      expect((await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } })).status).toBe("succeeded");
+    });
+
     it("refuses an adjustment of zero", async () => {
       const res = await finance.agent.post("/api/v1/admin/credits/adjust").send({
         userId: customer.user.id,

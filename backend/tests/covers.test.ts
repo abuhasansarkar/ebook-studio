@@ -12,6 +12,7 @@ import { imageProvider } from '../src/services/covers/imageProvider.js';
 import { assetService, sanitizeImage } from '../src/services/assets/assetService.js';
 import { storage } from '../src/services/storage/storage.js';
 import { closeBrowser } from '../src/services/exports/pdfRenderer.js';
+import { logger } from '../src/utils/logger.js';
 import { createUser, brief, ORIGIN } from './helpers.js';
 const input = () => ({ purpose: 'cover' as const, aspect: 'portrait' as const, prompt: 'A peaceful illustrated mountain landscape', expectedCredits: env.IMAGE_GENERATION_CREDITS });
 const png = () => sharp({ create: { width: 128, height: 192, channels: 3, background: '#335577' } }).png().toBuffer();
@@ -97,8 +98,18 @@ describe('cover studio and image generation', () => {
     const original = await prisma.generationJob.findUniqueOrThrow({ where: { id: first.id } });
     await coverService.save(a.user.id, a.book.id, 0, { ...defaultCover('Keep this cover'), artworkId: original.assetId });
     const next = await imageGenerationService.request(a.user.id, a.book.id, input());
-    const generate = vi.spyOn(imageProvider, 'generate').mockRejectedValueOnce(new Error('provider timeout'));
+    const providerError = Object.assign(new Error('provider timeout for key sk-proj-ABCDEFGHIJKLMNOP'), { status: 504, headers: { authorization: 'Bearer secret' } });
+    const generate = vi.spyOn(imageProvider, 'generate').mockRejectedValueOnce(providerError);
+    const logged = vi.spyOn(logger, 'error');
     await imageGenerationService.process(next.id); generate.mockRestore();
+    // The failure is logged, without provider headers or credentials.
+    const entry = logged.mock.calls.find(([, message]) => message === 'Image generation failed');
+    logged.mockRestore();
+    expect(entry).toBeTruthy();
+    const fields = entry![0] as unknown as { err: Record<string, unknown>; jobId: string };
+    expect(fields.jobId).toBe(next.id);
+    expect(fields.err).toMatchObject({ status: 504, message: 'provider timeout for key [redacted]' });
+    expect(JSON.stringify(fields)).not.toMatch(/Bearer|sk-proj/);
     expect((await prisma.generationJob.findUniqueOrThrow({ where: { id: next.id } })).status).toBe('failed');
     expect((await coverService.get(a.user.id, a.book.id)).data.artworkId).toBe(original.assetId);
     expect((await prisma.creditWallet.findUniqueOrThrow({ where: { userId: a.user.id } })).reserved).toBe(0);

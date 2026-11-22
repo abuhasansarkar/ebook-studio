@@ -7,7 +7,7 @@ import {
 } from "@ebook/shared";
 import { prisma } from "../../database/prisma.js";
 import { storage } from "../storage/storage.js";
-import { getBrowser } from "../exports/pdfRenderer.js";
+import { withBrowserPage } from "../exports/pdfRenderer.js";
 import { getOwnedBook } from "../books/bookService.js";
 import { buildBookDocument } from "../design/bookDocument.js";
 import { designService } from "../design/designService.js";
@@ -84,8 +84,8 @@ export async function renderGraphic(
   coverDataUrl?: string,
 ): Promise<Buffer> {
   const html = graphicHtml(graphic, coverDataUrl);
-  const page = await (await getBrowser()).newPage();
-  try {
+  // Shared render slots cap open tabs; page scripts stay disabled for user-supplied copy.
+  return withBrowserPage(async (page) => {
     await page.setViewport({ width: graphic.width, height: graphic.height, deviceScaleFactor: 1 });
     await page.setRequestInterception(true);
     page.on("request", (req) => {
@@ -111,9 +111,7 @@ export async function renderGraphic(
       throw new Error("Invalid graphic output");
     }
     return buffer;
-  } finally {
-    await page.close();
-  }
+  });
 }
 
 /** The HTML a template renders from. */

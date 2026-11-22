@@ -8,7 +8,7 @@ import { AuthHeader, InboxHint, otpErrorMessage, safeNext } from "@/components/a
 import { OtpInput } from "@/components/auth/otp-input";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/misc";
-import { authClient } from "@/lib/auth-client";
+import { authClient, useSession } from "@/lib/auth-client";
 
 export function VerifyEmailForm() {
   const router = useRouter();
@@ -23,6 +23,7 @@ export function VerifyEmailForm() {
   // A ref, not state: auto-submit on the sixth digit and a press of Enter can
   // land in the same tick, before a state update would be seen.
   const inFlight = useRef(false);
+  const { refetch: refetchSession } = useSession();
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -55,6 +56,9 @@ export function VerifyEmailForm() {
       return;
     }
     toast.success("Email verified — welcome to eBookStudio!");
+    // Verification signs the author in; load that session before entering the
+    // app so the shell never sees a stale "signed out" value.
+    await refetchSession();
     router.replace(next);
     router.refresh();
   };

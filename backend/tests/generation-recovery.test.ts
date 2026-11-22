@@ -8,6 +8,8 @@ import { generationService } from '../src/services/generation/generationService.
 import { claimJob, fence, finishJob, LeaseLost } from '../src/services/generation/jobRuntime.js';
 import { outlineService } from '../src/services/outline/outlineService.js';
 import { aiService } from '../src/services/ai/aiService.js';
+import { AiIncompleteError } from '../src/services/ai/openaiClient.js';
+import { creditService } from '../src/services/credits/creditService.js';
 import { createUser, brief, ORIGIN } from './helpers.js';
 
 async function prepared() {
@@ -150,5 +152,74 @@ describe('durable generation', () => {
     expect((await prisma.generationJob.findUniqueOrThrow({ where: { id: job.id } })).status).toBe('cancelled');
     expect(await prisma.generationSection.count({ where: { jobId: job.id } })).toBe(0);
     expect((await prisma.creditWallet.findUniqueOrThrow({ where: { userId: user.id } })).reserved).toBe(0);
+  });
+
+  it('never checkpoints a truncated provider response', async () => {
+    const { user, bookId } = await prepared();
+    const job = await generationService.start(user.id, bookId);
+    vi.spyOn(aiService, 'writeSection').mockRejectedValueOnce(new AiIncompleteError('gpt-test', 'incomplete', 'max_output_tokens'));
+    await generationService.process(job.id);
+    const finished = await prisma.generationJob.findUniqueOrThrow({ where: { id: job.id } });
+    expect(finished.status).toBe('failed');
+    expect(finished.creditsCharged).toBe(0);
+    expect(await prisma.generationSection.count({ where: { jobId: job.id } })).toBe(0);
+    expect((await prisma.creditWallet.findUniqueOrThrow({ where: { userId: user.id } })).reserved).toBe(0);
+  });
+});
+
+describe('retry inheritance', () => {
+  /** Starts a run, stores one written section for the first chapter, and fails the run. */
+  async function failedRun(user: { id: string }, bookId: string, text = 'Written before the failure') {
+    const job = await generationService.start(user.id, bookId);
+    const chapter = await prisma.chapter.findFirstOrThrow({ where: { bookId }, orderBy: { position: 'asc' } });
+    await prisma.generationSection.create({ data: { jobId: job.id, chapterId: chapter.id, kind: 'section', position: 0, text, model: 'mock' } });
+    const token = (await claimJob(job.id))!;
+    await prisma.$transaction(async tx => { await fence(tx, job.id, token, true); await finishJob(tx, job.id, 'failed', 'provider connection lost'); });
+    return { job, chapter };
+  }
+
+  it('reuses the failed run\'s sections but charges every committed chapter in full, exactly once', async () => {
+    const { user, bookId } = await prepared();
+    const before = await creditService.getWallet(user.id);
+    const { chapter } = await failedRun(user, bookId);
+    expect((await creditService.getWallet(user.id)).balance).toBe(before.balance);
+    const retry = await generationService.start(user.id, bookId);
+    expect(retry.creditsReserved).toBe(3 * chapterCredits(800));
+    const reused = await prisma.generationSection.findFirst({ where: { jobId: retry.id, chapterId: chapter.id, kind: 'section', position: 0 } });
+    expect(reused?.text).toBe('Written before the failure');
+    const calls = vi.spyOn(aiService, 'writeSection');
+    await generationService.process(retry.id);
+    // Three chapters with three topics each, one of which was inherited.
+    expect(calls).toHaveBeenCalledTimes(8);
+    const finished = await prisma.generationJob.findUniqueOrThrow({ where: { id: retry.id } });
+    expect(finished).toMatchObject({ status: 'completed', creditsCharged: 3 * chapterCredits(800) });
+    expect(await creditService.getWallet(user.id)).toMatchObject({ reserved: 0, balance: before.balance - 3 * chapterCredits(800) });
+  });
+
+  it('inherits only from the immediately preceding run, and only when it failed', async () => {
+    const { user, bookId } = await prepared();
+    await failedRun(user, bookId, 'Stale prose from an old failure');
+    // A newer run was cancelled after the failure: the old prose is not revived.
+    await generationService.start(user.id, bookId);
+    await generationService.cancel(user.id, bookId);
+    const third = await generationService.start(user.id, bookId);
+    expect(await prisma.generationSection.count({ where: { jobId: third.id } })).toBe(0);
+    await generationService.process(third.id);
+    const chapters = await prisma.chapter.findMany({ where: { bookId } });
+    expect(chapters.every(c => c.status === 'done')).toBe(true);
+    expect(JSON.stringify(chapters.map(c => c.contentJson))).not.toContain('Stale prose');
+  });
+
+  it('does not reuse prose for a chapter that changed after the failed run', async () => {
+    const { user, bookId } = await prepared();
+    const { chapter } = await failedRun(user, bookId, 'Prose for the old plan');
+    // The author retitles the chapter, which bumps its version.
+    await prisma.chapter.update({ where: { id: chapter.id }, data: { title: 'A different chapter', version: { increment: 1 } } });
+    const retry = await generationService.start(user.id, bookId);
+    expect(await prisma.generationSection.count({ where: { jobId: retry.id } })).toBe(0);
+    expect((retry as unknown as { inputSnapshot?: unknown }).inputSnapshot).toBeUndefined();
+    const stored = await prisma.generationJob.findUniqueOrThrow({ where: { id: retry.id } });
+    expect((stored.inputSnapshot as { inherited: string[] }).inherited).toEqual([]);
+    await generationService.cancel(user.id, bookId);
   });
 });

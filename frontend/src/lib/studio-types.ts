@@ -1,10 +1,12 @@
 import type {
   AdminPermission,
   AdminRole,
+  DestinationProfile as SharedDestinationProfile,
   DistributionDestination,
   DistributionMetadata,
   DistributionPackage,
   ListingFieldSpec,
+  ListingProfile,
   MarketingDraft,
   MarketingGraphic,
   MarketingGraphicTemplate,
@@ -40,14 +42,7 @@ export type {
 };
 
 /** The listing profile one destination publishes, as the API returns it. */
-export interface ListingDestinationProfile {
-  destination: DistributionDestination;
-  fields: ListingFieldSpec[];
-  royaltyRate: number;
-  royaltyNote: string;
-  source: string;
-  taxHandling: "excluded" | "included" | "varies";
-}
+export type ListingDestinationProfile = ListingProfile & { destination: DistributionDestination };
 
 export type MarketingFlag = import("@ebook/shared").MarketingFlag;
 export type MarketingDraftStatus = import("@ebook/shared").MarketingDraftStatus;
@@ -225,18 +220,8 @@ export interface RestoreRehearsal {
 
 // ---------- S14 distribution ----------
 
-/** A destination and the rules it applies. */
-export interface DestinationProfile {
-  destination: DistributionDestination;
-  required: ("pdf" | "epub" | "docx")[];
-  accepted: ("pdf" | "epub" | "docx")[];
-  cover: ("jpeg" | "png")[];
-  coverRequired: boolean;
-  maxFileBytes: number;
-  maxPackageBytes: number;
-  wantsMetadataFile: boolean;
-  wantsSource: boolean;
-}
+/** A destination and the rules it applies, as the API returns it. */
+export type DestinationProfile = SharedDestinationProfile & { destination: DistributionDestination };
 
 /** The author's publishing status for a destination. */
 export interface PublishingStatus {

@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { unsafeProductionSettings } from "../src/config/env.js";
+import { afterAll, describe, expect, it, vi } from "vitest";
+import express from "express";
+import request from "supertest";
+import { parseTrustProxy, unsafeProductionSettings } from "../src/config/env.js";
+import { CLIENT_IP_HEADER, clientIpHeader } from "../src/middleware/clientIp.js";
+import { betterAuthRateLimitStorage, RedisRateLimitStore } from "../src/middleware/redisRateLimitStore.js";
 import { buildZip, readZip, ZipError } from "../src/services/exports/zip.js";
 import { extractDocx } from "../src/services/sources/extractors.js";
 import { createBackup, deleteBackup } from "../src/services/admin/backupService.js";
@@ -10,6 +14,11 @@ import { ORIGIN, brief, createUser } from "./helpers.js";
  * failure that was reachable before the fix.
  */
 
+afterAll(async () => {
+  const { closeRuntimeRedis } = await import("../src/config/redis.js");
+  await closeRuntimeRedis();
+});
+
 const production = {
   NODE_ENV: "production" as const,
   PAYMENT_PROVIDER: "stripe" as const,
@@ -18,6 +27,10 @@ const production = {
   STRIPE_WEBHOOK_SECRET: "whsec_x",
   BETTER_AUTH_SECRET: "a-real-random-secret-value-0123456789",
   PAYMENT_WEBHOOK_SECRET: "another-real-random-secret-0123456789",
+  APP_URL: "https://books.example.org",
+  BETTER_AUTH_URL: "https://books.example.org",
+  SMTP_HOST: "smtp.example.org",
+  TRUST_PROXY: "1",
 };
 
 describe("production start-up refuses unsafe settings", () => {
@@ -45,6 +58,99 @@ describe("production start-up refuses unsafe settings", () => {
 
   it("does not apply outside production", () => {
     expect(unsafeProductionSettings({ ...production, NODE_ENV: "development", PAYMENT_PROVIDER: "local" })).toEqual([]);
+  });
+
+  it.each(["APP_URL", "BETTER_AUTH_URL", "SMTP_HOST", "PAYMENT_PROVIDER"] as const)("refuses to fall back to a default for %s", (name) => {
+    const problems = unsafeProductionSettings({ ...production, [name]: undefined });
+    expect(problems.join(" ")).toContain(name);
+  });
+
+  it("refuses TRUST_PROXY=true, which lets any client forge its address", () => {
+    expect(unsafeProductionSettings({ ...production, TRUST_PROXY: "true" }).join(" ")).toMatch(/TRUST_PROXY/);
+  });
+});
+
+describe("client address for rate limits", () => {
+  it("parses TRUST_PROXY into Express's trust proxy value", () => {
+    expect(parseTrustProxy("1")).toBe(1);
+    expect(parseTrustProxy("false")).toBe(false);
+    expect(parseTrustProxy("")).toBe(false);
+    expect(parseTrustProxy("true")).toBe(true);
+    expect(parseTrustProxy("loopback, 10.0.0.0/8")).toBe("loopback, 10.0.0.0/8");
+  });
+
+  const probe = (trust: boolean | number | string) => {
+    const app = express();
+    app.set("trust proxy", trust);
+    app.use(clientIpHeader);
+    app.get("/ip", (req, res) => { res.json({ ip: req.headers[CLIENT_IP_HEADER] }); });
+    return app;
+  };
+
+  it("ignores a forged X-Forwarded-For when no proxy is trusted", async () => {
+    const res = await request(probe(false)).get("/ip").set("X-Forwarded-For", "6.6.6.6").set(CLIENT_IP_HEADER, "7.7.7.7");
+    expect(res.body.ip).not.toBe("6.6.6.6");
+    expect(res.body.ip).not.toBe("7.7.7.7");
+    expect(res.body.ip).toMatch(/127\.0\.0\.1|::1/);
+  });
+
+  it("takes the address the one trusted proxy appended, not the one the client wrote", async () => {
+    // nginx appends the real peer to whatever the client sent.
+    const res = await request(probe(1)).get("/ip").set("X-Forwarded-For", "6.6.6.6, 203.0.113.9");
+    expect(res.body.ip).toBe("203.0.113.9");
+  });
+});
+
+describe("rate-limit counters are shared through Redis", () => {
+  it("counts hits across store instances, as separate API processes would", async () => {
+    const scope = `test-${Date.now()}`;
+    const a = new RedisRateLimitStore(scope);
+    const b = new RedisRateLimitStore(scope);
+    a.init({ windowMs: 60_000 } as never);
+    b.init({ windowMs: 60_000 } as never);
+    expect((await a.increment("203.0.113.9")).totalHits).toBe(1);
+    const second = await b.increment("203.0.113.9");
+    expect(second.totalHits).toBe(2);
+    expect(second.resetTime!.getTime()).toBeGreaterThan(Date.now());
+    await b.resetKey("203.0.113.9");
+    expect((await a.increment("203.0.113.9")).totalHits).toBe(1);
+  });
+
+  it("refuses Better Auth requests past the rule's maximum", async () => {
+    const key = `203.0.113.10|/sign-in/email|${Date.now()}`;
+    const rule = { window: 10, max: 3 };
+    for (let i = 0; i < 3; i++) expect((await betterAuthRateLimitStorage.consume(key, rule)).allowed).toBe(true);
+    const refused = await betterAuthRateLimitStorage.consume(key, rule);
+    expect(refused.allowed).toBe(false);
+    expect(refused.retryAfter).toBeGreaterThan(0);
+    expect(refused.retryAfter).toBeLessThanOrEqual(10);
+  });
+});
+
+describe("the local payment processor", () => {
+  it("is reachable without a session only while the build uses the local provider", async () => {
+    const { getApp } = await import("./helpers.js");
+    const res = await request(getApp()).get("/api/v1/local-provider/pay/anything");
+    // Answered by the local checkout itself (an unknown checkout), not by auth.
+    expect(res.status).not.toBe(401);
+  });
+
+  it("is not mounted when the build talks to Stripe", async () => {
+    const previous = process.env.PAYMENT_PROVIDER;
+    process.env.PAYMENT_PROVIDER = "stripe";
+    vi.resetModules();
+    try {
+      const { createApp } = await import("../src/app.js");
+      const res = await request(createApp()).get("/api/v1/local-provider/pay/anything");
+      // The path falls through to the authenticated API: nothing answers it
+      // without a session.
+      expect(res.status).toBe(401);
+      const { prisma } = await import("../src/database/prisma.js");
+      await prisma.$disconnect();
+    } finally {
+      process.env.PAYMENT_PROVIDER = previous;
+      vi.resetModules();
+    }
   });
 });
 

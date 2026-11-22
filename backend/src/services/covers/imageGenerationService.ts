@@ -12,6 +12,7 @@ import { assertRuntimeAvailable } from '../runtime/readiness.js';
 import { sanitizeImage } from '../assets/assetService.js';
 import { storage } from '../storage/storage.js';
 import { imageProvider, imageSnapshotSchema } from './imageProvider.js';
+import { logger } from '../../utils/logger.js';
 
 const publicSelect = { id: true, status: true, cancelRequested: true, assetId: true, error: true, creditsReserved: true, creditsCharged: true, createdAt: true, model: true } as const;
 export const imageGenerationService = {
@@ -93,8 +94,27 @@ export const imageGenerationService = {
       }, { timeout: 60000 });
     } catch (err) {
       if (err instanceof LeaseLost) return;
+      if (!(err instanceof GenerationCancelled)) logger.error({ err: safeError(err), jobId: id }, 'Image generation failed');
       try { await finishOwned(id, token, err instanceof GenerationCancelled ? 'cancelled' : 'failed', err instanceof GenerationCancelled ? undefined : 'Image generation failed. Reserved credits were returned. Previous artwork is unchanged.'); }
       catch (error) { if (!(error instanceof LeaseLost)) throw error; }
     } finally { stop(); }
   },
 };
+
+/**
+ * The parts of a failure that are safe to log. Provider SDK errors carry
+ * request/response metadata; only the name, a bounded message, the HTTP status,
+ * the error code and the provider request id are kept, never headers or bodies.
+ */
+export function safeError(err: unknown) {
+  const e = (err ?? {}) as { name?: unknown; message?: unknown; status?: unknown; code?: unknown; requestID?: unknown; stack?: unknown };
+  const text = (value: unknown, max: number) => (typeof value === 'string' ? value.slice(0, max) : undefined);
+  return {
+    name: text(e.name, 100) ?? 'Error',
+    message: (text(e.message, 500) ?? String(err).slice(0, 500)).replace(/\b(sk|rk)-[A-Za-z0-9_-]{8,}/g, '[redacted]'),
+    status: typeof e.status === 'number' ? e.status : undefined,
+    code: typeof e.code === 'string' || typeof e.code === 'number' ? e.code : undefined,
+    requestId: text(e.requestID, 200),
+    stack: text(e.stack, 2000)?.replace(/\b(sk|rk)-[A-Za-z0-9_-]{8,}/g, '[redacted]'),
+  };
+}

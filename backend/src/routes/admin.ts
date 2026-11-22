@@ -45,7 +45,7 @@ import {
   rehearseRestore,
 } from "../services/admin/backupService.js";
 import { prisma } from "../database/prisma.js";
-import { badRequest, notFound } from "../utils/errors.js";
+import { badRequest, forbidden, notFound } from "../utils/errors.js";
 import { env } from "../config/env.js";
 import { logger } from "../utils/logger.js";
 
@@ -74,6 +74,28 @@ async function withPermission(req: unknown, permission: AdminPermission): Promis
   const id = userId(req as never);
   await requirePermission(id, permission);
   return id;
+}
+
+/**
+ * Refuses a privileged action aimed at the operator's own account.
+ *
+ * Moving value or privilege to oneself must take a second person: a finance
+ * operator cannot top up their own wallet or refund their own payment, and an
+ * administrator cannot grant themselves another role. The refusal is audited
+ * so the attempt is visible.
+ */
+async function refuseSelf(req: { id?: unknown }, actorId: string, targetUserId: string, action: string) {
+  if (actorId !== targetUserId) return;
+  await recordAudit({
+    actorId,
+    action,
+    targetType: "user",
+    targetId: targetUserId,
+    reason: "Refused: an operator cannot perform this action on their own account.",
+    outcome: "refused",
+    requestId: String(req.id),
+  });
+  throw forbidden("You cannot perform this action on your own account. Ask another operator.");
 }
 
 // ---- The operator's own authority ----
@@ -237,6 +259,7 @@ adminRouter.post(
  */
 adminRouter.post("/admin/credits/adjust", validateBody(creditAdjustmentSchema), async (req, res) => {
   const id = await withPermission(req, "credits.adjust");
+  await refuseSelf(req, id, req.body.userId, "credits.adjust");
   res.json(
     await adjustCredits({
       actorId: id,
@@ -259,6 +282,7 @@ adminRouter.post("/admin/payments/refund", validateBody(refundSchema), async (re
   const id = await withPermission(req, "billing.refund");
   const payment = await prisma.payment.findUnique({ where: { id: req.body.paymentId } });
   if (!payment) throw notFound("Payment");
+  await refuseSelf(req, id, payment.userId, "billing.refund");
   if (payment.status === "refunded") {
     throw badRequest("That payment has already been refunded.");
   }
@@ -338,6 +362,7 @@ adminRouter.get("/admin/roles", async (req, res) => {
 
 adminRouter.post("/admin/roles/grant", validateBody(roleChangeSchema), async (req, res) => {
   const id = await withPermission(req, "roles.manage");
+  await refuseSelf(req, id, req.body.userId, "roles.grant");
   await grantRole(id, req.body.userId, req.body.role, req.body.reason, String(req.id));
   res.status(201).json({ ok: true });
 });

@@ -6,6 +6,8 @@ import { env, isProd } from "../../config/env.js";
 import { prisma } from "../../database/prisma.js";
 import { sendOtpEmail } from "../email/mailer.js";
 import { creditService } from "../credits/creditService.js";
+import { CLIENT_IP_HEADER } from "../../middleware/clientIp.js";
+import { betterAuthRateLimitStorage } from "../../middleware/redisRateLimitStore.js";
 
 const googleEnabled = Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
 
@@ -61,8 +63,17 @@ export const auth = betterAuth({
     },
   },
 
-  rateLimit: { enabled: isProd, window: 60, max: 30 },
-  advanced: { useSecureCookies: isProd },
+  // Counters are kept in Redis so all API processes share them (the default
+  // is per-process memory). Better Auth's built-in stricter rules for sign-in,
+  // sign-up and code requests still apply on top of the 30/min default.
+  rateLimit: { enabled: isProd, window: 60, max: 30, customStorage: betterAuthRateLimitStorage },
+  advanced: {
+    useSecureCookies: isProd,
+    // The client address comes from Express (`req.ip`, resolved with
+    // TRUST_PROXY) via a header the app overwrites on every request, never
+    // from a forwarded header a client could write. See middleware/clientIp.ts.
+    ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] },
+  },
 });
 
 export const authFeatures = { google: googleEnabled };

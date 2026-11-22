@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { Check, CloudOff, Loader2, AlertTriangle } from "lucide-react";
 import { timeAgo } from "@/lib/utils";
+import type { SaveState } from "./use-autosave";
 
-export type SaveState = "saved" | "dirty" | "saving" | "error" | "conflict" | "offline";
+export type { SaveState };
 
 /**
  * The editor's save status.
@@ -31,6 +32,7 @@ export function SaveIndicator({ state, lastSavedAt, error, onRetry }: { state: S
     state === "dirty" ? "Unsaved changes" :
     state === "conflict" ? "Edit conflict" :
     state === "offline" ? "Offline, changes pending" :
+    state === "retrying" ? "Save failed, retrying automatically" :
     state === "error" ? "Not saved" :
     `Saved ${timeAgo(lastSavedAt)}`;
 
@@ -39,11 +41,17 @@ export function SaveIndicator({ state, lastSavedAt, error, onRetry }: { state: S
       {state === "saving" && <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</>}
       {state === "dirty" && <>Unsaved changes</>}
       {state === "conflict" && <><AlertTriangle className="h-3.5 w-3.5 text-warning" /> Edit conflict</>}
+      {state === "retrying" && (
+        <span className="flex items-center gap-1.5" title={error ?? undefined}>
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-warning" /> Couldn’t save, retrying…
+          <button type="button" onClick={onRetry} className="cursor-pointer font-semibold underline">Retry now</button>
+        </span>
+      )}
       {(state === "error" || state === "offline") && (
-        <>
-          <CloudOff className="h-3.5 w-3.5 text-danger" /> {state === "offline" ? "Offline — changes pending" : "Not saved"}
+        <span className="flex items-center gap-1.5" title={error ?? undefined}>
+          <CloudOff className="h-3.5 w-3.5 text-danger" /> {state === "offline" ? "Offline — changes pending" : "Not saved, autosave paused"}
           <button type="button" onClick={onRetry} className="cursor-pointer font-semibold underline">Retry</button>
-        </>
+        </span>
       )}
       {state === "saved" && <><Check className="h-3.5 w-3.5 text-success" /> Saved {timeAgo(lastSavedAt)}</>}
     </span>

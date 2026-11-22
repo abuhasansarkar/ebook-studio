@@ -19,7 +19,7 @@ env:
 
 jobs:
   verify:
-    name: Typecheck, lint and unit tests
+    name: Typecheck, lint, schema drift and unit tests
     runs-on: ubuntu-latest
 
     services:
@@ -59,11 +59,42 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # The backup tests run pg_dump/psql against the PostgreSQL 17 service;
+      # the runner's default client is older and refuses to dump a newer server.
+      - name: Install the PostgreSQL 17 client tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq postgresql-client-17
+          pg_dump --version
+
+      # The CJK interior fonts are git-ignored and downloaded by hash. Without
+      # them the PDF tests fail, so they are fetched (and cached by manifest).
+      - name: Cache the fetched fonts
+        uses: actions/cache@v4
+        with:
+          path: backend/assets/fonts/fetched
+          key: fonts-${{ hashFiles('backend/assets/fonts/manifest.json') }}
+
+      - name: Fetch the bundled fonts
+        working-directory: backend
+        run: pnpm fonts:fetch
+
       - name: Apply migrations
         working-directory: backend
         env:
           DATABASE_URL: postgresql://ebook:ebook@localhost:5432/ebook_studio
         run: pnpm exec prisma migrate deploy
+
+      # Migrations are hand-written; this fails when schema.prisma and the
+      # migrated database disagree (a missing or wrong migration).
+      - name: Check the schema matches the migrations
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://ebook:ebook@localhost:5432/ebook_studio
+        run: pnpm exec prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
 
       - name: Typecheck
         run: pnpm typecheck
@@ -71,6 +102,8 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      # Includes the database-free tests/pure-*.test.ts files; the separate
+      # vitest.pure.config.ts exists for running those without services.
       - name: Backend tests
         working-directory: backend
         env:
@@ -81,11 +114,8 @@ jobs:
           NODE_ENV: test
           SMTP_HOST: localhost
           SMTP_PORT: 1025
+          BACKUP_DIR: ${{ runner.temp }}/backups
         run: pnpm test
-
-      - name: Pure unit tests
-        working-directory: backend
-        run: pnpm exec vitest run --config vitest.pure.config.ts
 
   build:
     name: Production builds
@@ -123,7 +153,6 @@ jobs:
     name: Browser journeys
     runs-on: ubuntu-latest
     needs: verify
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
 
     services:
       postgres:
@@ -147,8 +176,12 @@ jobs:
           --health-timeout 3s
           --health-retries 20
       mailpit:
-        image: axllent/mailpit:latest
+        image: axllent/mailpit:v1.34.0
         ports: ["1025:1025", "8025:8025"]
+
+    env:
+      # Every journey writes its screenshots here, so a failure uploads them.
+      SHOTS_DIR: ${{ github.workspace }}/e2e-shots
 
     steps:
       - uses: actions/checkout@v4
@@ -169,6 +202,12 @@ jobs:
         working-directory: e2e
         run: pnpm exec puppeteer browsers install chrome
 
+      - name: Cache the fetched fonts
+        uses: actions/cache@v4
+        with:
+          path: backend/assets/fonts/fetched
+          key: fonts-${{ hashFiles('backend/assets/fonts/manifest.json') }}
+
       - name: Fetch the bundled fonts
         working-directory: backend
         run: pnpm fonts:fetch
@@ -182,7 +221,7 @@ jobs:
       - name: Start the API and the worker
         run: |
           set -euo pipefail
-          mkdir -p .tmp-logs
+          mkdir -p .tmp-logs "$SHOTS_DIR"
           cd backend
           DATABASE_URL=postgresql://ebook:ebook@localhost:5432/ebook_studio_e2e \
           REDIS_URL=redis://localhost:6379 \
@@ -238,6 +277,34 @@ jobs:
           cat .tmp-logs/api.log .tmp-logs/worker.log .tmp-logs/frontend.log .tmp-logs/frontend-build.log || true
           exit 1
 
+      # The account journey signs in as an operator to reach the status panel.
+      # The operator is a normal verified account (sign-up + emailed code via
+      # Mailpit) that is then granted a role, the one step no screen offers.
+      - name: Create the operator account
+        env:
+          E2E_DATABASE_URL: postgresql://ebook:ebook@localhost:5432/ebook_studio_e2e
+        run: |
+          set -euo pipefail
+          email="e2e-operator-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}@example.com"
+          password="password123"
+          api=http://localhost:3100/api/v1/auth
+          curl -fsS -X POST "$api/sign-up/email" -H 'Content-Type: application/json' -H 'Origin: http://localhost:3100' \
+            -d "{\"email\":\"$email\",\"password\":\"$password\",\"name\":\"E2E Operator\"}" > /dev/null
+          otp=""
+          for i in $(seq 1 40); do
+            otp=$(curl -fsS --get --data-urlencode "query=to:$email" http://localhost:8025/api/v1/search \
+              | jq -r '.messages[0].Snippet // ""' | grep -oE '[0-9]{6}' | head -n1 || true)
+            [ -n "$otp" ] && break
+            sleep 0.5
+          done
+          [ -n "$otp" ] || { echo "no verification code arrived for the operator"; exit 1; }
+          curl -fsS -X POST "$api/email-otp/verify-email" -H 'Content-Type: application/json' -H 'Origin: http://localhost:3100' \
+            -d "{\"email\":\"$email\",\"otp\":\"$otp\"}" > /dev/null
+          psql "$E2E_DATABASE_URL" -v ON_ERROR_STOP=1 -c \
+            "INSERT INTO admin_roles (id, \"userId\", role, reason, \"grantedAt\") SELECT 'e2e-ci-operator', id, 'administrator', 'CI operator for the account journey.', now() FROM \"user\" WHERE email = '$email'"
+          echo "OPERATOR_EMAIL=$email" >> "$GITHUB_ENV"
+          echo "OPERATOR_PASSWORD=$password" >> "$GITHUB_ENV"
+
       - name: Run the browser journeys
         working-directory: e2e
         env:
@@ -257,8 +324,9 @@ jobs:
           pnpm run e2e:support
           pnpm run e2e:wiring
           pnpm run e2e:brief-roles
+          pnpm run e2e:account
 
-      - name: Upload the run logs on failure
+      - name: Upload the run logs and screenshots on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:

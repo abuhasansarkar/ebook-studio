@@ -175,9 +175,9 @@ async function runPgTool(
   tool: "pg_dump" | "psql",
   args: string[],
   options: { env?: NodeJS.ProcessEnv; containerPaths?: Record<string, string> } = {},
-): Promise<{ code: number; stdout: string; stderr: string }> {
+): Promise<{ code: number; stdout: string; stderr: string; mode: "host" | "container" }> {
   if (await commandExists(tool)) {
-    return run(tool, args, { env: options.env });
+    return { ...(await run(tool, args, { env: options.env })), mode: "host" };
   }
   if (await containerHasTools()) {
     // The container reads the dump from and writes it to its own filesystem.
@@ -191,7 +191,7 @@ async function runPgTool(
       }
       return arg;
     });
-    return run("docker", ["exec", "-e", `PGPASSWORD=${options.env?.PGPASSWORD ?? ""}`, "-i", PG_CONTAINER, tool, ...mapped]);
+    return { ...(await run("docker", ["exec", "-e", `PGPASSWORD=${options.env?.PGPASSWORD ?? ""}`, "-i", PG_CONTAINER, tool, ...mapped])), mode: "container" };
   }
   throw new Error(
     `${tool} is not available. Install the PostgreSQL client tools on the host, or set PG_CONTAINER to the container that has them.`,
@@ -211,6 +211,29 @@ async function run(command: string, args: string[], options: { env?: NodeJS.Proc
   });
 }
 
+/** Connection parameters libpq understands; Prisma-only ones (`schema`,
+ *  `connection_limit`, `pgbouncer`, ...) make pg_dump and psql refuse the URL. */
+const LIBPQ_PARAMS = new Set([
+  "sslmode", "sslrootcert", "sslcert", "sslkey", "sslpassword", "sslcrl", "sslnegotiation",
+  "connect_timeout", "application_name", "options", "target_session_attrs", "host", "port",
+]);
+
+/**
+ * How the PostgreSQL tools reach the database: the application's own
+ * DATABASE_URL (so a container that has the client tools uses the same host,
+ * TLS mode and credentials as the API), optionally pointed at another
+ * database. The password travels in PGPASSWORD, not on the command line.
+ */
+export function pgConnection(databaseUrl: string, database?: string) {
+  const url = new URL(databaseUrl);
+  const password = decodeURIComponent(url.password);
+  url.password = "";
+  if (database) url.pathname = `/${database}`;
+  for (const key of [...url.searchParams.keys()]) if (!LIBPQ_PARAMS.has(key)) url.searchParams.delete(key);
+  url.protocol = "postgresql:";
+  return { args: ["--dbname", url.toString()], env: password ? { PGPASSWORD: password } : undefined };
+}
+
 /**
  * Dumps the database.
  *
@@ -218,29 +241,26 @@ async function run(command: string, args: string[], options: { env?: NodeJS.Proc
  * restored with `psql` without any proprietary format.
  */
 async function dumpDatabase(target: string): Promise<void> {
-  const url = new URL(env.DATABASE_URL);
+  const connection = pgConnection(env.DATABASE_URL);
   const args = [
-    "--host", url.hostname,
-    "--port", url.port || "5432",
-    "--username", decodeURIComponent(url.username),
-    "--dbname", url.pathname.replace(/^\//, ""),
+    ...connection.args,
     "--no-owner",
     "--no-privileges",
     "--format", "plain",
     "--file", target,
   ];
-  const password = decodeURIComponent(url.password);
   const containerFile = `${CONTAINER_BACKUP_DIR}/${path.basename(target)}`;
   const result = await runPgTool("pg_dump", args, {
-    env: password ? { PGPASSWORD: password } : undefined,
+    env: connection.env,
     containerPaths: { [target]: containerFile },
   });
   if (result.code !== 0) {
     throw new Error(`pg_dump failed with code ${result.code}: ${result.stderr.trim() || result.stdout.trim()}`);
   }
   // When the dump ran inside the container, the file has to come back to the
-  // host before it can be checksummed or restored.
-  await copyOutOfContainer(target);
+  // host before it can be checksummed or restored. A host-side pg_dump (the
+  // Docker image ships one) already wrote it in place.
+  if (result.mode === "container") await copyOutOfContainer(target);
 }
 
 /**
@@ -418,18 +438,16 @@ export async function rehearseRestore(
   }
 
   const url = new URL(env.DATABASE_URL);
-  const adminUrl = new URL(url.toString());
-  adminUrl.pathname = "/postgres";
   const targetDatabase = options.targetDatabase ?? `${url.pathname.replace(/^\//, "")}_restore_${Date.now().toString(36)}`;
-
-  const password = decodeURIComponent(url.password);
-  const psqlEnv = password ? { PGPASSWORD: password } : undefined;
+  const maintenance = pgConnection(env.DATABASE_URL, "postgres");
+  const rehearsal = pgConnection(env.DATABASE_URL, targetDatabase);
+  const psqlEnv = maintenance.env;
 
   // The rehearsal database is created and dropped through `psql`, because
   // `CREATE DATABASE` cannot run inside a transaction.
   const created = await runPgTool(
     "psql",
-    ["--host", url.hostname, "--port", url.port || "5432", "--username", decodeURIComponent(url.username), "--dbname", "postgres", "-c", `CREATE DATABASE "${targetDatabase}"`],
+    [...maintenance.args, "-c", `CREATE DATABASE "${targetDatabase}"`],
     { env: psqlEnv },
   );
   if (created.code !== 0) {
@@ -444,7 +462,7 @@ export async function rehearseRestore(
 
     const restored = await runPgTool(
       "psql",
-      ["--host", url.hostname, "--port", url.port || "5432", "--username", decodeURIComponent(url.username), "--dbname", targetDatabase, "-v", "ON_ERROR_STOP=1", "-f", databaseFile],
+      [...rehearsal.args, "-v", "ON_ERROR_STOP=1", "-f", databaseFile],
       { env: psqlEnv, containerPaths: { [databaseFile]: `${CONTAINER_BACKUP_DIR}/${path.basename(databaseFile)}` } },
     );
     if (restored.code !== 0) {
@@ -460,7 +478,7 @@ export async function rehearseRestore(
     const verify = await runPgTool(
       "psql",
       [
-        "--host", url.hostname, "--port", url.port || "5432", "--username", decodeURIComponent(url.username), "--dbname", targetDatabase,
+        ...rehearsal.args,
         "-t", "-A", "-c",
         "SELECT (SELECT count(*) FROM \"user\") || ',' || (SELECT count(*) FROM books) || ',' || (SELECT count(*) FROM chapters) || ',' || (SELECT count(*) FROM generation_jobs)",
       ],
@@ -489,7 +507,7 @@ export async function rehearseRestore(
     if (!options.keepDatabase) {
       await runPgTool(
         "psql",
-        ["--host", url.hostname, "--port", url.port || "5432", "--username", decodeURIComponent(url.username), "--dbname", "postgres", "-c", `DROP DATABASE IF EXISTS "${targetDatabase}" WITH (FORCE)`],
+        [...maintenance.args, "-c", `DROP DATABASE IF EXISTS "${targetDatabase}" WITH (FORCE)`],
         { env: psqlEnv },
       ).catch((err) => logger.warn({ err }, "Could not drop the rehearsal database"));
     }

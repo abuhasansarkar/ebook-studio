@@ -1,5 +1,7 @@
 import { defineConfig } from "vitest/config";
 import { config } from "dotenv";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 const base = config({ path: "../.env", quiet: true }).parsed ?? {};
 const dbUrl = process.env.TEST_DATABASE_URL ?? (base.DATABASE_URL ?? "postgresql://ebook:ebook@localhost:5432/ebook_studio").replace(/\/[^/?]+(\?|$)/, "/ebook_studio_test$1");
@@ -32,9 +34,15 @@ export default defineConfig({
       // value; the same code path runs in production with a real one.
       ALERT_DESTINATION: process.env.TEST_ALERT_DESTINATION ?? "ops-alerts@test.dev",
       STRIPE_SECRET_KEY: "sk_test_00000000000000000000000000000000",
+      // Backups are full database dumps: tests never write them into the
+      // repository's backend/backups (backup.test.ts uses its own temp dir).
+      BACKUP_DIR: path.join(tmpdir(), "ebook-studio-test-backups"),
+      // Tests connect directly; no proxy may vouch for a client address.
+      TRUST_PROXY: "loopback",
     },
     globalSetup: "tests/global-setup.ts",
-    fileParallelism: false,    testTimeout: 60_000,
+    fileParallelism: false,
+    testTimeout: 60_000,
     hookTimeout: 60_000,
   },
 });

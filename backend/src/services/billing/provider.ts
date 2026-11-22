@@ -34,6 +34,15 @@ export interface CheckoutRequest {
   returnUrl: string;
   /** The idempotency key for this checkout. */
   idempotencyKey: string;
+  /**
+   * Whether the plan renews. A recurring plan opens a real subscription at the
+   * provider; a one-time plan (a credit pack) takes a single payment.
+   */
+  recurring?: boolean;
+  /** The billing interval of a recurring plan. */
+  interval?: "month" | "year";
+  /** The provider's price for a recurring plan. Required by providers that bill subscriptions. */
+  providerPriceId?: string | null;
 }
 
 /** What the provider gives back when a checkout is created. */
@@ -87,6 +96,22 @@ export interface ProviderEvent {
   subscriptionStatus?: string;
   /** When the current period ends. */
   currentPeriodEnd?: Date | null;
+  /** The provider's identifier for the invoice, for subscription invoice events. */
+  providerInvoiceId?: string;
+  /** Why the invoice was raised: `subscription_create` for the first period, `subscription_cycle` for a renewal. */
+  billingReason?: string;
+  /**
+   * The total amount of the charge, for refund and dispute events, so a
+   * partial refund can be measured against what was actually charged.
+   * (`amountMinor` is the amount refunded or disputed.)
+   */
+  totalAmountMinor?: number;
+  /** The provider's identifier for a dispute. */
+  providerDisputeId?: string;
+  /** The dispute's state: `won`, `lost`, or an open state. */
+  disputeStatus?: string;
+  /** Whether the subscription is set to end at the end of its period. */
+  cancelAtPeriodEnd?: boolean;
 }
 
 /** The provider interface the product depends on. */
@@ -107,8 +132,10 @@ export interface PaymentProvider {
   fetchCheckoutSession?(providerCheckoutId: string): Promise<{
     status: string | null;
     paymentStatus: string;
+    mode?: string;
     paymentIntentId?: string;
     subscriptionId?: string;
+    invoiceId?: string;
     amountTotal?: number | null;
     currency?: string | null;
   } | null>;
@@ -121,6 +148,15 @@ export interface PaymentProvider {
    * rather than being credited to a guess.
    */
   resolveCheckoutSession?(providerPaymentId: string): Promise<string | undefined>;
+  /**
+   * Stops a subscription at the provider, so it is not billed again.
+   *
+   * `atPeriodEnd` lets the paid period run out; otherwise it ends now (a
+   * refund). Cancelling a subscription that has already ended is not an error.
+   */
+  cancelSubscription?(providerSubscriptionId: string, options: { atPeriodEnd: boolean }): Promise<void>;
+  /** The payment an invoice was paid with, when the invoice event did not name it. */
+  paymentIntentForInvoice?(providerInvoiceId: string): Promise<string | undefined>;
 }
 
 /**
@@ -169,6 +205,10 @@ export class LocalProvider implements PaymentProvider {
     return null;
   }
 
+  async cancelSubscription(_providerSubscriptionId: string, _options: { atPeriodEnd: boolean }): Promise<void> {
+    // The local provider bills nothing on its own, so there is nothing to stop.
+  }
+
   /** Builds the webhook body this provider would send for an event. */
   static buildEvent(event: ProviderEvent): { body: string; signature: string; timestamp: number } {
     const body = JSON.stringify({
@@ -185,6 +225,12 @@ export class LocalProvider implements PaymentProvider {
       credits: event.credits,
       subscription_status: event.subscriptionStatus,
       current_period_end: event.currentPeriodEnd ? event.currentPeriodEnd.getTime() : null,
+      provider_invoice_id: event.providerInvoiceId,
+      billing_reason: event.billingReason,
+      total_amount_minor: event.totalAmountMinor,
+      provider_dispute_id: event.providerDisputeId,
+      dispute_status: event.disputeStatus,
+      cancel_at_period_end: event.cancelAtPeriodEnd,
     });
     const timestamp = Math.floor(Date.now() / 1000);
     return { body, signature: signWebhook(body, env.PAYMENT_WEBHOOK_SECRET, timestamp), timestamp };
@@ -217,6 +263,12 @@ function parseEvent(rawBody: string): ProviderEvent | null {
     credits: typeof body.credits === "number" ? body.credits : undefined,
     subscriptionStatus: typeof body.subscription_status === "string" ? body.subscription_status : undefined,
     currentPeriodEnd: typeof body.current_period_end === "number" ? new Date(body.current_period_end) : null,
+    providerInvoiceId: typeof body.provider_invoice_id === "string" ? body.provider_invoice_id : undefined,
+    billingReason: typeof body.billing_reason === "string" ? body.billing_reason : undefined,
+    totalAmountMinor: typeof body.total_amount_minor === "number" ? body.total_amount_minor : undefined,
+    providerDisputeId: typeof body.provider_dispute_id === "string" ? body.provider_dispute_id : undefined,
+    disputeStatus: typeof body.dispute_status === "string" ? body.dispute_status : undefined,
+    cancelAtPeriodEnd: typeof body.cancel_at_period_end === "boolean" ? body.cancel_at_period_end : undefined,
   };
 }
 

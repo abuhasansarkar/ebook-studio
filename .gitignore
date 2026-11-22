@@ -28,3 +28,6 @@ backend/e2e-exports-check.sql
 
 # Backup and restore rehearsals (runtime only, never committed)
 backend/backups
+
+# Local test-run output dumps
+fails.txt

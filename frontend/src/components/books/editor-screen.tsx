@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { use, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { AlertTriangle, ChevronDown, ChevronUp, CheckCircle2, Circle, FileDown, Wand2 } from "lucide-react";
 import { getLanguage } from "@ebook/shared";
-import { ChapterEditor } from "@/components/editor/chapter-editor";
+import { ChapterEditor, type LeaveGuard } from "@/components/editor/chapter-editor";
 import { buttonVariants } from "@/components/ui/button";
 import { Alert, EmptyState, ErrorState, PageLoader, Spinner } from "@/components/ui/misc";
 import { useSession } from "@/lib/auth-client";
@@ -43,6 +43,22 @@ export function EditorScreen({ params }: { params: Promise<{ bookId: string }> }
   const findingId = search.get("finding");
   const language = book.data?.language ?? "en";
   useBookFont(language);
+
+  // Switching chapters saves the open one first; a confirm appears only when that save fails.
+  const leaveGuard = useRef<LeaveGuard | null>(null);
+  const onLeaveGuardChange = useCallback((guard: LeaveGuard | null) => { leaveGuard.current = guard; }, []);
+  const [switching, setSwitching] = useState(false);
+  const openChapter = async (id: string) => {
+    if (switching) return;
+    const guard = leaveGuard.current;
+    if (guard) {
+      setSwitching(true);
+      let saved = false;
+      try { saved = await guard(); } finally { setSwitching(false); }
+      if (!saved && !window.confirm("This chapter could not be saved. Switch anyway and recover the browser draft later? If browser recovery is unavailable, download a backup first.")) return;
+    }
+    setSelectedId(id);
+  };
 
   // Default to the first chapter that has content.
   const selectedId = pickedId ?? (chapters.data?.find((c) => c.status === "done") ?? chapters.data?.[0])?.id ?? null;
@@ -100,9 +116,9 @@ export function EditorScreen({ params }: { params: Promise<{ bookId: string }> }
               <div key={c.id} className="group flex min-w-48 items-stretch gap-0.5 lg:min-w-0">
               <button
                 type="button"
-                data-editor-navigation="true"
-                onClick={() => setSelectedId(c.id)}
+                onClick={() => { if (!active) void openChapter(c.id); }}
                 aria-current={active ? "true" : undefined}
+                aria-busy={switching || undefined}
                 className={cn("flex min-w-0 flex-1 cursor-pointer items-start gap-2.5 rounded-xl px-3 py-2.5 text-start text-sm", active ? "bg-primary-soft" : "hover:bg-muted")}
               >
                 {c.status === "done" ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" /> : c.status === "generating" ? <Spinner className="mt-0.5 h-4 w-4 shrink-0" /> : c.status === "failed" ? <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" /> : <Circle className="mt-0.5 h-4 w-4 shrink-0 text-border" />}
@@ -140,7 +156,7 @@ export function EditorScreen({ params }: { params: Promise<{ bookId: string }> }
         ) : chapter.data.status === "generating" ? (
           <div className="p-8"><EmptyState icon={<Spinner className="h-6 w-6" />} title="This chapter is being written" description="It will open for editing as soon as the AI finishes." /></div>
         ) : (
-          <ChapterEditor key={`${session?.user.id}:${chapter.data.id}`} ownerId={session?.user.id ?? ""} chapter={chapter.data} bookId={bookId} language={language} findingId={chapter.data.id === search.get("chapter") ? findingId : null} />
+          <ChapterEditor key={`${session?.user.id}:${chapter.data.id}`} ownerId={session?.user.id ?? ""} chapter={chapter.data} bookId={bookId} language={language} findingId={chapter.data.id === search.get("chapter") ? findingId : null} onLeaveGuardChange={onLeaveGuardChange} />
         )}
       </section>
     </div>

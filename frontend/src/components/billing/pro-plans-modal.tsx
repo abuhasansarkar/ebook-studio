@@ -2,12 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Sparkles, X, ShieldCheck, Zap } from "lucide-react";
-import { type Plan } from "@ebook/shared";
-import { Badge } from "@/components/ui/misc";
+import { Check, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useCheckoutRedirect } from "@/components/billing/use-checkout-redirect";
 import { errorMessage } from "@/lib/api";
-import { usePlans, useStartCheckout } from "@/lib/queries";
+import { usePlans } from "@/lib/queries";
 import { cn, formatNumber } from "@/lib/utils";
 
 interface ProPlansModalProps {
@@ -34,7 +33,7 @@ export function ProPlansModal({
 }: ProPlansModalProps) {
   const router = useRouter();
   const plansQuery = usePlans();
-  const checkout = useStartCheckout();
+  const checkout = useCheckoutRedirect();
   const [annual, setAnnual] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -59,19 +58,7 @@ export function ProPlansModal({
 
   const handleSelectPlan = (planId: string) => {
     setError(null);
-    checkout.mutate(planId, {
-      onSuccess: (result) => {
-        const url = result.checkout.url;
-        if (url) {
-          if (url.startsWith("http://") || url.startsWith("https://")) {
-            window.location.href = url;
-          } else {
-            router.push(url);
-          }
-        }
-      },
-      onError: (err) => setError(errorMessage(err)),
-    });
+    checkout.start(planId, { onError: (err) => setError(errorMessage(err)) });
   };
 
   return (
@@ -154,7 +141,7 @@ export function ProPlansModal({
             const isPopular = plan.id.startsWith("author");
             const isYearly = plan.interval === "year" || plan.id.endsWith("-yearly");
             const monthlyPrice = isYearly ? Math.round(plan.priceMinor / 12) : plan.priceMinor;
-            const isPending = checkout.isPending && checkout.variables === plan.id;
+            const isPending = checkout.pendingPlanId === plan.id;
 
             return (
               <div
@@ -212,7 +199,7 @@ export function ProPlansModal({
                     isPopular ? "bg-[#e8603c] hover:bg-[#d4512e] text-white" : "",
                   )}
                   loading={isPending}
-                  disabled={checkout.isPending}
+                  disabled={checkout.busy}
                   onClick={() => handleSelectPlan(plan.id)}
                 >
                   Choose {plan.name.replace(/ \(Annual\)/, "")}

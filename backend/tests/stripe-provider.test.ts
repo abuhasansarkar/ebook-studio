@@ -340,4 +340,112 @@ describe("the Stripe provider", () => {
       await expect(provider.resolveCheckoutSession("")).resolves.toBeUndefined();
     });
   });
+
+  describe("subscriptions, partial refunds and disputes", () => {
+    const request = {
+      customerReference: "cus_ref",
+      planId: "author",
+      planName: "Author Pro",
+      amountMinor: 4900,
+      currency: "USD" as const,
+      credits: 750,
+      returnUrl: "http://localhost:3000/app/credits",
+      idempotencyKey: "checkout:u:author:1",
+    };
+
+    it("opens a recurring plan as a Stripe subscription against its price", async () => {
+      const provider = new StripeProvider();
+      let args: any;
+      (provider as unknown as { client: unknown }).client = {
+        checkout: { sessions: { create: async (a: unknown) => { args = a; return { id: "cs_sub", url: "https://stripe/cs_sub", payment_intent: null }; } } },
+      };
+      const result = await provider.createCheckout({ ...request, recurring: true, interval: "month", providerPriceId: "price_author" });
+      expect(args.mode).toBe("subscription");
+      expect(args.line_items).toEqual([{ price: "price_author", quantity: 1 }]);
+      expect(args.subscription_data.metadata).toMatchObject({ planId: "author", customerReference: "cus_ref" });
+      expect(args.payment_intent_data).toBeUndefined();
+      expect(result.providerPaymentId).toBe("pending_cs_sub");
+    });
+
+    it("refuses a recurring plan with no Stripe price rather than charging once", async () => {
+      const provider = new StripeProvider();
+      (provider as unknown as { client: unknown }).client = { checkout: { sessions: { create: async () => { throw new Error("must not be called"); } } } };
+      await expect(provider.createCheckout({ ...request, recurring: true, providerPriceId: null })).rejects.toThrow(/no Stripe price/);
+    });
+
+    it("keeps a credit pack a one-time payment", async () => {
+      const provider = new StripeProvider();
+      let args: any;
+      (provider as unknown as { client: unknown }).client = {
+        checkout: { sessions: { create: async (a: unknown) => { args = a; return { id: "cs_pack", url: "https://stripe/cs_pack", payment_intent: null }; } } },
+      };
+      await provider.createCheckout({ ...request, recurring: false });
+      expect(args.mode).toBe("payment");
+    });
+
+    it("maps a paid invoice (current API shape) to the renewal event", () => {
+      const provider = new StripeProvider();
+      const body = JSON.stringify({
+        id: "evt_invoice", type: "invoice.paid", created: 1_700_000_000,
+        data: { object: {
+          id: "in_1", billing_reason: "subscription_cycle", amount_paid: 4900, currency: "usd",
+          parent: { subscription_details: { subscription: "sub_9", metadata: { planId: "author", credits: "750", customerReference: "cus_ref" } } },
+          payments: { data: [{ payment: { type: "payment_intent", payment_intent: "pi_inv" } }] },
+          lines: { data: [{ period: { start: 1_700_000_000, end: 1_702_592_000 } }] },
+        } },
+      });
+      const event = provider.verifyWebhook(body, signed(body, SECRET))!;
+      expect(event.type).toBe("invoice.paid");
+      expect(event.providerInvoiceId).toBe("in_1");
+      expect(event.providerSubscriptionId).toBe("sub_9");
+      expect(event.providerPaymentId).toBe("pi_inv");
+      expect(event.billingReason).toBe("subscription_cycle");
+      expect(event.planId).toBe("author");
+      expect(event.customerReference).toBe("cus_ref");
+      expect(event.currentPeriodEnd?.getTime()).toBe(1_702_592_000 * 1000);
+    });
+
+    it("maps a failed invoice and ignores the duplicate invoice.payment_succeeded", () => {
+      const provider = new StripeProvider();
+      const failed = JSON.stringify({ id: "evt_inv_failed", type: "invoice.payment_failed", created: 1_700_000_000, data: { object: { id: "in_2", subscription: "sub_old_shape", metadata: {} } } });
+      const event = provider.verifyWebhook(failed, signed(failed, SECRET))!;
+      expect(event.type).toBe("invoice.payment_failed");
+      expect(event.providerSubscriptionId).toBe("sub_old_shape");
+
+      const dup = JSON.stringify({ id: "evt_inv_dup", type: "invoice.payment_succeeded", created: 1_700_000_000, data: { object: { id: "in_3", metadata: {} } } });
+      expect(provider.verifyWebhook(dup, signed(dup, SECRET))!.type).toBe("invoice.payment_succeeded");
+    });
+
+    it("reports how much of the charge a refund covers", () => {
+      const provider = new StripeProvider();
+      const body = JSON.stringify({ id: "evt_partial", type: "charge.refunded", created: 1_700_000_000, data: { object: { id: "ch_2", payment_intent: "pi_7", amount: 4900, amount_refunded: 1000, currency: "usd", metadata: {} } } });
+      const event = provider.verifyWebhook(body, signed(body, SECRET))!;
+      expect(event.amountMinor).toBe(1000);
+      expect(event.totalAmountMinor).toBe(4900);
+    });
+
+    it("maps disputes opening and closing", () => {
+      const provider = new StripeProvider();
+      const opened = JSON.stringify({ id: "evt_dp", type: "charge.dispute.created", created: 1_700_000_000, data: { object: { id: "dp_1", charge: "ch_3", payment_intent: "pi_8", amount: 4900, currency: "usd", status: "needs_response", reason: "fraudulent" } } });
+      const a = provider.verifyWebhook(opened, signed(opened, SECRET))!;
+      expect(a).toMatchObject({ type: "payment.disputed", providerPaymentId: "pi_8", providerDisputeId: "dp_1", amountMinor: 4900 });
+      const closed = JSON.stringify({ id: "evt_dp_closed", type: "charge.dispute.closed", created: 1_700_000_100, data: { object: { id: "dp_1", charge: "ch_3", payment_intent: "pi_8", amount: 4900, currency: "usd", status: "won", reason: "fraudulent" } } });
+      expect(provider.verifyWebhook(closed, signed(closed, SECRET))).toMatchObject({ type: "payment.dispute_closed", disputeStatus: "won" });
+    });
+
+    it("cancels at period end or immediately, and treats a missing subscription as cancelled", async () => {
+      const provider = new StripeProvider();
+      const calls: string[] = [];
+      (provider as unknown as { client: unknown }).client = {
+        subscriptions: {
+          update: async (id: string, params: { cancel_at_period_end: boolean }) => { calls.push(`update:${id}:${params.cancel_at_period_end}`); },
+          cancel: async (id: string) => { calls.push(`cancel:${id}`); if (id === "sub_gone") throw Object.assign(new Error("No such subscription"), { code: "resource_missing" }); },
+        },
+      };
+      await provider.cancelSubscription("sub_a", { atPeriodEnd: true });
+      await provider.cancelSubscription("sub_b", { atPeriodEnd: false });
+      await provider.cancelSubscription("sub_gone", { atPeriodEnd: false });
+      expect(calls).toEqual(["update:sub_a:true", "cancel:sub_b", "cancel:sub_gone"]);
+    });
+  });
 });

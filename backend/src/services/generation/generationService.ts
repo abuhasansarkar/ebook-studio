@@ -16,13 +16,12 @@ interface ChapterInput { id: string; version: number; position: number; title: s
 /**
  * The immutable inputs of one writing run.
  *
- * `inherited` lists the sections this run took over from the previous failed
- * run of the same book, as `chapterId:position` keys. It separates a section
- * the customer has already paid for from one this run still has to write,
- * because both live in the same `generation_sections` table.
+ * `inherited` lists the sections this run took over from the immediately
+ * preceding run of the same book when that run failed, as `chapterId:position`
+ * keys. They save a provider call, not a charge: a section is billed only when
+ * its chapter is committed, and the failed run never committed these chapters.
  */
 interface WritingSnapshot { schema: 1; brief: BookBrief; title: string; chapters: ChapterInput[]; inherited: string[] }
-interface SectionKey { jobId: string; chapterId: string; kind: string; position: number }
 
 /** The Prisma client or a transaction client; both expose the same query surface. */
 type PrismaClientLike = Pick<typeof prisma, '$executeRaw' | 'generationSection'>;
@@ -92,6 +91,12 @@ async function checkpoint(jobId: string, token: string, chapterId: string, kind:
   return { text, written: inserted > 0 };
 }
 
+/** True when a chapter's writing inputs are exactly what an earlier run was given. */
+function sameChapterInputs(before: ChapterInput | undefined, now: ChapterInput) {
+  return !!before && !before.done && before.version === now.version && before.title === now.title && before.goal === now.goal
+    && before.targetWords === now.targetWords && JSON.stringify(before.keyPoints) === JSON.stringify(now.keyPoints);
+}
+
 export const generationService = {
 
   async start(userId: string, bookId: string) {
@@ -115,54 +120,46 @@ export const generationService = {
       const created = await tx.generationJob.create({ data: { userId, bookId, type: 'chapters', total: pending.length, creditsReserved: 0, inputSnapshot: snapshot as unknown as object } });
       // A retry inherits the sections the failed run already saved.
       //
-      // The provider call is the slow and chargeable part of writing a chapter.
-      // When a run stops part-way, the sections it already wrote are stored, so
-      // a new run can reuse them instead of paying for the same prose twice.
-      // The inherited rows are re-keyed to the new job, which keeps every
+      // The provider call is the slow part of writing a chapter. When a run
+      // stops part-way, the sections it already wrote are stored, so the next
+      // run can reuse them instead of asking the provider for the same prose
+      // twice. The inherited rows are re-keyed to the new job, which keeps every
       // section attached to the run that owns it.
+      //
+      // Only the book's immediately preceding writing run is a candidate, and
+      // only when it failed: a run that completed, or was cancelled, after an
+      // older failure means that older prose is no longer the latest attempt.
+      // A chapter is reused only while it is exactly the chapter the failed run
+      // was writing (same version, title, goal, key points and length), so a
+      // chapter the author cleared, edited or re-planned starts afresh.
       const previous = await tx.generationJob.findFirst({
-        where: { bookId, type: 'chapters', status: 'failed' },
-        orderBy: { createdAt: 'desc' },
-        select: { id: true },
+        where: { bookId, type: 'chapters', id: { not: created.id } },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: { id: true, status: true, inputSnapshot: true },
       });
-      const reusable = new Map<string, { section: number; total: number }>();
-      // The keys of the sections this run takes over from the failed run. They
-      // are recorded on the job so the writing step can bill only the prose it
-      // still has to write.
       const inherited: string[] = [];
-      if (previous) {
-        const saved = await tx.generationSection.findMany({ where: { jobId: previous.id } });
-        // Only sections for chapters the current outline still holds are reusable.
-        // Re-approving an edited outline replaces the chapters, and the old rows
-        // then belong to a plan the book no longer follows.
-        const live = new Set(pending.map(c => c.id));
+      if (previous?.status === 'failed') {
+        const before = new Map(((previous.inputSnapshot as unknown as WritingSnapshot | null)?.chapters ?? []).map(c => [c.id, c]));
+        const unchanged = new Set(snapshot.chapters.filter(c => !c.done && sameChapterInputs(before.get(c.id), c)).map(c => c.id));
+        const saved = await tx.generationSection.findMany({ where: { jobId: previous.id, chapterId: { in: [...unchanged] } }, orderBy: [{ chapterId: 'asc' }, { kind: 'asc' }, { position: 'asc' }] });
+        // A chapter the failed run committed was charged then; it is never revived.
+        const committed = new Set(saved.filter(r => r.kind === 'committed').map(r => r.chapterId));
         for (const section of saved) {
-          if (!live.has(section.chapterId)) continue;
+          if (section.kind === 'committed' || committed.has(section.chapterId)) continue;
           await insertSection(
             { jobId: created.id, chapterId: section.chapterId, kind: section.kind, position: section.position },
             section.text,
             { inputTokens: section.inputTokens, outputTokens: section.outputTokens, model: section.model },
             tx,
           );
-          if (section.kind === 'section') {
-            const tally = reusable.get(section.chapterId) ?? { section: 0, total: 0 };
-            tally.section += 1;
-            tally.total += 1;
-            reusable.set(section.chapterId, tally);
-            inherited.push(`${section.chapterId}:${section.position}`);
-          }
+          if (section.kind === 'section') inherited.push(`${section.chapterId}:${section.position}`);
         }
       }
-      // A section the failed run already wrote needs no provider call, so it is
-      // not reserved either. The customer is only charged for the prose this
-      // run actually has to write.
-      const topicsOf = new Map(snapshot.chapters.map(c => [c.id, Math.max(1, c.keyPoints.length)]));
-      const cost = pending.reduce((sum, c) => {
-        const total = topicsOf.get(c.id) ?? 1;
-        const saved = reusable.get(c.id)?.section ?? 0;
-        const remaining = Math.max(0, total - saved);
-        return sum + Math.round(chapterCredits(c.targetWords) * (remaining / total));
-      }, 0);
+      // Every pending chapter is reserved at its full price. Inherited sections
+      // were never charged (charges happen only at a chapter commit, and the
+      // failed run did not commit these chapters), so this run charges them
+      // exactly once, when it commits the chapter they belong to.
+      const cost = pending.reduce((sum, c) => sum + chapterCredits(c.targetWords), 0);
       await tx.generationJob.update({ where: { id: created.id }, data: { creditsReserved: cost, inputSnapshot: { ...snapshot, inherited } as unknown as object } });
       await reserveInTransaction(tx, userId, cost, `job:${created.id}`);
       // Protect queued chapters from edits until their fixed inputs are processed.
@@ -219,15 +216,7 @@ export const generationService = {
         if (committed) { previousSummaries.push(committed.text); continue; }
         const topics = chapter.keyPoints.length ? chapter.keyPoints : [chapter.title];
         let markdown = '';
-        // The sections the failed run already wrote are reused, so they are not
-        // charged for again. Only the prose this run still writes is billed.
-        // The inherited list is what decides this, not what the table happens to
-        // hold: a section an earlier attempt at this same job wrote is still
-        // this job's prose and is still charged for exactly once.
-        const inherited = new Set(snapshot.inherited ?? []);
-        let toWrite = 0;
         for (let index = 0; index < topics.length; index++) {
-          if (!inherited.has(`${chapter.id}:${index}`)) toWrite += 1;
           const { text } = await checkpoint(jobId, token, chapter.id, 'section', index, () => aiService.writeSection({ brief: snapshot.brief, bookTitle: snapshot.title, allChapterTitles: snapshot.chapters.map(c => c.title), chapter: { title: chapter.title, goal: chapter.goal, keyPoints: topics }, chapterIndex: chapter.position, previousSummaries, sectionTopic: topics[index], sectionIndex: index, sectionCount: topics.length, writtenSoFar: markdown, targetWords: Math.max(150, Math.round(chapter.targetWords / topics.length)) }));
           markdown += (markdown ? '\n\n' : '') + text;
         }
@@ -252,10 +241,10 @@ export const generationService = {
             tx,
           );
 
-          // Only the prose this run wrote is billed. Sections inherited from a
-          // failed run were charged when they were first written.
-          const share = topics.length ? Math.round(chapterCredits(chapter.targetWords) * (toWrite / topics.length)) : 0;
-          await tx.generationJob.update({ where: { id: jobId }, data: { progress: { increment: 1 }, creditsCharged: { increment: share } } });
+          // The chapter is billed once, here, at its full price, whether its
+          // sections were written by this run or inherited from a failed one:
+          // no section is charged before the commit of its chapter.
+          await tx.generationJob.update({ where: { id: jobId }, data: { progress: { increment: 1 }, creditsCharged: { increment: chapterCredits(chapter.targetWords) } } });
         });
         previousSummaries.push(summary);
       }

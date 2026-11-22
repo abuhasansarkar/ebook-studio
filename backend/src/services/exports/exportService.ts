@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   COVER_HEIGHT,
   COVER_WIDTH,
@@ -13,7 +13,10 @@ import {
   type ExportSnapshot,
 } from '@ebook/shared';
 import { prisma } from '../../database/prisma.js';
-import { enqueueExport } from '../../queues/index.js';
+import { dispatchPending, getQueues, persistDispatch } from '../../queues/index.js';
+import { queueNamespace, runtimeFingerprint } from '../../config/runtime.js';
+import type { Tx } from '../credits/creditService.js';
+import { lockBook } from '../generation/jobRuntime.js';
 import { AppError, conflict, notFound } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 import { requireEntitlement } from '../billing/entitlements.js';
@@ -29,6 +32,106 @@ import type { PinnedImage, PinnedImages } from './renderTypes.js';
 import { validateExport } from './validators.js';
 
 export const SUPPORTED_FORMATS = ['pdf', 'epub', 'docx'] as const;
+
+/**
+ * Export ownership and staleness.
+ *
+ * A worker owns a processing export through a lease it renews while it works.
+ * A lapsed lease means the worker died (or its delivery was lost), so the row
+ * is failed instead of blocking every later export of the book. A queued row
+ * that no worker has started within `EXPORT_QUEUED_STALE_MS` is failed too.
+ * Exports reserve no credits, so failing a row releases nothing but the book.
+ */
+export const EXPORT_LEASE_MS = 90_000;
+export const EXPORT_QUEUED_STALE_MS = 30 * 60_000;
+/** Claims allowed per export; a render that crashes its worker is not retried forever. */
+export const EXPORT_MAX_ATTEMPTS = 2;
+const INTERRUPTED = 'The export was interrupted before it finished. Request it again.';
+const NEVER_STARTED = 'The export could not be started. Request it again.';
+const ATTEMPTS_EXHAUSTED = 'The export stopped the worker repeatedly and was abandoned. Request it again, or contact support if it keeps failing.';
+
+type Db = Tx | typeof prisma;
+
+/** Fails the stale queued/processing exports (of one book, when given). Returns how many were failed. */
+async function failStaleExports(db: Db, bookId?: string, now = new Date()) {
+  const scope = bookId ? { bookId } : {};
+  const interrupted = await db.export.updateMany({
+    where: { ...scope, status: 'processing', OR: [{ leaseExpiresAt: { lt: now } }, { leaseExpiresAt: null, createdAt: { lt: new Date(now.getTime() - EXPORT_LEASE_MS) } }] },
+    data: { status: 'failed', finishedAt: now, error: INTERRUPTED, leaseToken: null, leaseExpiresAt: null },
+  });
+  const unstarted = await db.export.updateMany({
+    where: { ...scope, status: 'queued', createdAt: { lt: new Date(now.getTime() - EXPORT_QUEUED_STALE_MS) } },
+    data: { status: 'failed', finishedAt: now, error: NEVER_STARTED },
+  });
+  return interrupted.count + unstarted.count;
+}
+
+/** Renews the lease while the render runs; a lost lease is detected at the fenced final write. */
+function exportHeartbeat(id: string, token: string) {
+  let running = false;
+  const timer = setInterval(async () => {
+    if (running) return;
+    running = true;
+    try {
+      await prisma.export.updateMany({ where: { id, leaseToken: token, status: 'processing' }, data: { leaseExpiresAt: new Date(Date.now() + EXPORT_LEASE_MS) } });
+    } catch { /* The fenced final write proves ownership; a failed heartbeat never grants it. */ }
+    finally { running = false; }
+  }, EXPORT_LEASE_MS / 4);
+  timer.unref();
+  return () => clearInterval(timer);
+}
+
+/**
+ * Periodic export reconciliation, for the worker's dispatcher loop.
+ *
+ * 1. Interrupted (lapsed lease) and never-started exports are failed, so the
+ *    book can be exported again.
+ * 2. A queued export with no dispatch record (a pre-outbox crash between the
+ *    insert and the enqueue) gets one, so it is delivered.
+ * 3. A queued export whose delivery Redis lost, or finished without running
+ *    it, is re-dispatched under the same job id.
+ */
+export async function reconcileExports() {
+  const failed = await failStaleExports(prisma);
+  const orphans = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT e.id FROM exports e
+    WHERE e.status = 'queued' AND e."createdAt" < NOW() - INTERVAL '60 seconds'
+      AND NOT EXISTS (SELECT 1 FROM queue_dispatches d WHERE d.queue = 'exports' AND d."jobId" = e.id)
+    ORDER BY e."createdAt" ASC LIMIT 50`;
+  for (const row of orphans) await persistDispatch(prisma as unknown as Tx, 'exports', row.id);
+  const lost = await prisma.$queryRaw<{ id: string; jobId: string }[]>`
+    SELECT d.id, d."jobId" FROM queue_dispatches d
+    JOIN exports e ON e.id = d."jobId"
+    WHERE d.namespace = ${queueNamespace} AND d.fingerprint = ${runtimeFingerprint} AND d.queue = 'exports'
+      AND d."dispatchedAt" < NOW() - INTERVAL '30 seconds'
+      AND e.status = 'queued'
+    ORDER BY d."dispatchedAt" ASC LIMIT 10`;
+  let redispatched = 0;
+  for (const row of lost) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([(async () => {
+        const delivery = await getQueues().exports.getJob(row.jobId);
+        if (delivery) {
+          const state = await delivery.getState();
+          if (state !== 'failed' && state !== 'completed') return;
+          await delivery.remove();
+        }
+        await prisma.queueDispatch.updateMany({ where: { id: row.id, fingerprint: runtimeFingerprint }, data: { dispatchedAt: null, nextAttemptAt: new Date() } });
+        redispatched++;
+      })(), new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Export reconciliation timed out')), 2000); timer.unref(); })]);
+    } catch { logger.warn({ dispatchId: row.id }, 'Export dispatch reconciliation deferred'); }
+    finally { if (timer) clearTimeout(timer); }
+  }
+  if (orphans.length || redispatched) await dispatchPending().catch(() => undefined);
+  return { failed, orphaned: orphans.length, redispatched };
+}
+
+/** The export row without its worker token. */
+function publicExport<T extends { leaseToken?: string | null }>(row: T): Omit<T, 'leaseToken'> {
+  const { leaseToken: _token, ...rest } = row;
+  return rest;
+}
 
 function slugify(s: string) {
   const slug = s
@@ -180,6 +283,8 @@ export const exportService = {
     if (support.level === 'unavailable') throw conflict(`${getLanguage(book.language).name} cannot be typeset on this server: ${support.notes[0]}`, { code: 'FONT_UNAVAILABLE' });
     const written = await prisma.chapter.count({ where: { bookId, OR: [{ wordCount: { gt: 0 } }, { status: 'done' }] } });
     if (written === 0) throw conflict('Write at least one chapter before exporting.');
+    // A stale queued/processing export (its worker died) no longer blocks the book.
+    await failStaleExports(prisma, bookId);
     const pending = await prisma.export.findFirst({ where: { bookId, status: { in: ['queued', 'processing'] } } });
     if (pending) throw conflict('An export for this book is already in progress.', { exportId: pending.id });
 
@@ -218,17 +323,29 @@ export const exportService = {
       requestedAt: new Date().toISOString(),
     };
 
-    const exp = await prisma.export.create({
-      data: {
-        userId, bookId, format,
-        designVersion: design.version,
-        designSnapshot: design.data as object,
-        snapshot: snapshot as object,
-        contentType: EXPORT_CONTENT_TYPES[format],
-      },
+    // The row and its dispatch intent commit together: a crash can no longer
+    // leave a queued export that nothing will ever deliver. The book lock
+    // serializes concurrent requests so the in-progress check holds.
+    const { exp, dispatchId } = await prisma.$transaction(async (tx) => {
+      await lockBook(tx, bookId, userId);
+      await failStaleExports(tx, bookId);
+      const active = await tx.export.findFirst({ where: { bookId, status: { in: ['queued', 'processing'] } } });
+      if (active) throw conflict('An export for this book is already in progress.', { exportId: active.id });
+      const created = await tx.export.create({
+        data: {
+          userId, bookId, format,
+          designVersion: design.version,
+          designSnapshot: design.data as object,
+          snapshot: snapshot as object,
+          contentType: EXPORT_CONTENT_TYPES[format],
+        },
+      });
+      const dispatch = await persistDispatch(tx, 'exports', created.id);
+      return { exp: created, dispatchId: dispatch.id };
     });
-    await enqueueExport(exp.id);
-    return exp;
+    // Broker availability cannot undo the committed export; the dispatcher retries.
+    await dispatchPending(dispatchId).catch(() => undefined);
+    return publicExport(exp);
   },
 
   /**
@@ -238,7 +355,7 @@ export const exportService = {
   async list(userId: string, bookId: string) {
     await getOwnedBook(userId, bookId);
     const [rows, chapters] = await Promise.all([
-      prisma.export.findMany({ where: { bookId }, orderBy: { createdAt: 'desc' }, take: 20, omit: { designSnapshot: true } }),
+      prisma.export.findMany({ where: { bookId }, orderBy: { createdAt: 'desc' }, take: 20, omit: { designSnapshot: true, leaseToken: true } }),
       prisma.chapter.findMany({ where: { bookId, OR: [{ wordCount: { gt: 0 } }, { status: 'done' }] }, select: { id: true, version: true, position: true } }),
     ]);
     const current = new Map(chapters.map((c) => [c.id, c]));
@@ -259,7 +376,7 @@ export const exportService = {
 
   /** One export with its snapshot and validation summary. */
   async get(userId: string, exportId: string) {
-    const exp = await prisma.export.findFirst({ where: { id: exportId, userId, book: { deletedAt: null } } });
+    const exp = await prisma.export.findFirst({ where: { id: exportId, userId, book: { deletedAt: null } }, omit: { leaseToken: true } });
     if (!exp) throw notFound('Export');
     return exp;
   },
@@ -295,8 +412,26 @@ export const exportService = {
    * as a successful download.
    */
   async process(exportId: string) {
-    const claimed = await prisma.export.updateMany({ where: { id: exportId, status: { in: ['queued', 'processing'] } }, data: { status: 'processing' } });
-    if (claimed.count === 0) return;
+    // Claimed when queued, or when a previous worker's lease lapsed (BullMQ
+    // re-delivers a stalled job once). A live lease belongs to another worker.
+    const now = new Date();
+    const token = randomUUID();
+    const claimed = await prisma.export.updateMany({
+      where: { id: exportId, attempts: { lt: EXPORT_MAX_ATTEMPTS }, OR: [{ status: 'queued' }, { status: 'processing', OR: [{ leaseExpiresAt: null }, { leaseExpiresAt: { lte: now } }] }] },
+      data: { status: 'processing', leaseToken: token, leaseExpiresAt: new Date(now.getTime() + EXPORT_LEASE_MS), attempts: { increment: 1 }, startedAt: now },
+    });
+    if (claimed.count === 0) {
+      await prisma.export.updateMany({
+        where: { id: exportId, attempts: { gte: EXPORT_MAX_ATTEMPTS }, OR: [{ status: 'queued' }, { status: 'processing', leaseExpiresAt: { lte: now } }] },
+        data: { status: 'failed', finishedAt: now, error: ATTEMPTS_EXHAUSTED, leaseToken: null, leaseExpiresAt: null },
+      });
+      return;
+    }
+    const stop = exportHeartbeat(exportId, token);
+    // Every terminal write is fenced by the lease token: a worker whose export
+    // was reconciled or re-claimed meanwhile changes nothing.
+    const finish = (data: Parameters<typeof prisma.export.updateMany>[0]['data']) =>
+      prisma.export.updateMany({ where: { id: exportId, leaseToken: token, status: 'processing' }, data: { ...data, leaseToken: null, leaseExpiresAt: null } });
     const exp = await prisma.export.findUniqueOrThrow({ where: { id: exportId } });
     try {
       const format = (exp.format as ExportFormat) in EXPORT_CONTENT_TYPES ? (exp.format as ExportFormat) : 'pdf';
@@ -353,28 +488,23 @@ export const exportService = {
         // A file that does not validate is removed rather than offered as a download.
         await storage.remove(key).catch(() => undefined);
         const summary = validation.issues.filter((i) => i.severity === 'error').map((i) => i.message).join(' ');
-        await prisma.export.update({
-          where: { id: exp.id },
-          data: { status: 'failed', finishedAt: new Date(), error: `The generated file did not validate: ${summary}`.slice(0, 500), validation: validation as object, diagnostics: diagnostics as object },
-        });
+        await finish({ status: 'failed', finishedAt: new Date(), error: `The generated file did not validate: ${summary}`.slice(0, 500), validation: validation as object, diagnostics: diagnostics as object });
         return;
       }
 
-      await prisma.export.update({
-        where: { id: exp.id },
-        data: {
+      const done = await finish({
           status: 'ready', storageKey: key, fileSize: stored.length, pageCount,
           sha256, contentType: rendered.contentType,
           diagnostics: diagnostics as object, validation: validation as object,
           finishedAt: new Date(), error: null,
-        },
       });
+      // The lease was lost (reconciled or re-claimed): this worker's file is not the one on record.
+      if (!done.count) await storage.remove(key).catch(() => undefined);
     } catch (err) {
       logger.error({ err, exportId }, 'Export failed');
-      await prisma.export.update({
-        where: { id: exp.id },
-        data: { status: 'failed', finishedAt: new Date(), error: (err instanceof Error ? err.message : String(err)).slice(0, 500) },
-      });
+      await finish({ status: 'failed', finishedAt: new Date(), error: (err instanceof Error ? err.message : String(err)).slice(0, 500) });
+    } finally {
+      stop();
     }
   },
 };

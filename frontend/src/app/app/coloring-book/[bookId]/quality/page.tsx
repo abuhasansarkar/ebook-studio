@@ -6,10 +6,6 @@ import { toast } from "sonner";
 import {
   AlertTriangle,
   CheckCircle2,
-  FileCheck,
-  RefreshCw,
-  ShieldCheck,
-  Sparkles,
   Wand2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -33,8 +29,6 @@ export default function ColoringBookQualityPage({ params }: { params: Promise<{ 
     return <PageLoader label="Running line-art quality audit…" />;
   }
 
-  const book = detail?.book;
-  const plan = detail?.plan;
   const pages = qualityData?.pages ?? [];
   const bookPages = detail?.pages ?? [];
 
@@ -149,7 +143,6 @@ export default function ColoringBookQualityPage({ params }: { params: Promise<{ 
 
         <div className="divide-y divide-border">
           {pages.map((p) => {
-            const hasQuality = Boolean(p.quality);
             const passed = p.quality?.passed ?? true;
             const isCompleted = p.status === "completed";
 

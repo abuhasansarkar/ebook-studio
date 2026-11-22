@@ -120,18 +120,21 @@ function SidebarFooter() {
 export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { data: session, isPending } = useSession();
+  const { data: session, isPending, isRefetching } = useSession();
   const [mobileOpen, setMobileOpen] = useState(false);
+  // A refetch in flight (e.g. just after signing in) may still carry the
+  // previous "signed out" value; only a settled empty session means signed out.
+  const signedOut = !isPending && !isRefetching && !session;
 
   // Client-side guard (the proxy only checks cookie presence; the API enforces auth).
   useEffect(() => {
     // window is read inside the effect, so this stays client-only.
-    if (!isPending && !session) router.replace(`/login?next=${encodeURIComponent(`${pathname}${window.location.search}`)}`);
-  }, [isPending, session, router, pathname]);
+    if (signedOut) router.replace(`/login?next=${encodeURIComponent(`${pathname}${window.location.search}`)}`);
+  }, [signedOut, router, pathname]);
 
   // The proxy already blocks requests without a session cookie, so render the page
   // immediately and only swap in a loader once the client knows the session is invalid.
-  if (!isPending && !session) return <PageLoader label="Redirecting to log in…" />;
+  if (!isPending && !session) return <PageLoader label={signedOut ? "Redirecting to log in…" : "Loading your account…"} />;
 
   return (
     <div className="flex min-h-screen">

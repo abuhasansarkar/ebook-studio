@@ -178,19 +178,69 @@ export function extractNotes(buffer: Buffer): ExtractionResult {
 // Word documents
 // ---------------------------------------------------------------------------
 
-/** Reads one XML part of a DOCX and returns its text content. */
-function xmlText(xml: string): string {
-  return xml
-    .replace(/<w:tab\b[^>]*\/>/g, '\t')
-    .replace(/<w:br\b[^>]*\/>/g, '\n')
-    .replace(/<[^>]+>/g, '')
+/** Largest inflated `word/document.xml` accepted; a real manuscript is far smaller. */
+export const MAX_DOCX_XML_BYTES = 8 * 1024 * 1024;
+
+/** Decodes the XML entities that can appear in DOCX text. */
+function decodeEntities(text: string): string {
+  return text
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
-    .replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, code: string) => String.fromCodePoint(parseInt(code, 16)))
+    .replace(/&#(\d{1,7});/g, (raw, code: string) => safeCodePoint(Number(code), raw))
+    .replace(/&#x([0-9a-fA-F]{1,6});/g, (raw, code: string) => safeCodePoint(parseInt(code, 16), raw))
     .replace(/&amp;/g, '&');
+}
+
+function safeCodePoint(code: number, raw: string): string {
+  return code <= 0x10ffff ? String.fromCodePoint(code) : raw;
+}
+
+/**
+ * The text of every `<w:p>` paragraph, in document order.
+ *
+ * A single forward scan: each `indexOf` starts where the previous one ended, so
+ * the cost is linear in the size of the XML even when a tag is never closed.
+ * (A backtracking regex over unclosed paragraphs was quadratic.) Text between
+ * tags inside a paragraph is kept, `<w:tab/>` becomes a tab and `<w:br/>` a
+ * line break. A paragraph nested in a text box ends before its parent does.
+ * A paragraph that is never closed is dropped.
+ */
+export function docxParagraphs(xml: string): string[] {
+  const paragraphs: string[] = [];
+  const open: string[][] = [];
+  let cursor = 0;
+  while (cursor < xml.length) {
+    const lt = xml.indexOf('<', cursor);
+    const textEnd = lt < 0 ? xml.length : lt;
+    if (open.length && textEnd > cursor) open[open.length - 1].push(xml.slice(cursor, textEnd));
+    if (lt < 0) break;
+    const gt = xml.indexOf('>', lt + 1);
+    if (gt < 0) break;
+    const tag = xml.slice(lt + 1, gt);
+    cursor = gt + 1;
+    const closing = tag.startsWith('/');
+    const body = closing ? tag.slice(1) : tag;
+    const nameEnd = body.search(/[\s/]/);
+    const name = nameEnd < 0 ? body : body.slice(0, nameEnd);
+    const selfClosing = tag.endsWith('/');
+    if (name === 'w:p') {
+      if (closing) {
+        const parts = open.pop();
+        if (parts) {
+          const text = decodeEntities(parts.join('')).trim();
+          if (text) paragraphs.push(text);
+        }
+      } else if (!selfClosing) {
+        open.push([]);
+      }
+    } else if (open.length && !closing) {
+      if (name === 'w:tab') open[open.length - 1].push('\t');
+      else if (name === 'w:br' || name === 'w:cr') open[open.length - 1].push('\n');
+    }
+  }
+  return paragraphs;
 }
 
 /**
@@ -205,8 +255,11 @@ export function extractDocx(buffer: Buffer): ExtractionResult {
   let entries;
   try {
     // Only the main part is read, so nothing else in the package is inflated.
-    entries = readZip(buffer, { only: (name) => name === 'word/document.xml', maxEntryBytes: 64 * 1024 * 1024, maxTotalBytes: 64 * 1024 * 1024 });
+    entries = readZip(buffer, { only: (name) => name === 'word/document.xml', maxEntryBytes: MAX_DOCX_XML_BYTES, maxTotalBytes: MAX_DOCX_XML_BYTES });
   } catch (err) {
+    if (err instanceof ZipError && /too large/.test(err.message)) {
+      return { status: 'failed', passages: [], warnings: [{ code: 'docx.too_large', message: `The text of this Word document is larger than ${MAX_DOCX_XML_BYTES / (1024 * 1024)} MiB once unpacked. Split it into smaller documents.` }], characterCount: 0 };
+    }
     const message = err instanceof ZipError
       ? 'The Word document could not be opened: it is damaged or not a real .docx file.'
       : 'The Word document could not be opened.';
@@ -219,11 +272,7 @@ export function extractDocx(buffer: Buffer): ExtractionResult {
 
   const xml = main.data.toString('utf8');
   // Paragraphs are the unit of text. Table cells are paragraphs too.
-  const paragraphs: string[] = [];
-  for (const match of xml.matchAll(/<w:p\b[^>]*>([\s\S]*?)<\/w:p>/g)) {
-    const text = xmlText(match[1]).trim();
-    if (text) paragraphs.push(text);
-  }
+  const paragraphs = docxParagraphs(xml);
   if (!paragraphs.length) {
     return { status: 'empty', passages: [], warnings: [{ code: 'docx.empty', message: 'The Word document has no text.' }], characterCount: 0 };
   }
@@ -254,8 +303,7 @@ function hasTextLayer(pdfText: string): boolean {
 /**
  * Extracts a PDF with a text layer.
  *
- * Text extraction is delegated to the renderer that already turns pages into
- * images, because that is the only text extractor this server has. A PDF whose
+ * The text layer is read with pdf.js, bounded in time and size. A PDF whose
  * pages have no text layer is reported as `scanned`: OCR is not implemented, so
  * the document is described rather than silently imported as an empty source.
  */
@@ -288,13 +336,11 @@ export async function extractPdf(buffer: Buffer): Promise<ExtractionResult> {
 }
 
 /**
- * Pulls the text layer out of a PDF.
- *
- * Chromium renders the PDF and reads the resulting text. A PDF that Chromium
- * cannot open is an extraction failure, not an empty source.
+ * Pulls the text layer out of a PDF with pdf.js (see `pdfText.ts`). A PDF the
+ * parser cannot open is an extraction failure, not an empty source.
  */
 async function extractPdfText(buffer: Buffer): Promise<string> {
-  const { extractPdfPageText } = await import('../exports/pdfRenderer.js');
+  const { extractPdfPageText } = await import('./pdfText.js');
   return extractPdfPageText(buffer);
 }
 

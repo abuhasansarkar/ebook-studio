@@ -3,7 +3,7 @@
 import { OutlineHistory } from "./outline-history";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { use, useMemo, useState } from "react";
+import { use, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -108,6 +108,8 @@ export function OutlineScreen({ params }: { params: Promise<{ bookId: string }> 
   const [loadedVersion, setLoadedVersion] = useState<number | null>(null);
   const [dirty, setDirty] = useState(false);
   const [confirmRegen, setConfirmRegen] = useState(false);
+  // Guards against a double click before the pending state has re-rendered.
+  const busy = useRef(false);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
 
   // Load the server outline into the local editor whenever a new version arrives
@@ -156,8 +158,11 @@ export function OutlineScreen({ params }: { params: Promise<{ bookId: string }> 
     if (!o) return null;
     try {
       const saved = await actions.saveOutline.mutateAsync({ ...o, baseVersion: loadedVersion ?? 0 });
+      // The mutation has already written the saved outline into the book cache,
+      // so the draft on screen is the server's latest version: adopt its number
+      // directly instead of reloading (a reload could still see the old version).
       setDirty(false);
-      setLoadedVersion(null); // accept the new server version
+      setLoadedVersion(saved.outline.version);
       toast.success("Outline saved");
       return saved.outline.version;
     } catch (err) {
@@ -167,16 +172,21 @@ export function OutlineScreen({ params }: { params: Promise<{ bookId: string }> 
   };
 
   const approve = async () => {
-    const version = dirty ? await save() : loadedVersion;
-    if (!version) return;
+    if (busy.current) return;
+    busy.current = true;
     try {
+      const version = dirty ? await save() : loadedVersion;
+      if (!version) return;
       await actions.approveOutline.mutateAsync(version);
       toast.success("Outline approved");
       router.push(`/app/books/${bookId}/generate`);
     } catch (err) {
       toast.error(errorMessage(err));
+    } finally {
+      busy.current = false;
     }
   };
+  const saving = actions.saveOutline.isPending || actions.approveOutline.isPending;
 
   const regenerate = async () => {
     setConfirmRegen(false);
@@ -316,10 +326,10 @@ export function OutlineScreen({ params }: { params: Promise<{ bookId: string }> 
               Writing this book will use about <strong className="text-foreground">{writeCost} credits</strong>.
             </p>
             <div className="flex gap-2">
-              <Button variant="secondary" onClick={() => void save()} disabled={!dirty} loading={actions.saveOutline.isPending}>
+              <Button variant="secondary" onClick={() => { if (!busy.current) void save(); }} disabled={!dirty || saving} loading={actions.saveOutline.isPending}>
                 Save changes
               </Button>
-              <Button onClick={() => void approve()} loading={actions.approveOutline.isPending}>
+              <Button onClick={() => void approve()} disabled={saving} loading={actions.approveOutline.isPending}>
                 <CheckCircle2 className="h-4 w-4" /> Approve outline
               </Button>
             </div>

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_PASSAGE_CHARACTERS, splitPassages } from '@ebook/shared';
 import { finalizeAnswer, finalizeSummary, proposeChapters, retrievePassages } from '../src/services/sources/retrieval.js';
-import { assertAcceptableSource, extractDocx, extractNotes } from '../src/services/sources/extractors.js';
+import { assertAcceptableSource, docxParagraphs, extractDocx, extractNotes, MAX_DOCX_XML_BYTES } from '../src/services/sources/extractors.js';
 import { buildZip } from '../src/services/exports/zip.js';
 
 /**
@@ -105,6 +105,31 @@ describe('DOCX extraction', () => {
     const result = extractDocx(buildZip([{ name: '[Content_Types].xml', data: Buffer.from('<Types/>') }]));
     expect(result.status).toBe('failed');
     expect(result.warnings[0].code).toBe('docx.no_document');
+  });
+
+  it('keeps tabs, breaks, attributes and nested text-box paragraphs', () => {
+    const xml = '<w:body><w:p w:rsidR="00A1"><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>One</w:t><w:tab/><w:t>two</w:t><w:br/><w:t>three</w:t></w:r></w:p><w:p/><w:p><w:r><w:txbxContent><w:p><w:r><w:t>Inner</w:t></w:r></w:p></w:txbxContent></w:r><w:r><w:t>Outer</w:t></w:r></w:p></w:body>';
+    expect(docxParagraphs(xml)).toEqual(['One\ttwo\nthree', 'Inner', 'Outer']);
+  });
+
+  it('scans unclosed paragraph tags in linear time', () => {
+    // 400 KB of paragraphs that never close made the old backtracking regex take seconds.
+    const pathological = '<w:p><w:r><w:t>x</w:t></w:r>'.repeat(15_000) + '<w:p'.repeat(20_000);
+    expect(pathological.length).toBeGreaterThan(400_000);
+    const started = performance.now();
+    expect(docxParagraphs(pathological)).toEqual([]);
+    const result = extractDocx(docx(['<w:p>'.repeat(80_000) + 'tail']));
+    expect(performance.now() - started).toBeLessThan(500);
+    // Only the innermost of the unclosed paragraphs is closed by the wrapper's </w:p>.
+    expect(result.passages.map((p) => p.text)).toEqual(['tail']);
+  });
+
+  it('refuses a document whose text inflates past the cap with a clear message', () => {
+    const huge = Buffer.alloc(MAX_DOCX_XML_BYTES + 1024, 0x20);
+    const result = extractDocx(buildZip([{ name: 'word/document.xml', data: huge }]));
+    expect(result.status).toBe('failed');
+    expect(result.warnings[0].code).toBe('docx.too_large');
+    expect(result.warnings[0].message).toMatch(/Split it into smaller documents/);
   });
 });
 

@@ -124,6 +124,12 @@ try {
   await page.select("#language", "en");
   await clickButton(page, "Continue");
   await page.waitForSelector("#chapterCount");
+  // The free plan allows 10 chapters per book and the import below adds 3, so
+  // the book starts with 6 (the slider defaults to 8).
+  await page.focus("#chapterCount");
+  await page.keyboard.press("ArrowLeft");
+  await page.keyboard.press("ArrowLeft");
+  await waitText(page, "Chapters: 6");
   await clickButton(page, "Create outline");
   await page.waitForFunction(() => location.pathname.endsWith("/outline"), { timeout: 20_000 });
   await page.waitForSelector("#book-title", { timeout: 30_000 });

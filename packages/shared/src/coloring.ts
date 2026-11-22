@@ -166,6 +166,26 @@ export function estimateColoringCredits(pageCount: number): number {
   return pageCount * COLORING_CREDIT_COSTS.perIllustration;
 }
 
+/**
+ * Bounds on coloring work.
+ *
+ * Auto-clean is free (local thresholding, no AI call), so it is bounded rather
+ * than priced: an illustration that has already been cleaned is never cleaned
+ * again, and the replaced image is released. Generation is paid per page and
+ * runs in the background, so the number of pages a user may have queued at
+ * once is capped.
+ */
+export const COLORING_LIMITS = {
+  /** Most pages a coloring book may hold (plans start at 24-60; extra pages may be added). */
+  maxPages: 80,
+  /** Most coloring pages one user may have queued or generating at once. */
+  maxActivePageJobs: 80,
+} as const;
+
+/** Message shown for a failed illustration; provider errors are logged, never shown. */
+export const COLORING_GENERATION_FAILED_MESSAGE =
+  "Illustration generation failed. Reserved credits were returned. Please try again.";
+
 // ---------- Zod Schemas ----------
 export const coloringBookBriefSchema = z.object({
   topic: z.string().trim().min(3, "Describe your idea in at least a few words").max(1000),
@@ -219,20 +239,60 @@ export const coloringPageQualitySchema = z.object({
 });
 export type ColoringPageQuality = z.infer<typeof coloringPageQualitySchema>;
 
+const coloringIdSchema = z.string().trim().min(1).max(100);
+
 export const coloringPageUpdateSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
   description: z.string().trim().max(1000).optional(),
   prompt: z.string().trim().min(5).max(2000).optional(),
   negativePrompt: z.string().trim().max(1000).optional().nullable(),
   caption: z.string().trim().max(100).optional().nullable(),
-  assetId: z.string().optional().nullable(),
-});
+  /** An image from the author's own library; the server checks ownership. */
+  assetId: coloringIdSchema.optional().nullable(),
+}).strict();
 export type ColoringPageUpdateInput = z.infer<typeof coloringPageUpdateSchema>;
 
 export const coloringPageReorderSchema = z.object({
-  pageIds: z.array(z.string().min(1)).min(1),
-});
+  pageIds: z.array(coloringIdSchema).min(1).max(COLORING_LIMITS.maxPages)
+    .refine((ids) => new Set(ids).size === ids.length, "Page ids must be unique"),
+}).strict();
 export type ColoringPageReorderInput = z.infer<typeof coloringPageReorderSchema>;
+
+export const coloringPlanUpdateSchema = z.object({
+  title: z.string().trim().min(1).max(200).optional(),
+  subtitle: z.string().trim().max(300).optional(),
+  approved: z.boolean().optional(),
+}).strict();
+export type ColoringPlanUpdateInput = z.infer<typeof coloringPlanUpdateSchema>;
+
+export const coloringPageCreateSchema = z.object({
+  title: z.string().trim().min(1, "Title is required").max(200),
+  prompt: z.string().trim().min(5, "Prompt is required").max(2000),
+  description: z.string().trim().max(1000).optional(),
+}).strict();
+export type ColoringPageCreateInput = z.infer<typeof coloringPageCreateSchema>;
+
+export const coloringPageGenerateSchema = z.object({
+  promptOverride: z.string().trim().min(5).max(2000).optional().or(z.literal("")),
+}).strict();
+export type ColoringPageGenerateInput = z.infer<typeof coloringPageGenerateSchema>;
+
+export const coloringBatchGenerateSchema = z.object({
+  /** Pages to (re)generate; omitted means every pending or failed page. */
+  pageIds: z.array(coloringIdSchema).min(1).max(COLORING_LIMITS.maxPages)
+    .refine((ids) => new Set(ids).size === ids.length, "Page ids must be unique")
+    .optional(),
+}).strict();
+export type ColoringBatchGenerateInput = z.infer<typeof coloringBatchGenerateSchema>;
+
+/** The 202 response of the generate endpoints: pages are generated in the background. */
+export interface ColoringGenerationAccepted {
+  queued: number;
+  /** Pages that were not queued because they are already generating. */
+  skipped: string[];
+  creditsReserved: number;
+  pages: { id: string; pageNumber: number; status: "pending" | "generating" | "completed" | "failed" }[];
+}
 
 export const coloringCoverGenerateSchema = z.object({
   promptOverride: z.string().trim().max(2000).optional().or(z.literal("")),

@@ -11,7 +11,8 @@ import { closeQueues } from "../src/queues/index.js";
 import { buildColoringPrompt } from "../src/services/coloring/coloringPromptBuilder.js";
 import { coloringQualityService } from "../src/services/coloring/coloringQualityService.js";
 import { calculateSpine } from "../src/services/coloring/coloringCoverService.js";
-import { createUser, ORIGIN } from "./helpers.js";
+import { coloringGenerationService } from "../src/services/coloring/coloringGenerationService.js";
+import { createUser, grantEntitlements, ORIGIN } from "./helpers.js";
 
 afterAll(async () => {
   await closeQueues();
@@ -243,20 +244,29 @@ describe("AI Coloring Studio End-to-End API Integration", () => {
       .expect(200);
     expect(deletePageRes.body.remainingCount).toBe(24);
 
-    // 8. Generate Single Page (Charges exactly 8 credits)
+    // 8. Generate Single Page: queued in the background (202), 8 credits reserved, then charged by the worker
     const targetPage = detailRes.body.pages[0];
     const genPageRes = await agent
       .post(`/api/v1/coloring/books/${bookId}/pages/${targetPage.id}/generate`)
       .set("Origin", ORIGIN)
       .send({ promptOverride: "A smiling baby duck with flowers." })
-      .expect(200);
+      .expect(202);
 
-    expect(genPageRes.body.page.status).toBe("completed");
-    expect(genPageRes.body.page.assetId).toBeDefined();
+    expect(genPageRes.body.queued).toBe(1);
+    expect(genPageRes.body.pages.find((p: { id: string }) => p.id === targetPage.id).status).toBe("generating");
+    const queuedPage = await prisma.coloringPage.findUniqueOrThrow({ where: { id: targetPage.id } });
+    expect(queuedPage.generationJobId).toBeTruthy();
+    await coloringGenerationService.process(queuedPage.generationJobId!);
+
+    const generated = await agent.get(`/api/v1/coloring/books/${bookId}`).set("Origin", ORIGIN).expect(200);
+    const generatedPage = generated.body.pages.find((p: { id: string }) => p.id === targetPage.id);
+    expect(generatedPage.status).toBe("completed");
+    expect(generatedPage.assetId).toBeTruthy();
 
     // Verify 8 credits deducted
     const walletAfterPage = await prisma.creditWallet.findUnique({ where: { userId: user.id } });
     expect(walletAfterPage?.balance).toBe(150 - 8);
+    expect(walletAfterPage?.reserved).toBe(0);
 
     // 9. Auto-clean line art on generated page
     const cleanRes = await agent
@@ -303,7 +313,10 @@ describe("AI Coloring Studio End-to-End API Integration", () => {
     expect(mdRes.text).toContain("Amazon KDP Publishing Package");
     expect(mdRes.text).toContain("Amazon Search Keywords");
 
-    // 14. PDF Compilation (Puppeteer print PDF with single-sided blank backs)
+    // 14. PDF Compilation (Puppeteer print PDF with single-sided blank backs).
+    // Export is a paid entitlement (see PAID_ENTITLEMENT_KEYS); a free author is refused.
+    await agent.post(`/api/v1/coloring/books/${bookId}/export/compile`).set("Origin", ORIGIN).expect(403);
+    await grantEntitlements(user.id, { exports: true });
     const compileRes = await agent.post(`/api/v1/coloring/books/${bookId}/export/compile`).set("Origin", ORIGIN).expect(200);
     expect(compileRes.body.exportId).toBeDefined();
     expect(compileRes.body.fileSize).toBeGreaterThan(100);

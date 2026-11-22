@@ -1,7 +1,7 @@
 "use client";
 
 import type { EntitlementKey, Plan } from "@ebook/shared";
-import { FREE_TIER_ENTITLEMENTS } from "@ebook/shared";
+import { FREE_SIGNUP_CREDITS, FREE_TIER_ENTITLEMENTS } from "@ebook/shared";
 import { Check, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -197,8 +197,8 @@ export function PricingComparison({ plans }: { plans: Plan[] }) {
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1.5">
-                        <Minus className="h-4 w-4" />
-                        —
+                        <Minus className="h-4 w-4" aria-hidden />
+                        <span className="sr-only">Not included</span>
                       </span>
                     )}
                   </td>
@@ -208,7 +208,7 @@ export function PricingComparison({ plans }: { plans: Plan[] }) {
           ))}
           <tr className="border-t border-border bg-muted/40">
             <th scope="row" className="px-5 py-3.5 text-start font-medium">Credits</th>
-            <td className="px-5 py-3.5 text-muted-foreground">100</td>
+            <td className="px-5 py-3.5 text-muted-foreground">{FREE_SIGNUP_CREDITS}</td>
             {plans.map((plan) => (
               <td key={plan.id} className="px-5 py-3.5 font-medium text-foreground">
                 {new Intl.NumberFormat("en").format(plan.credits)}

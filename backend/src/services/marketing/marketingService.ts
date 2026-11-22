@@ -13,6 +13,7 @@ import {
 } from "@ebook/shared";
 import { prisma } from "../../database/prisma.js";
 import { getOwnedBook, getBrief } from "../books/bookService.js";
+import { randomUUID } from "node:crypto";
 import { creditService, settleInTransaction } from "../credits/creditService.js";
 import { openaiProvider } from "../ai/openaiClient.js";
 import { env } from "../../config/env.js";
@@ -268,7 +269,10 @@ export async function createDraft(
   // One reference for the whole operation, so the reservation and the
   // settlement are the same ledger entry. A failed draft releases the
   // reservation and costs the author nothing.
-  const reference = `marketing:${userId}:${bookId}:${input.outputType}:${Date.now()}`;
+  // Unique per request (a timestamp can repeat within a millisecond and merge
+  // two reservations into one). Tracked until settled, so a crash in between
+  // is released by the stale-reservation sweeper.
+  const reference = `marketing:${userId}:${bookId}:${input.outputType}:${randomUUID()}`;
 
   await creditService.reserve(userId, cost, reference);
 

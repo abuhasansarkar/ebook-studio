@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { BookOpen, Palette, CheckCircle2, ArrowRight, Sparkles, ZoomIn, Search, Check } from "lucide-react";
+import { BookOpen, Palette, CheckCircle2, ArrowRight, Sparkles, Search } from "lucide-react";
 
 export function LandingShowcase() {
   const [activeTab, setActiveTab] = useState<"ebook" | "coloring">("ebook");

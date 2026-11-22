@@ -2,6 +2,9 @@ generator client {
   provider     = "prisma-client"
   output       = "../src/generated/prisma"
   moduleFormat = "esm"
+  // Partial indexes express "at most one active job per book" in the schema,
+  // so migrate diff agrees with the hand-written migration.
+  previewFeatures = ["partialIndexes"]
 }
 
 datasource db {
@@ -19,8 +22,12 @@ model User {
   image         String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  /// Set when the person deleted their account. The row is kept, anonymised,
+  /// so the credit ledger and payment history stay intact.
+  deletedAt     DateTime?
   sessions      Session[]
   accounts      Account[]
+  qualityReports QualityReport[]
 
   projects      Project[]
   books         Book[]
@@ -65,6 +72,7 @@ model Session {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([expiresAt])
   @@map("session")
 }
 
@@ -97,6 +105,7 @@ model Verification {
   updatedAt  DateTime @updatedAt
 
   @@index([identifier])
+  @@index([expiresAt])
   @@map("verification")
 }
 
@@ -207,6 +216,7 @@ model Chapter {
   /// Rolling summary used as context for later chapters
   summary     String?
   sourceLinks ChapterSourceLink[]
+  generationSections GenerationSection[]
   wordCount   Int                 @default(0)
   /// Optimistic concurrency control
   version     Int                 @default(0)
@@ -240,6 +250,7 @@ model GenerationSection {
   jobId        String
   job          GenerationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
   chapterId    String
+  chapter      Chapter       @relation(fields: [chapterId], references: [id], onDelete: Cascade)
   position     Int
   /// section | summary | committed
   kind         String
@@ -250,6 +261,7 @@ model GenerationSection {
   createdAt    DateTime      @default(now())
 
   @@unique([jobId, chapterId, kind, position])
+  @@index([chapterId])
   @@map("generation_sections")
 }
 
@@ -286,6 +298,13 @@ model GenerationJob {
 
   @@index([bookId, createdAt])
   @@index([userId])
+  // Covers status-only lookups too (leading column), and the lease sweeps.
+  @@index([status, leaseExpiresAt])
+  @@index([assetId])
+  // At most one book-wide job (outline, chapters, image, quality) may be active
+  // per book. assertIdle enforces this under the book lock; the index makes it
+  // a database invariant. Per-page job kinds are deliberately not covered.
+  @@unique([bookId], map: "generation_jobs_one_active_per_book_key", where: raw("(status = ANY (ARRAY['queued'::text, 'running'::text])) AND (type = ANY (ARRAY['outline'::text, 'chapters'::text, 'image'::text, 'quality'::text]))"))
   @@map("generation_jobs")
 }
 
@@ -305,7 +324,9 @@ model CreditWallet {
 model CreditTransaction {
   id             String   @id @default(cuid())
   userId         String
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Restrict: the ledger outlives the account. Account deletion anonymises the
+  // user row instead of deleting it (services/account/accountDeletionService.ts).
+  user           User     @relation(fields: [userId], references: [id], onDelete: Restrict)
   /// grant | reserve | charge | release | refund
   type           String
   amount         Int
@@ -317,6 +338,28 @@ model CreditTransaction {
 
   @@index([userId, createdAt])
   @@map("credit_transactions")
+}
+
+/// A credit reservation that has not been settled yet.
+///
+/// Every reservation is tracked here so one whose process crashed between
+/// reserve and settle can be found and released by the sweeper. `kind` is
+/// `job` for reservations owned by a background job (recovered by the job
+/// runtime, never swept) and `sync` for a request that reserves and settles
+/// inline.
+model CreditReservation {
+  id        String    @id @default(cuid())
+  userId    String
+  reference String    @unique
+  amount    Int
+  /// sync | job
+  kind      String    @default("sync")
+  settledAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([kind, settledAt, createdAt])
+  @@index([userId])
+  @@map("credit_reservations")
 }
 
 // ---------------------------------------------------------------------------
@@ -371,6 +414,7 @@ model Subscription {
   updatedAt              DateTime  @updatedAt
 
   @@index([userId, status])
+  @@index([planId])
   @@map("subscriptions")
 }
 
@@ -378,7 +422,8 @@ model Subscription {
 model Payment {
   id                        String    @id @default(cuid())
   userId                    String
-  user                      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Restrict: payment history outlives the account (see CreditTransaction).
+  user                      User      @relation(fields: [userId], references: [id], onDelete: Restrict)
   planId                    String?
   plan                      Plan?     @relation(fields: [planId], references: [id], onDelete: SetNull)
   provider                  String    @default("local")
@@ -402,11 +447,27 @@ model Payment {
   refundedEventAt           DateTime?
   /// The credits this payment took back, when it was refunded.
   refundedCredits           Int       @default(0)
+  /// The cumulative amount refunded, in the currency's minor unit.
+  refundedAmountMinor       Int       @default(0)
+  /// Credits a refund was owed but could not take because they were spent.
+  refundShortfallCredits    Int       @default(0)
+  /// The provider subscription this payment paid for, when it was an invoice.
+  providerSubscriptionId    String?
+  /// The provider invoice this payment settled, when it was an invoice.
+  providerInvoiceId         String?   @unique
+  /// open | won | lost, when the payment was disputed.
+  disputeStatus             String?
+  /// Credits taken back by an open or lost dispute.
+  disputedCredits           Int       @default(0)
+  disputedEventAt           DateTime?
   createdAt                 DateTime  @default(now())
   updatedAt                 DateTime  @updatedAt
 
   @@index([userId, createdAt])
   @@index([status])
+  @@index([planId])
+  @@index([providerCustomerReference])
+  @@index([providerSubscriptionId])
   @@map("payments")
 }
 
@@ -427,6 +488,11 @@ model PaymentEvent {
   status          String    @default("received")
   error           String?
   processedAt     DateTime?
+  /// How many deliveries have tried to apply this event.
+  attempts        Int       @default(1)
+  /// When the current attempt claimed the event. A `received` row whose claim
+  /// is stale belongs to a crashed attempt and may be re-claimed.
+  claimedAt       DateTime  @default(now())
   createdAt       DateTime  @default(now())
 
   @@index([provider, createdAt])
@@ -485,10 +551,19 @@ model Export {
   sha256         String?
   /// MIME type of the stored file
   contentType    String?
+  /// Worker ownership: the token of the worker rendering the file and when its lease lapses.
+  /// A processing export whose lease lapsed was interrupted and is reconciled as failed.
+  leaseToken     String?
+  leaseExpiresAt DateTime?
+  /// Times a worker has claimed this export; a crash-looping render stops after a bounded number.
+  attempts       Int       @default(0)
+  startedAt      DateTime?
   createdAt      DateTime  @default(now())
   finishedAt     DateTime?
 
   @@index([bookId, createdAt])
+  @@index([userId])
+  @@index([status])
   @@map("exports")
 }
 
@@ -550,6 +625,7 @@ model EmailDelivery {
   updatedAt      DateTime  @updatedAt
 
   @@index([runtimeId, status, nextAttemptAt])
+  @@index([expiresAt])
   @@map("email_deliveries")
 }
 
@@ -587,6 +663,7 @@ model AssetReference {
   createdAt DateTime @default(now())
 
   @@id([assetId, bookId])
+  @@index([bookId])
   @@map("asset_references")
 }
 
@@ -638,6 +715,7 @@ model QualityReport {
   bookId       String
   book         Book             @relation(fields: [bookId], references: [id], onDelete: Cascade)
   userId       String
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// rules | ai
   kind         String
   /// queued | running | completed | failed | cancelled (AI reports follow their job)
@@ -655,6 +733,7 @@ model QualityReport {
   completedAt  DateTime?
 
   @@index([bookId, createdAt])
+  @@index([userId])
   @@map("quality_reports")
 }
 
@@ -722,7 +801,7 @@ model ResearchSource {
   versions   SourceVersion[]
   links      ChapterSourceLink[]
   createdAt  DateTime            @default(now())
-  updatedAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
 
   @@index([bookId, createdAt])
   @@index([userId, createdAt])
@@ -777,6 +856,7 @@ model ChapterSourceLink {
 
   @@unique([sourceId, chapterId])
   @@index([chapterId])
+  @@index([bookId])
   @@map("chapter_source_links")
 }
 
@@ -1179,10 +1259,17 @@ model ColoringPage {
   asset           Asset?    @relation(fields: [assetId], references: [id], onDelete: SetNull)
   qualityChecks   Json?
   error           String?
+  /// The background generation job (type `coloring_page`) currently producing this
+  /// page's illustration. Set while status is `generating`; a job only writes to
+  /// the page while it is still the page's current job.
+  generationJobId String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   @@unique([bookId, pageNumber])
   @@index([bookId, status])
+  @@index([assetId])
+  @@index([status, updatedAt])
+  @@index([generationJobId])
   @@map("coloring_pages")
 }

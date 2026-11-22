@@ -186,7 +186,7 @@ describe("book pipeline", () => {
     expect(stored).toHaveLength(1);
   });
 
-  it("reuses the sections a failed run saved and only charges for new prose", async () => {
+  it("reuses the sections a failed run saved and charges each chapter once", async () => {
     const { agent, user } = await createUser("resume");
     const bookId = await bookWithOutline(agent);
     await agent.post(`/api/v1/books/${bookId}/outline/approve`).set("Origin", ORIGIN).send({ version: 1 }).expect(200);
@@ -205,20 +205,20 @@ describe("book pipeline", () => {
     const inherited = await prisma.generationSection.findFirst({ where: { jobId: retryJobId, chapterId: chapter.id, kind: "section", position: 0 } });
     expect(inherited?.text).toBe("Written before the failure");
 
-    // Only the sections this run has to write are reserved.
+    // Inherited sections were never charged (charging happens at chapter commit), so every chapter is reserved in full.
     const retryJob = await prisma.generationJob.findUniqueOrThrow({ where: { id: retryJobId } });
-    expect(retryJob.creditsReserved).toBeLessThan(3 * chapterCredits(800));
+    expect(retryJob.creditsReserved).toBe(3 * chapterCredits(800));
 
     await generationService.process(retryJobId);
     const after = await prisma.chapter.findUniqueOrThrow({ where: { id: chapter.id } });
     expect(after.status).toBe("done");
     expect(after.contentJson).toBeTruthy();
-    // The reused section was charged once, when it was first written.
+    // The failed run released its reservation, so nothing is held back.
     const wallet = await creditService.getWallet(user.id);
     expect(wallet.reserved).toBe(0);
-    // The retry billed only the prose it had to write.
+    // Each chapter is charged exactly once, by the run that commits it.
     const retryJobAfter = await prisma.generationJob.findUniqueOrThrow({ where: { id: retryJobId } });
-    expect(retryJobAfter.creditsCharged).toBeLessThan(3 * chapterCredits(800));
+    expect(retryJobAfter.creditsCharged).toBe(3 * chapterCredits(800));
   });
 
   it("returns 402 and leaves no job behind when credits are insufficient", async () => {
@@ -344,5 +344,20 @@ describe("credit ledger", () => {
     const wallet = await creditService.getWallet(user.id);
     expect(wallet.balance).toBe(FREE_SIGNUP_CREDITS - 80);
     expect(wallet.balance).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe("project library", () => {
+  it("counts only the owner's books in a project", async () => {
+    const owner = await createUser("project-count");
+    const stranger = await createUser("project-count-other");
+    const project = await prisma.project.create({ data: { userId: owner.user.id, name: "Mine" } });
+    await prisma.book.create({ data: { userId: owner.user.id, projectId: project.id, title: "Owned" } });
+    // A row that points at someone else's project must never inflate (or
+    // reveal anything through) the owner's count.
+    await prisma.book.create({ data: { userId: stranger.user.id, projectId: project.id, title: "Foreign" } });
+    const res = await owner.agent.get("/api/v1/projects").expect(200);
+    const listed = res.body.projects.find((p: { id: string }) => p.id === project.id);
+    expect(listed._count.books).toBe(1);
   });
 });

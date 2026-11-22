@@ -97,7 +97,7 @@ function CreateBookForm() {
 
       {!planning.ready && <p role="status" className="mb-4 text-sm">Checking for an unfinished brief…</p>}
       {planning.error && <Alert tone="warning" className="mb-4">{planning.error}</Alert>}
-      {planning.recovery && <Alert tone="info" className="mb-4"><p>An unfinished book brief was found in this tab.</p><div className="mt-2 flex gap-2"><Button size="sm" onClick={() => { planning.recover(); setStep(0); }}>Recover brief</Button><Button size="sm" variant="secondary" onClick={() => void planning.discard()}>Start fresh</Button></div></Alert>}
+      {planning.recovery && <Alert tone="info" className="mb-4"><p>An unfinished book brief was found in this browser.</p><div className="mt-2 flex gap-2"><Button size="sm" onClick={() => { planning.recover(); setStep(0); }}>Recover brief</Button><Button size="sm" variant="secondary" onClick={() => void planning.discard()}>Start fresh</Button></div></Alert>}
       {/* Stepper */}
       <ol className="mb-8 flex items-center gap-2" aria-label="Progress">
         {STEPS.map((s, i) => (

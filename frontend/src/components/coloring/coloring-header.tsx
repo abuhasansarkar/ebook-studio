@@ -92,6 +92,7 @@ export function ColoringHeader({ params }: { params: Promise<{ bookId: string }>
               <Link
                 key={href}
                 href={`/app/coloring-book/${bookId}/${href}`}
+                title={desc}
                 className={cn(
                   "flex items-center gap-2 border-b-2 px-3.5 py-2.5 text-sm font-medium transition-colors",
                   active

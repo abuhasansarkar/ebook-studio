@@ -5,6 +5,7 @@ import { badRequest } from "../utils/errors.js";
 import { prisma } from "../database/prisma.js";
 import { userId } from "../middleware/requireAuth.js";
 import { authFeatures } from "../services/auth/auth.js";
+import { deleteAccount } from "../services/account/accountDeletionService.js";
 import { creditService } from "../services/credits/creditService.js";
 import { notFound } from "../utils/errors.js";
 
@@ -12,6 +13,9 @@ export const createProjectSchema = z.object({
   name: z.string().trim().min(1).max(120),
   description: z.string().trim().max(1000).optional(),
 });
+
+/** Deleting an account is irreversible, so the person retypes their email. */
+export const deleteAccountSchema = z.object({ confirmEmail: z.string().trim().min(3).max(320) });
 
 export const accountController = {
   /** Public config the frontend needs before login. */
@@ -21,6 +25,18 @@ export const accountController = {
 
   me(req: Request, res: Response) {
     res.json({ user: req.user });
+  },
+
+  /**
+   * Deletes the signed-in account: content and files go, the ledger and
+   * payments stay attached to an anonymous tombstone. Signs the caller out.
+   */
+  async deleteMe(req: Request, res: Response) {
+    if (req.body.confirmEmail.toLowerCase() !== req.user!.email.toLowerCase()) {
+      throw badRequest("Type the email address of this account to confirm.");
+    }
+    const outcome = await deleteAccount(userId(req), { requestId: String(req.id) });
+    res.json({ deleted: true, deletedAt: outcome.deletedAt.toISOString() });
   },
 
   async credits(req: Request, res: Response) {
@@ -42,7 +58,7 @@ export const accountController = {
     const projects = await prisma.project.findMany({
       where: { userId: userId(req), deletedAt: null },
       orderBy: { updatedAt: "desc" },
-      include: { _count: { select: { books: { where: { deletedAt: null } } } } },
+      include: { _count: { select: { books: { where: { userId: userId(req), deletedAt: null } } } } },
     });
     res.json({ projects });
   },

@@ -10,14 +10,11 @@ import {
   ArrowRight,
   Check,
   CheckCircle2,
+  AlertTriangle,
   Coins,
-  Compass,
-  Feather,
-  Layers,
-  Palette,
   Sparkles,
-  Zap,
 } from "lucide-react";
+import Link from "next/link";
 import {
   COLORING_AUDIENCE_LABELS,
   COLORING_AUDIENCES,
@@ -34,7 +31,6 @@ import {
   coloringBookBriefSchema,
   estimateColoringCredits,
   type ColoringBookBriefInput,
-  type ColoringStyle,
 } from "@ebook/shared";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
@@ -89,6 +85,10 @@ function CreateColoringBookWizard() {
   const lineThickness = useWatch({ control, name: "lineThickness" });
 
   const estimatedCredits = estimateColoringCredits(pageCount);
+  const totalWithCover = estimatedCredits + COLORING_CREDIT_COSTS.cover;
+  const balance = credits.data?.wallet?.balance;
+  const shortfall = balance === undefined ? 0 : Math.max(0, totalWithCover - balance);
+  const physicalPages = singleSided ? pageCount * 2 + 2 : pageCount + 2;
 
   const nextStep = async () => {
     let valid = true;
@@ -426,10 +426,45 @@ function CreateColoringBookWizard() {
                     </span>
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       Inserts a blank page behind each illustration so markers and pens do not bleed through onto
-                      another drawing. Total physical book pages will be {pageCount * 2 + 2} pages.
+                      another drawing. Total physical book pages will be {physicalPages} pages.
                     </p>
                   </div>
                 </label>
+              </div>
+
+              {/* Estimated illustration cost vs. balance */}
+              <div
+                className={cn(
+                  "rounded-2xl border p-4 text-xs",
+                  shortfall > 0 ? "border-amber-500/40 bg-amber-500/5" : "border-border bg-muted/30",
+                )}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                    <Coins className="h-4 w-4 text-primary" />
+                    <span>
+                      Estimated cost to illustrate: {formatNumber(totalWithCover)} credits
+                    </span>
+                  </div>
+                  <span className="text-muted-foreground">
+                    Your balance: {balance === undefined ? "…" : `${formatNumber(balance)} credits`}
+                  </span>
+                </div>
+                <p className="mt-1 text-muted-foreground">
+                  {pageCount} pages × {COLORING_CREDIT_COSTS.perIllustration} credits + {COLORING_CREDIT_COSTS.cover} for the cover.
+                </p>
+                {shortfall > 0 && (
+                  <p className="mt-2 flex items-start gap-1.5 text-amber-700 dark:text-amber-400" role="status">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      You need {formatNumber(shortfall)} more credits to illustrate every page. You can still create the
+                      plan for free and generate pages as credits allow.{" "}
+                      <Link href="/app/credits" className="font-semibold underline">
+                        Get credits
+                      </Link>
+                    </span>
+                  </p>
+                )}
               </div>
 
               {/* Free Planning Callout */}

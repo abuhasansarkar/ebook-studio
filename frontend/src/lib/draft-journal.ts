@@ -11,6 +11,29 @@ export interface DraftRecord {
   patch: { title?: string; contentJson?: Record<string, unknown> };
 }
 
+/** Whether a stored record is a usable draft for this owner and chapter. */
+export function isValidDraft(r: unknown, ownerId: string, chapterId: string): r is DraftRecord {
+  if (!r || typeof r !== 'object') return false;
+  const d = r as Partial<DraftRecord>;
+  if (typeof d.id !== 'string' || d.ownerId !== ownerId || d.chapterId !== chapterId) return false;
+  if (!Number.isSafeInteger(d.baseVersion) || (d.baseVersion as number) < 0 || !Number.isFinite(d.updatedAt)) return false;
+  const patch = d.patch;
+  if (!patch || typeof patch !== 'object') return false;
+  if (patch.title !== undefined && typeof patch.title !== 'string') return false;
+  try {
+    if (patch.contentJson !== undefined && documentError(patch.contentJson)) return false;
+  } catch { return false; }
+  return true;
+}
+
+/** Valid drafts, newest first. Damaged records are skipped (and left in place)
+ * so one bad record cannot hide every other recoverable draft. */
+export function usableDrafts(records: unknown[], ownerId: string, chapterId: string): DraftRecord[] {
+  const usable = records.filter((r): r is DraftRecord => isValidDraft(r, ownerId, chapterId));
+  if (usable.length !== records.length) console.warn(`Skipped ${records.length - usable.length} damaged browser draft(s).`);
+  return usable.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
 async function database(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open('ebook-drafts', 1);
@@ -31,11 +54,7 @@ export async function readDrafts(ownerId: string, chapterId: string): Promise<Dr
       const tx = db.transaction('drafts', 'readonly');
       const request = tx.objectStore('drafts').index('ownerChapter').getAll([ownerId, chapterId]);
       tx.oncomplete = () => {
-        const records = request.result as DraftRecord[];
-        if (records.some(r => !r || typeof r.id !== 'string' || r.ownerId !== ownerId || r.chapterId !== chapterId || !Number.isSafeInteger(r.baseVersion) || r.baseVersion < 0 || !Number.isFinite(r.updatedAt) || !r.patch || (r.patch.title !== undefined && typeof r.patch.title !== 'string') || (r.patch.contentJson !== undefined && documentError(r.patch.contentJson)))) {
-          reject(new Error('A browser draft is damaged')); return;
-        }
-        resolve(records.sort((a, b) => b.updatedAt - a.updatedAt));
+        resolve(usableDrafts(request.result as unknown[], ownerId, chapterId));
       };
       tx.onerror = () => reject(tx.error);
       tx.onabort = () => reject(tx.error);

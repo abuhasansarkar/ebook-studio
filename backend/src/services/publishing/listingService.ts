@@ -11,6 +11,7 @@ import {
 } from "@ebook/shared";
 import { prisma } from "../../database/prisma.js";
 import { getOwnedBook, getBrief } from "../books/bookService.js";
+import { randomUUID } from "node:crypto";
 import { creditService, settleInTransaction } from "../credits/creditService.js";
 import { openaiProvider } from "../ai/openaiClient.js";
 import { env } from "../../config/env.js";
@@ -277,7 +278,11 @@ export async function prepareListing(
   }
   const chapterVersions = await readChapterVersions(bookId);
 
-  const reference = `listing:${userId}:${bookId}:${input.destination}:${Date.now()}`;
+  // Unique per request: a timestamp can repeat for two requests in the same
+  // millisecond, and the second reservation would then silently merge into the
+  // first (one charge for two drafts). The reservation is tracked under this
+  // reference until it is settled, so a crash in between is swept back.
+  const reference = `listing:${userId}:${bookId}:${input.destination}:${randomUUID()}`;
   await creditService.reserve(userId, LISTING_COST, reference);
 
   let drafted: Record<string, string>;

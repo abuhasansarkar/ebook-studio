@@ -1,7 +1,8 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-  entry: ["src/server.ts", "src/worker.ts"],
+  // worker-healthcheck is the worker container's HEALTHCHECK (docker-compose.yml).
+  entry: ["src/server.ts", "src/worker.ts", "src/worker-healthcheck.ts"],
   format: ["esm"],
   platform: "node",
   target: "node22",
