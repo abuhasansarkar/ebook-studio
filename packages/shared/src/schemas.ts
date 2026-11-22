@@ -13,6 +13,7 @@ export const BOOK_TYPES = [
   "recipe",
   "travel",
   "fiction",
+  "coloring_book",
 ] as const;
 export type BookType = (typeof BOOK_TYPES)[number];
 
@@ -27,6 +28,7 @@ export const BOOK_TYPE_LABELS: Record<BookType, string> = {
   recipe: "Recipe book",
   travel: "Travel guide",
   fiction: "Fiction",
+  coloring_book: "AI Coloring Book",
 };
 
 export const TONES = ["friendly", "professional", "conversational", "authoritative", "inspirational", "academic", "playful"] as const;

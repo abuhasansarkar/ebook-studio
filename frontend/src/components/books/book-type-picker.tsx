@@ -1,6 +1,6 @@
 "use client";
 
-import { BookMarked, BookOpen, ChefHat, ClipboardList, FileBarChart, GraduationCap, Heart, Magnet, Map, Sparkles, type LucideIcon } from "lucide-react";
+import { BookMarked, BookOpen, ChefHat, ClipboardList, FileBarChart, GraduationCap, Heart, Magnet, Map, Palette, Sparkles, type LucideIcon } from "lucide-react";
 import { BOOK_TYPES, BOOK_TYPE_LABELS, type BookType } from "@ebook/shared";
 import { RadioGroup } from "@/components/ui/radio-group";
 import { cn } from "@/lib/utils";
@@ -16,6 +16,7 @@ const TYPE_ICONS: Record<BookType, LucideIcon> = {
   recipe: ChefHat,
   travel: Map,
   fiction: Sparkles,
+  coloring_book: Palette,
 };
 
 /** "self_help" → "Self help", for the option labels of the brief's enums. */

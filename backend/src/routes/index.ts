@@ -9,6 +9,7 @@ import { supportRouter } from './support.js';
 import { distributionRouter } from './distribution.js';
 import { listingRouter } from './listing.js';
 import { marketingRouter } from './marketing.js';
+import { coloringRouter } from './coloring.js';
 import { outlineService } from "../services/outline/outlineService.js";
 import { libraryQuerySchema, projectSchema, bookOrganizationSchema } from "@ebook/shared";
 import { libraryService } from "../services/books/libraryService.js";
@@ -53,6 +54,7 @@ apiRouter.use(sourceRouter);
 apiRouter.use(distributionRouter);
 apiRouter.use(listingRouter);
 apiRouter.use(marketingRouter);
+apiRouter.use(coloringRouter);
 
 apiRouter.get("/operations/:operationId", async (req, res) => {
   res.json({ operation: await operationService.get(userId(req), String(req.params.operationId)) });

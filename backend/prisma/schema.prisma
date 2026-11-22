@@ -135,6 +135,8 @@ model Book {
   brief             BookBrief?
   outlines          Outline[]
   chapters          Chapter[]
+  coloringPlan      ColoringPlan?
+  coloringPages     ColoringPage[]
   jobs              GenerationJob[]
   exports           Export[]
   assetReferences   AssetReference[]
@@ -570,6 +572,7 @@ model Asset {
   updatedAt  DateTime         @updatedAt
   references AssetReference[]
   imageJobs  GenerationJob[]
+  coloringPages ColoringPage[]
 
   @@index([userId, status, id])
   @@map("assets")
@@ -1134,4 +1137,52 @@ model Listing {
   @@index([userId, bookId, destination])
   @@index([bookId, createdAt])
   @@map("listings")
+}
+
+// ---------------------------------------------------------------------------
+// AI Coloring Book Studio
+// ---------------------------------------------------------------------------
+
+model ColoringPlan {
+  id              String    @id @default(cuid())
+  bookId          String    @unique
+  book            Book      @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  topic           String
+  artStyle        String
+  targetAudience  String
+  difficulty      String
+  lineThickness   String
+  trimSize        String
+  bleed           Boolean   @default(false)
+  singleSided     Boolean   @default(true)
+  pageCount       Int       @default(24)
+  density         String    @default("balanced")
+  approvedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("coloring_plans")
+}
+
+model ColoringPage {
+  id              String    @id @default(cuid())
+  bookId          String
+  book            Book      @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  pageNumber      Int
+  title           String
+  description     String    @default("")
+  prompt          String
+  negativePrompt  String?
+  caption         String?
+  status          String    @default("pending")
+  assetId         String?
+  asset           Asset?    @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  qualityChecks   Json?
+  error           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([bookId, pageNumber])
+  @@index([bookId, status])
+  @@map("coloring_pages")
 }
