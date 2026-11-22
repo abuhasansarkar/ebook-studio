@@ -126,40 +126,42 @@ export function PricingClient({
           </div>
         )}
 
-        {displayedPlans.length > 0 ? (
-          <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
-            {/* The free tier is shown as its own card because it is not bought. */}
-            <div className="flex flex-col rounded-2xl border border-border bg-surface p-6 shadow-card" data-testid="pricing-card-free">
-              <h2 className="text-base font-semibold">Free</h2>
-              <p className="mt-1 min-h-10 text-sm text-muted-foreground">Enough to plan, write and export your first book.</p>
-              <div className="mt-4">
-                <p className="text-3xl font-bold">$0</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">Always free</p>
+        {/* Free Tier / Trial Dedicated Card (Separate) */}
+        <div className="mb-10 rounded-2xl border border-dashed border-border bg-surface/70 p-6 shadow-card" data-testid="pricing-card-free">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="max-w-xl">
+              <div className="flex items-center gap-2.5">
+                <span className="rounded-full bg-primary-soft px-3 py-1 text-xs font-semibold text-primary">Free Tier & Trial</span>
+                <span className="text-xs text-muted-foreground">• No credit card needed</span>
               </div>
-              <p className="mt-1 text-sm text-muted-foreground">100 credits</p>
-              <ul className="mt-5 space-y-2 text-sm">
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-                  <span><span className="font-medium text-foreground">1</span> <span className="text-muted-foreground">Book</span></span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-                  <span><span className="font-medium text-foreground">10</span> <span className="text-muted-foreground">Chapters per book</span></span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-                  <span className="text-muted-foreground">PDF, EPUB and DOCX export</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-                  <span className="text-muted-foreground">Private source import</span>
-                </li>
-              </ul>
-              <div className="mt-auto pt-6">
-                <Link href="/signup" className={cn(buttonVariants({ variant: "secondary" }), "w-full")}>Start free</Link>
-              </div>
+              <h3 className="mt-2 text-xl font-bold text-foreground">Start free, upgrade when you're ready</h3>
+              <p className="mt-1 text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                Every account includes 100 welcome credits, full editor tools, and print-ready PDF, EPUB, and DOCX exports.
+              </p>
             </div>
 
+            <div className="flex flex-wrap items-center gap-4 sm:gap-6 border-t md:border-t-0 pt-4 md:pt-0 border-border">
+              <div className="text-center sm:text-start">
+                <span className="text-[11px] text-muted-foreground block">Cost</span>
+                <span className="text-xl font-black text-foreground">$0.00</span>
+              </div>
+              <div className="text-center sm:text-start">
+                <span className="text-[11px] text-muted-foreground block">Credits</span>
+                <span className="text-xl font-black text-foreground">100</span>
+              </div>
+              <div className="text-center sm:text-start">
+                <span className="text-[11px] text-muted-foreground block">Limits</span>
+                <span className="text-sm font-semibold text-foreground block">1 Book · 10 Ch.</span>
+              </div>
+              <Link href="/signup" className={cn(buttonVariants({ variant: "secondary" }), "shrink-0 ml-auto")}>
+                Start free trial
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        {displayedPlans.length > 0 ? (
+          <div className="grid gap-6 md:grid-cols-3">
             {displayedPlans.map((plan) => {
               const highlighted = plan.id === highlightedId;
               const isYearly = plan.interval === "year" || plan.id.endsWith("-yearly");

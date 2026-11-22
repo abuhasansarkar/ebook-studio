@@ -52,37 +52,51 @@ function formatPrice(amountMinor: number, currency: string) {
   return new Intl.NumberFormat("en", { style: "currency", currency }).format(amountMinor / 100);
 }
 
-/** Free plan card in catalog */
-function FreePlanCard({ isCurrentPlan }: { isCurrentPlan: boolean }) {
+/** Free Tier / Trial dedicated card */
+function FreeTrialCard({ isCurrentPlan }: { isCurrentPlan: boolean }) {
   return (
-    <Card className={cn("flex flex-col p-6 transition-all duration-200", isCurrentPlan && "border-primary/50 ring-2 ring-primary/20 bg-primary-soft/10")}>
-      <div className="flex items-start justify-between gap-3">
-        <h3 className="text-base font-semibold">Free Tier</h3>
-        {isCurrentPlan ? <Badge tone="success">Current Plan</Badge> : <Badge tone="neutral">Free</Badge>}
+    <Card className={cn("p-6 border-dashed border-border bg-surface/70 transition-all duration-200", isCurrentPlan && "border-primary/50 ring-2 ring-primary/20 bg-primary-soft/10")}>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div className="max-w-xl">
+          <div className="flex items-center gap-2.5">
+            <div className="rounded-lg bg-primary-soft p-2.5 text-primary shrink-0">
+              <Sparkles className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-foreground">Free Tier & Trial</h3>
+                {isCurrentPlan ? (
+                  <Badge tone="success">Current Plan</Badge>
+                ) : (
+                  <Badge tone="neutral">Base Account Tier</Badge>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                Standard author capabilities to plan, write, and export eBooks. Every account includes 100 free welcome credits with no expiration or credit card required.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs shrink-0 border-t md:border-t-0 pt-4 md:pt-0 border-border">
+          <div className="rounded-xl border border-border/70 bg-background/80 p-3 text-center min-w-[5.5rem]">
+            <span className="text-[11px] text-muted-foreground block">Cost</span>
+            <span className="text-base font-bold text-foreground">$0.00</span>
+          </div>
+          <div className="rounded-xl border border-border/70 bg-background/80 p-3 text-center min-w-[5.5rem]">
+            <span className="text-[11px] text-muted-foreground block">Welcome Credits</span>
+            <span className="text-base font-bold text-foreground">100</span>
+          </div>
+          <div className="rounded-xl border border-border/70 bg-background/80 p-3 text-center min-w-[5.5rem]">
+            <span className="text-[11px] text-muted-foreground block">Active Books</span>
+            <span className="text-base font-bold text-foreground">1 book</span>
+          </div>
+          <div className="rounded-xl border border-border/70 bg-background/80 p-3 text-center min-w-[5.5rem]">
+            <span className="text-[11px] text-muted-foreground block">Exports</span>
+            <span className="text-base font-bold text-success">Included Free</span>
+          </div>
+        </div>
       </div>
-      <p className="mt-1 text-sm text-muted-foreground">Standard author capabilities to create and publish eBooks.</p>
-      <p className="mt-4 text-3xl font-bold">$0.00</p>
-      <p className="mt-1 text-sm text-muted-foreground">100 welcome credits</p>
-      <ul className="mt-4 space-y-1.5 text-sm">
-        <li className="flex justify-between gap-3">
-          <span className="text-muted-foreground">Books at once</span>
-          <span className="font-medium text-foreground">1 active book</span>
-        </li>
-        <li className="flex justify-between gap-3">
-          <span className="text-muted-foreground">Chapters per book</span>
-          <span className="font-medium text-foreground">10 chapters</span>
-        </li>
-        <li className="flex justify-between gap-3">
-          <span className="text-muted-foreground">Priority AI jobs</span>
-          <span className="font-medium text-muted-foreground">—</span>
-        </li>
-      </ul>
-      <p className="mt-4 text-xs text-muted-foreground">
-        Export and private source import are included on every plan, free.
-      </p>
-      <Button variant="secondary" disabled className="mt-6 w-full">
-        {isCurrentPlan ? "Current plan ✓" : "Default plan"}
-      </Button>
     </Card>
   );
 }
@@ -376,9 +390,19 @@ function BillingContent() {
             </Card>
           </Section>
 
+          {/* Separate Free Tier & Trial Section */}
+          <Section
+            title="Free tier & trial"
+            description="Base author capabilities and welcome credits included on every account without a paid subscription."
+            className="mb-8"
+          >
+            <FreeTrialCard isCurrentPlan={!currentPlan || currentPlan.id === "free"} />
+          </Section>
+
+          {/* Paid Subscription Plans */}
           <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h2 className="text-lg font-semibold">Available plans</h2>
+              <h2 className="text-lg font-semibold">Subscription plans</h2>
               <p className="text-xs text-muted-foreground">
                 Select your preferred billing frequency. Annual plans include up to 20% discount.
               </p>
@@ -423,10 +447,7 @@ function BillingContent() {
           </div>
 
           {catalog && catalog.plans.length > 0 ? (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {billingCycle === "month" && (
-                <FreePlanCard isCurrentPlan={!currentPlan || currentPlan.id === "free"} />
-              )}
+            <div className="grid gap-5 md:grid-cols-3">
               {catalog.plans
                 .filter((p) => {
                   const isYearly = p.interval === "year" || p.id.endsWith("-yearly");
