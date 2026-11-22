@@ -311,7 +311,7 @@ export function SupportCenter() {
       <div>
         <h2 className="mb-3 text-lg font-semibold">Your requests</h2>
 
-        {requests.isLoading ? (
+        {requests.isPending && !requests.error ? (
           <PageLoader label="Loading your requests…" />
         ) : requests.isError ? (
           <ErrorState

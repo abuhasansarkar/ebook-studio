@@ -283,7 +283,7 @@ function BillingContent() {
         </Alert>
       )}
 
-      {plansQuery.isLoading || billingQuery.isLoading ? (
+      {(plansQuery.isPending || billingQuery.isPending) && !plansQuery.error && !billingQuery.error ? (
         <PageLoader />
       ) : plansQuery.error ? (
         <ErrorState message={errorMessage(plansQuery.error)} onRetry={() => void plansQuery.refetch()} />

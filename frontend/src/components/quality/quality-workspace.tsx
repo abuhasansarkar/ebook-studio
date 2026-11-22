@@ -6,7 +6,7 @@ import { CATEGORY_LABELS, QUALITY_CATEGORIES, bookContextSchema, getLanguage, ty
 import { api, errorMessage } from '@/lib/api';
 import { toast } from 'sonner';
 import { operationRequest } from '@/lib/operation-request';
-import { qk, useBook, useChapters } from '@/lib/queries';
+import { qk, useBook, useChapters, useIsSignedIn } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { Input, Label, Select, Textarea } from '@/components/ui/form';
 import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader, Progress } from '@/components/ui/misc';
@@ -27,12 +27,23 @@ const RANK = { error: 0, warning: 1, info: 2 } as const;
 const active = (r?: QualityReport | null) => !!r && ['queued', 'running'].includes(r.status);
 
 export function QualityWorkspace({ bookId }: { bookId: string }) {
+  const signedIn = useIsSignedIn();
   const qc = useQueryClient();
   const book = useBook(bookId);
-  const reports = useQuery({ queryKey: ['quality-reports', bookId], queryFn: () => api.get<{ reports: QualityReport[] }>(`/books/${bookId}/quality/reports`).then(r => r.reports), refetchInterval: q => q.state.data?.some(active) ? 1500 : false });
+  const reports = useQuery({
+    queryKey: ['quality-reports', bookId],
+    queryFn: () => api.get<{ reports: QualityReport[] }>(`/books/${bookId}/quality/reports`).then(r => r.reports),
+    refetchInterval: q => q.state.data?.some(active) ? 1500 : false,
+    enabled: signedIn && Boolean(bookId),
+  });
   const [selected, setSelected] = useState<string | null>(null);
   const reportId = selected ?? reports.data?.[0]?.id ?? null;
-  const detail = useQuery({ queryKey: ['quality-report', bookId, reportId], enabled: !!reportId, queryFn: () => api.get<{ report: QualityReport; findings: Finding[] }>(`/books/${bookId}/quality/reports/${reportId}`), refetchInterval: q => active(q.state.data?.report) ? 1500 : false });
+  const detail = useQuery({
+    queryKey: ['quality-report', bookId, reportId],
+    enabled: signedIn && !!reportId,
+    queryFn: () => api.get<{ report: QualityReport; findings: Finding[] }>(`/books/${bookId}/quality/reports/${reportId}`),
+    refetchInterval: q => active(q.state.data?.report) ? 1500 : false,
+  });
   const [running, setRunning] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -49,10 +60,10 @@ export function QualityWorkspace({ bookId }: { bookId: string }) {
 
   // isPending, not isLoading: the book query waits for the session, and a
   // waiting query is pending without loading (see generate-screen).
-  if ((book.isPending && !book.error) || reports.isLoading) return <PageLoader label="Loading quality review…" />;
+  if ((book.isPending && !book.error) || (reports.isPending && !reports.error)) return <PageLoader label="Loading quality review…" />;
   if (book.error || reports.error || !book.data) return <div className="mx-auto max-w-4xl px-4 py-8"><ErrorState message={errorMessage(book.error ?? reports.error)} onRetry={() => { void book.refetch(); void reports.refetch(); }} /></div>;
   const lang = getLanguage(book.data.language);
-  return <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-8">
+  return <div suppressHydrationWarning className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-8">
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div className="max-w-2xl">
         <h2 className="text-xl font-semibold">Quality review</h2>

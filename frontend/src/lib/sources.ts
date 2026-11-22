@@ -13,6 +13,7 @@ import type {
   SourceSummary,
 } from "@ebook/shared";
 import { api, errorMessage } from "./api";
+import { useIsSignedIn } from "./queries";
 
 /**
  * S11 research sources.
@@ -143,24 +144,28 @@ export function useSourceFormats() {
 
 /** Every source of a book, newest first. */
 export function useSources(bookId: string) {
+  const signedIn = useIsSignedIn();
   return useQuery({
     queryKey: sourceKeys.list(bookId),
     queryFn: () => api.get<{ sources: SourceRow[] }>(`/books/${bookId}/sources`).then((r) => r.sources),
+    enabled: signedIn && Boolean(bookId),
   });
 }
 
 /** The proposed chapter mapping, fetched only when the author opens the preview. */
 export function useSourcePreview(sourceId: string | null, version?: number) {
+  const signedIn = useIsSignedIn();
   return useQuery({
     queryKey: sourceKeys.preview(sourceId ?? "none", version),
     queryFn: () =>
       api.get<SourcePreview>(`/sources/${sourceId}/preview${version ? `?version=${version}` : ""}`),
-    enabled: Boolean(sourceId),
+    enabled: signedIn && Boolean(sourceId),
   });
 }
 
 /** The passages of the current version of a source. */
 export function useSourcePassages(sourceId: string | null) {
+  const signedIn = useIsSignedIn();
   return useQuery({
     queryKey: [...sourceKeys.detail(sourceId ?? "none"), "passages"],
     queryFn: () =>
@@ -169,25 +174,27 @@ export function useSourcePassages(sourceId: string | null) {
           `/sources/${sourceId}/passages`,
         )
         .then((r) => r.passages),
-    enabled: Boolean(sourceId),
+    enabled: signedIn && Boolean(sourceId),
   });
 }
 
 /** The citations of a chapter, shown in the research workspace and the editor. */
 export function useChapterCitations(chapterId: string | null) {
+  const signedIn = useIsSignedIn();
   return useQuery({
     queryKey: sourceKeys.chapterCitations(chapterId ?? "none"),
     queryFn: () => api.get<ChapterCitations>(`/chapters/${chapterId}/sources`),
-    enabled: Boolean(chapterId),
+    enabled: signedIn && Boolean(chapterId),
   });
 }
 
 /** The links of a source. */
 export function useSourceLinks(sourceId: string | null) {
+  const signedIn = useIsSignedIn();
   return useQuery({
     queryKey: sourceKeys.links(sourceId ?? "none"),
     queryFn: () => api.get<{ links: SourceLink[] }>(`/sources/${sourceId}/links`).then((r) => r.links),
-    enabled: Boolean(sourceId),
+    enabled: signedIn && Boolean(sourceId),
   });
 }
 

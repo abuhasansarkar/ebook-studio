@@ -772,7 +772,7 @@ export function MarketingStudio({ bookId }: { bookId: string }) {
       </Card>
 
       <Section title="Your drafts" className="mt-10">
-        {drafts.isLoading ? (
+        {drafts.isPending && !drafts.error ? (
           <PageLoader />
         ) : drafts.error ? (
           <ErrorState message={errorMessage(drafts.error)} onRetry={() => void drafts.refetch()} />

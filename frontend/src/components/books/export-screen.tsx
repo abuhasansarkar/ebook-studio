@@ -73,8 +73,8 @@ export function ExportScreen({ params }: { params: Promise<{ bookId: string }> }
   const book = useBook(bookId);
   const exports = useExports(bookId);
   // What the pre-export check reports on besides the text: the saved cover and the latest review.
-  const cover = useQuery({ queryKey: ["export-cover", bookId], queryFn: () => api.get<{ cover: { version: number; data: { artworkId?: string | null } } }>(`/books/${bookId}/cover`).then((r) => r.cover) });
-  const reviews = useQuery({ queryKey: ["quality-reports", bookId], queryFn: () => api.get<{ reports: { id: string; stale: boolean; status: string; createdAt: string }[] }>(`/books/${bookId}/quality/reports`).then((r) => r.reports) });
+  const cover = useQuery({ queryKey: ["export-cover", bookId], queryFn: () => api.get<{ cover: { version: number; data: { artworkId?: string | null } } }>(`/books/${bookId}/cover`).then((r) => r.cover), enabled: Boolean(book.data?.id) });
+  const reviews = useQuery({ queryKey: ["quality-reports", bookId], queryFn: () => api.get<{ reports: { id: string; stale: boolean; status: string; createdAt: string }[] }>(`/books/${bookId}/quality/reports`).then((r) => r.reports), enabled: Boolean(book.data?.id) });
   const formats = useExportFormats();
   const createExport = useCreateExport(bookId);
   const billing = useBilling();
@@ -315,7 +315,7 @@ export function ExportScreen({ params }: { params: Promise<{ bookId: string }> }
 
       <PublishingChecks bookId={bookId} />
       <h3 className="mb-3 mt-10 text-lg font-semibold">Export history</h3>
-      {exports.isLoading ? (
+      {exports.isPending && !exports.error ? (
         <PageLoader />
       ) : exports.error ? (
         <ErrorState message={errorMessage(exports.error)} onRetry={() => void exports.refetch()} />

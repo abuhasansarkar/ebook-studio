@@ -13,6 +13,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/form";
 import { Card, EmptyState, ErrorState, PageLoader } from "@/components/ui/misc";
 import { api, errorMessage } from "@/lib/api";
+import { useIsSignedIn } from "@/lib/queries";
 import type { BookSummary } from "@/lib/types";
 
 /**
@@ -27,10 +28,12 @@ function Library() {
   const router = useRouter();
   const params = useSearchParams();
   const query = params.toString();
+  const signedIn = useIsSignedIn();
   const projects = useProjects("archived=all&limit=100");
   const books = useQuery({
     queryKey: ["books", "library", query],
     queryFn: () => api.get<{ books: BookSummary[]; nextCursor: string | null }>(`/books?${query}`),
+    enabled: signedIn,
   });
 
   const set = (key: string, value: string) => {
@@ -60,7 +63,7 @@ function Library() {
   const hasFilters = activeFilters.length > 0 || Boolean(params.get("search"));
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-8">
+    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-8" suppressHydrationWarning>
       <PageHeader
         title="My eBooks"
         description="Organize your books and find archived work."
@@ -132,7 +135,7 @@ function Library() {
         </div>
       </Card>
 
-      {books.isLoading ? (
+      {books.isPending && !books.error ? (
         <PageLoader />
       ) : books.error ? (
         <ErrorState

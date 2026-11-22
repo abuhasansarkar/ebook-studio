@@ -57,7 +57,7 @@ function CheckoutInner() {
       </div>
     );
   }
-  if (details.isLoading) {
+  if (details.isPending && !details.error) {
     return (
       <div className="mx-auto max-w-lg px-4 py-16">
         <PageLoader label="Opening the checkout…" />

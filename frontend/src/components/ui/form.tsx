@@ -36,7 +36,7 @@ export function Label({ className, ...props }: LabelHTMLAttributes<HTMLLabelElem
 
 export function Field({ label, htmlFor, error, hint, children, className }: { label: string; htmlFor: string; error?: string; hint?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <div className={className}>
+    <div className={className} suppressHydrationWarning>
       <Label htmlFor={htmlFor}>{label}</Label>
       {children}
       {error ? (

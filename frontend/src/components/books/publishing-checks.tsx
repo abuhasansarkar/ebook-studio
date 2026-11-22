@@ -4,15 +4,18 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { MARKETPLACES, MARKETPLACE_LABELS, type Marketplace, type PublishingReport } from '@ebook/shared';
 import { api, errorMessage } from '@/lib/api';
+import { useIsSignedIn } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { Field, Select } from '@/components/ui/form';
 import { Alert, Card, ErrorState, PageLoader } from '@/components/ui/misc';
 
 export function PublishingChecks({ bookId }: { bookId: string }) {
+  const signedIn = useIsSignedIn();
   const [destination, setDestination] = useState<Marketplace>('kdp_ebook');
   const query = useQuery({
     queryKey: ['publishing-checks', bookId, destination],
     queryFn: async () => (await api.get<{ report: PublishingReport }>(`/books/${bookId}/publishing-checks?destination=${destination}`)).report,
+    enabled: signedIn && Boolean(bookId),
     staleTime: 0,
   });
   return <Card className="mt-6 p-6">
@@ -31,7 +34,7 @@ export function PublishingChecks({ bookId }: { bookId: string }) {
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       }}>Download checklist</Button>
     </div>
-    {query.isLoading ? <PageLoader label="Checking manuscript…" /> : query.error ? <ErrorState message={errorMessage(query.error)} onRetry={() => void query.refetch()} /> : query.data && <>
+    {query.isPending && !query.error ? <PageLoader label="Checking manuscript…" /> : query.error ? <ErrorState message={errorMessage(query.error)} onRetry={() => void query.refetch()} /> : query.data && <>
       <Alert tone={query.data.status === 'blocked' ? 'warning' : 'info'} className="mb-3">
         <span className="font-semibold">{query.data.status === 'blocked' ? 'Preparation needed' : 'Human review required'}</span>
       </Alert>

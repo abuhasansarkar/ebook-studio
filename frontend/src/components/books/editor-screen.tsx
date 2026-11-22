@@ -188,8 +188,12 @@ export function EditorScreen({ params }: { params: Promise<{ bookId: string }> }
             AI is still writing some chapters. Finished chapters can be edited now. <Link href={`/app/books/${bookId}/generate`} className="font-semibold underline">See progress</Link>
           </Alert>
         )}
-        {chapter.isLoading || !chapter.data ? (
-          chapter.error ? <div className="p-8"><ErrorState message={errorMessage(chapter.error)} onRetry={() => void chapter.refetch()} /></div> : <PageLoader label="Opening chapter…" />
+        {chapter.isPending && !chapter.error ? (
+          <PageLoader label="Opening chapter…" />
+        ) : chapter.error ? (
+          <div className="p-8"><ErrorState message={errorMessage(chapter.error)} onRetry={() => void chapter.refetch()} /></div>
+        ) : !chapter.data ? (
+          <PageLoader label="Opening chapter…" />
         ) : chapter.data.status === "generating" ? (
           <div className="p-8"><EmptyState icon={<Spinner className="h-6 w-6" />} title="This chapter is being written" description="It will open for editing as soon as the AI finishes." /></div>
         ) : (

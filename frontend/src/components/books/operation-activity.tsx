@@ -74,7 +74,7 @@ function OperationDetail({ operationId, onClose }: { operationId: string; onClos
 
   return (
     <Dialog open onClose={onClose} title="Request details" description={`Support reference ${operationId}`}>
-      {detail.isLoading ? (
+      {detail.isPending && !detail.error ? (
         <p className="flex items-center gap-2 text-sm text-muted-foreground">
           <Spinner /> Loading the request…
         </p>

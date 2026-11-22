@@ -128,7 +128,7 @@ function CreateColoringBookWizard() {
   });
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8 sm:px-8">
+    <div suppressHydrationWarning className="mx-auto max-w-4xl px-4 py-8 sm:px-8">
       {/* Top Breadcrumb */}
       <div className="mb-6">
         <button
@@ -482,12 +482,12 @@ function CreateColoringBookWizard() {
                   type="submit"
                   size="lg"
                   loading={createPlan.isPending}
-                  disabled={createPlan.isPending || (!credits.isLoading && !hasEnoughCredits)}
+                  disabled={createPlan.isPending || (credits.isSuccess && !hasEnoughCredits)}
                   className="gap-2 shadow-md"
                 >
                   <Sparkles className="h-5 w-5" /> Generate Book Plan ({COLORING_CREDIT_COSTS.plan} Credits)
                 </Button>
-                {!credits.isLoading && !hasEnoughCredits && (
+                {credits.isSuccess && !hasEnoughCredits && (
                   <span className="text-xs text-destructive font-medium">
                     Insufficient balance ({userBalance}/{COLORING_CREDIT_COSTS.plan} credits)
                   </span>

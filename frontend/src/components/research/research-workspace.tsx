@@ -86,7 +86,7 @@ export function ResearchWorkspace({ params }: { params: Promise<{ bookId: string
 
   // isPending, not isLoading: the book query waits for the session, and a
   // waiting query is pending without loading (see generate-screen).
-  if ((book.isPending && !book.error) || sources.isLoading) return <PageLoader label="Loading your research sources…" />;
+  if ((book.isPending && !book.error) || (sources.isPending && !sources.error)) return <PageLoader label="Loading your research sources…" />;
   if (sources.error) {
     return (
       <div className="mx-auto max-w-4xl px-4 py-8 sm:px-8">
@@ -98,7 +98,7 @@ export function ResearchWorkspace({ params }: { params: Promise<{ bookId: string
   const ready = sources.data?.filter((s) => s.status === "ready") ?? [];
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-8">
+    <div suppressHydrationWarning className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-8">
       <div className="max-w-3xl">
         <h2 className="text-xl font-semibold">Research</h2>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -551,7 +551,7 @@ function ImportPreview({ source, bookId }: { source: SourceRow; bookId: string }
   const [error, setError] = useState("");
   const [applied, setApplied] = useState<{ count: number } | null>(null);
 
-  if (preview.isLoading) return <PageLoader label="Reading the source…" />;
+  if (preview.isPending && !preview.error) return <PageLoader label="Reading the source…" />;
   if (preview.error) return <ErrorState message={errorMessage(preview.error)} onRetry={() => void preview.refetch()} />;
   if (!preview.data) return null;
 
@@ -833,7 +833,7 @@ function ChapterCitationsPanel({
         </Select>
       </div>
 
-      {chapterId && citations.isLoading && <PageLoader label="Loading citations…" />}
+      {chapterId && citations.isPending && !citations.error && <PageLoader label="Loading citations…" />}
       {chapterId && citations.error && <Alert tone="danger" className="mt-3">{errorMessage(citations.error)}</Alert>}
       {chapterId && citations.data && (
         <div className="mt-4 space-y-3" data-citations>

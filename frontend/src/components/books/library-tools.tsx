@@ -12,6 +12,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { Badge, Card, EmptyState, ErrorState, PageLoader } from "@/components/ui/misc";
 import { api, errorMessage } from "@/lib/api";
+import { useIsSignedIn } from "@/lib/queries";
 import type { BookSummary } from "@/lib/types";
 
 interface Project {
@@ -23,9 +24,11 @@ interface Project {
 }
 
 export function useProjects(query = "limit=100") {
+  const signedIn = useIsSignedIn();
   return useQuery({
     queryKey: ["projects", query],
     queryFn: () => api.get<{ projects: Project[]; nextCursor: string | null }>(`/projects?${query}`),
+    enabled: signedIn,
   });
 }
 
@@ -226,7 +229,7 @@ export function ProjectManager() {
         </Field>
       </div>
 
-      {projects.isLoading ? (
+      {projects.isPending && !projects.error ? (
         <PageLoader />
       ) : projects.error ? (
         <ErrorState

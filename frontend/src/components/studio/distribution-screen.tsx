@@ -455,7 +455,7 @@ export function Distribution({ bookId }: { bookId: string }) {
       )}
 
       <Section title="Prepared packages" className="mt-10">
-        {packages.isLoading ? (
+        {packages.isPending && !packages.error ? (
           <PageLoader />
         ) : packages.error ? (
           <ErrorState message={errorMessage(packages.error)} onRetry={() => void packages.refetch()} />

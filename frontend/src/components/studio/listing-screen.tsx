@@ -138,7 +138,7 @@ function RoyaltyPanel({
 }) {
   const quote = useRoyaltyQuote(destination, priceInMinorUnits);
 
-  if (quote.isLoading) return <PageLoader label="Working out the royalty…" />;
+  if (quote.isPending && !quote.isError) return <PageLoader label="Working out the royalty…" />;
   if (quote.isError) return <ErrorState message={errorMessage(quote.error)} onRetry={() => void quote.refetch()} />;
   const estimate = quote.data;
   if (!estimate) return null;
@@ -354,7 +354,7 @@ export function ListingStudio({ bookId }: { bookId: string }) {
     [destinations.data, destination],
   );
 
-  if (destinations.isLoading || listings.isLoading) return <PageLoader label="Loading the listing studio…" />;
+  if ((destinations.isPending || listings.isPending) && !destinations.isError && !listings.isError) return <PageLoader label="Loading the listing studio…" />;
   if (destinations.isError) {
     return <ErrorState message={errorMessage(destinations.error)} onRetry={() => void destinations.refetch()} />;
   }
