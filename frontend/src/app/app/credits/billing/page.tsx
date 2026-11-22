@@ -346,7 +346,7 @@ function BillingContent() {
 
           <h2 className="mb-3 text-lg font-semibold">Available plans</h2>
           {catalog && catalog.plans.length > 0 ? (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <FreePlanCard isCurrentPlan={!currentPlan || currentPlan.id === "free"} />
               {catalog.plans.map((plan) => (
                 <PlanCard

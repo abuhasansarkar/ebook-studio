@@ -50,6 +50,19 @@ export const DEFAULT_PLANS: Plan[] = [
     entitlements: { maxBooks: 5, maxChaptersPerBook: 30 },
     active: true,
     recurring: true,
+    interval: "month",
+  },
+  {
+    id: "starter-yearly",
+    name: "Starter (Annual)",
+    description: "Credits for multiple books with all export formats, billed annually (save 17%).",
+    priceMinor: 12000,
+    currency: "USD",
+    credits: 6000,
+    entitlements: { maxBooks: 5, maxChaptersPerBook: 30 },
+    active: true,
+    recurring: true,
+    interval: "year",
   },
   {
     id: "author",
@@ -61,6 +74,19 @@ export const DEFAULT_PLANS: Plan[] = [
     entitlements: { maxBooks: 25, maxChaptersPerBook: 60, priorityJobs: true },
     active: true,
     recurring: true,
+    interval: "month",
+  },
+  {
+    id: "author-yearly",
+    name: "Author (Annual)",
+    description: "2 months free! Priority handling and higher book quotas, billed annually.",
+    priceMinor: 39000,
+    currency: "USD",
+    credits: 25000,
+    entitlements: { maxBooks: 25, maxChaptersPerBook: 60, priorityJobs: true },
+    active: true,
+    recurring: true,
+    interval: "year",
   },
   {
     id: "studio",
@@ -72,6 +98,19 @@ export const DEFAULT_PLANS: Plan[] = [
     entitlements: { maxBooks: 100, maxChaptersPerBook: 120, priorityJobs: true },
     active: true,
     recurring: true,
+    interval: "month",
+  },
+  {
+    id: "studio-yearly",
+    name: "Studio (Annual)",
+    description: "Save 20%! Maximum scale, highest quotas, and priority handling billed annually.",
+    priceMinor: 95000,
+    currency: "USD",
+    credits: 75000,
+    entitlements: { maxBooks: 100, maxChaptersPerBook: 120, priorityJobs: true },
+    active: true,
+    recurring: true,
+    interval: "year",
   },
 ];
 
@@ -93,6 +132,7 @@ function toPlan(row: {
   active: boolean;
   recurring: boolean;
 }): Plan {
+  const isYearly = row.id.endsWith("-yearly");
   return {
     id: row.id,
     name: row.name,
@@ -103,6 +143,7 @@ function toPlan(row: {
     entitlements: (row.entitlements ?? {}) as Plan["entitlements"],
     active: row.active,
     recurring: row.recurring,
+    interval: isYearly ? "year" : "month",
   };
 }
 
@@ -120,18 +161,19 @@ async function userForReference(reference: string) {
 export const billingService = {
   /** The plans on offer. */
   async plans() {
-    const rows = await prisma.plan.findMany({ where: { active: true }, orderBy: { priceMinor: "asc" } });
+    let rows = await prisma.plan.findMany({ where: { active: true }, orderBy: { priceMinor: "asc" } });
+    if (rows.length < DEFAULT_PLANS.length) {
+      await this.seedPlans();
+      rows = await prisma.plan.findMany({ where: { active: true }, orderBy: { priceMinor: "asc" } });
+    }
     return rows.map(toPlan);
   },
 
   /**
    * Seeds the catalog.
    *
-   * A seeded plan's entitlement set is kept in step with the code, because the
-   * entitlements describe what the product *does* rather than what it charges:
-   * a capability the product publishes as free must not be advertised as a
-   * paid unlock. The price, credits and name are left alone, so a price change
-   * is still a deliberate act rather than a side effect of a restart.
+   * A seeded plan's entitlement set and pricing are kept in step with the code,
+   * so adding new plans or updating quotas takes effect across the catalog.
    */
   async seedPlans(plans: Plan[] = DEFAULT_PLANS) {
     for (const plan of plans) {
@@ -148,7 +190,16 @@ export const billingService = {
           active: plan.active,
           recurring: plan.recurring,
         },
-        update: { entitlements: plan.entitlements as object },
+        update: {
+          name: plan.name,
+          description: plan.description,
+          priceMinor: plan.priceMinor,
+          currency: plan.currency,
+          credits: plan.credits,
+          entitlements: plan.entitlements as object,
+          active: plan.active,
+          recurring: plan.recurring,
+        },
       });
     }
   },
@@ -638,9 +689,11 @@ export const billingService = {
     const providerSubscriptionId = event.providerSubscriptionId ?? `sub_${paymentProviderIdFor(userId)}`;
     const status = (event.subscriptionStatus ?? existingStatus ?? "active") as SubscriptionStatus;
     const canceled = status === "canceled" || event.type === "subscription.canceled";
+    const isYearly = plan.id.endsWith("-yearly") || plan.interval === "year";
+    const periodDuration = isYearly ? 365 * 24 * 60 * 60 * 1000 : SUBSCRIPTION_PERIOD_MS;
     // A provider that does not report a period still gets one, so the
     // subscription has a period the author can see.
-    const periodEnd = event.currentPeriodEnd ?? new Date(event.occurredAt.getTime() + SUBSCRIPTION_PERIOD_MS);
+    const periodEnd = event.currentPeriodEnd ?? new Date(event.occurredAt.getTime() + periodDuration);
 
     await prisma.$transaction(async (tx) => {
       const subscription = await tx.subscription.upsert({
@@ -776,6 +829,7 @@ export const billingService = {
             status: subscription.status as SubscriptionStatus,
             recurring: true,
             credits: wallet.balance,
+            interval: (subscription.planId.endsWith("-yearly") ? "year" : "month") as "year" | "month",
             currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() ?? null,
             canceledAt: subscription.canceledAt?.toISOString() ?? null,
           }
@@ -788,6 +842,7 @@ export const billingService = {
             status: "active" as SubscriptionStatus,
             recurring: false,
             credits: wallet.balance,
+            interval: "month" as const,
             currentPeriodEnd: null,
             canceledAt: null,
           },

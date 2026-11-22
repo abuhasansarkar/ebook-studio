@@ -62,6 +62,8 @@ export interface Plan {
   active: boolean;
   /** Whether the plan renews at the end of its period. */
   recurring: boolean;
+  /** Billing interval: 'month' (default) or 'year'. */
+  interval?: 'month' | 'year';
 }
 
 /** A subscription to a plan. */
@@ -101,6 +103,7 @@ export interface CurrentPlanInfo {
   status: SubscriptionStatus;
   recurring: boolean;
   credits: number;
+  interval?: "month" | "year";
   currentPeriodEnd: string | null;
   canceledAt: string | null;
 }
