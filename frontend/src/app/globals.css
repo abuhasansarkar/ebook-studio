@@ -72,36 +72,27 @@ html {
 }
 
 .animate-marquee-down-slow {
-  animation: marquee-down 44s linear infinite;
+  animation: marquee-down 44s linear infinite !important;
 }
 
 .animate-marquee-down-normal {
-  animation: marquee-down 36s linear infinite;
+  animation: marquee-down 36s linear infinite !important;
 }
 
 .animate-marquee-down-fast {
-  animation: marquee-down 30s linear infinite;
+  animation: marquee-down 30s linear infinite !important;
 }
 
 .animate-marquee-up-slow {
-  animation: marquee-up 44s linear infinite;
+  animation: marquee-up 44s linear infinite !important;
 }
 
 .animate-marquee-up-normal {
-  animation: marquee-up 36s linear infinite;
+  animation: marquee-up 36s linear infinite !important;
 }
 
 .animate-marquee-up-fast {
-  animation: marquee-up 30s linear infinite;
-}
-
-.marquee-pause:hover .animate-marquee-down-slow,
-.marquee-pause:hover .animate-marquee-down-normal,
-.marquee-pause:hover .animate-marquee-down-fast,
-.marquee-pause:hover .animate-marquee-up-slow,
-.marquee-pause:hover .animate-marquee-up-normal,
-.marquee-pause:hover .animate-marquee-up-fast {
-  animation-play-state: paused;
+  animation: marquee-up 30s linear infinite !important;
 }
 
 .animate-float {
