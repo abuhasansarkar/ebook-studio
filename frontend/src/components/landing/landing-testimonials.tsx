@@ -65,65 +65,65 @@ const TESTIMONIALS = [
 
 export function LandingTestimonials() {
   return (
-    <section id="stories" className="py-24 bg-background">
+    <section id="stories" className="py-24 bg-background relative overflow-hidden">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
         <div className="text-center max-w-3xl mx-auto">
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-primary-soft px-3 py-1 text-xs font-semibold text-primary">
+          <div className="inline-flex items-center gap-1.5 rounded-full bg-primary-soft px-3.5 py-1 text-xs font-semibold text-primary transition-transform hover:scale-105">
             <Sparkles className="h-3 w-3" />
             CREATOR SUCCESS
           </div>
           <h2 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-5xl text-foreground">
             Real creators. Real income.
           </h2>
-          <p className="mt-4 text-base text-muted-foreground sm:text-lg">
+          <p className="mt-4 text-base text-muted-foreground sm:text-lg leading-relaxed">
             See how self-publishers, indie authors, and digital creators turn their concepts into monthly royalty income.
           </p>
         </div>
 
-        {/* Testimonials Grid */}
+        {/* Testimonials Grid with Staggered Hover Lift */}
         <div className="mt-16 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {TESTIMONIALS.map((t, idx) => (
             <div
               key={idx}
-              className="rounded-2xl border border-border bg-surface p-6 sm:p-7 shadow-card flex flex-col justify-between transition-all hover:border-[#e8603c]/40 hover:shadow-md"
+              className="group rounded-3xl border border-border bg-surface p-6 sm:p-7 shadow-card flex flex-col justify-between transition-all duration-300 hover:border-[#e8603c]/40 hover:shadow-xl hover:-translate-y-1.5"
             >
               <div>
                 {/* Header with Avatar and Platform Tag */}
                 <div className="flex items-center justify-between pb-4 border-b border-border">
                   <div className="flex items-center gap-3">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#e8603c]/15 text-[#e8603c] font-bold text-sm">
+                    <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#e8603c]/15 text-[#e8603c] font-black text-sm shadow-xs transition-transform duration-300 group-hover:scale-105">
                       {t.avatar}
                     </span>
                     <div>
-                      <h4 className="font-bold text-foreground text-sm">{t.name}</h4>
+                      <h4 className="font-bold text-foreground text-sm group-hover:text-[#a9462c] transition-colors">{t.name}</h4>
                       <p className="text-[11px] text-muted-foreground">{t.role}</p>
                     </div>
                   </div>
-                  <span className="rounded-full bg-muted px-2.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                  <span className="rounded-full bg-muted px-3 py-1 text-[10px] font-bold text-muted-foreground transition-colors group-hover:bg-[#e8603c]/10 group-hover:text-[#a9462c]">
                     {t.platform}
                   </span>
                 </div>
 
-                {/* Income Stat Badge & Mini Chart */}
-                <div className="my-4 rounded-xl border border-emerald-200/80 bg-emerald-50/60 dark:bg-emerald-950/30 dark:border-emerald-800 p-3">
+                {/* Income Stat Badge & Visual Trend Chart */}
+                <div className="my-4 rounded-2xl border border-emerald-200/80 bg-emerald-50/60 dark:bg-emerald-950/30 dark:border-emerald-800 p-3.5 transition-colors group-hover:bg-emerald-50/80">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-semibold text-emerald-800 dark:text-emerald-300">
+                    <span className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300">
                       Verified Result
                     </span>
-                    <TrendingUp className="h-4 w-4 text-emerald-600" />
+                    <TrendingUp className="h-4 w-4 text-emerald-600 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
                   </div>
-                  <div className="mt-1 text-lg font-black text-emerald-700 dark:text-emerald-400">
+                  <div className="mt-1 text-xl font-black text-emerald-700 dark:text-emerald-400">
                     {t.income}
                   </div>
 
-                  {/* Visual trend bars if available */}
+                  {/* Visual Trend Bars with Staggered Height */}
                   {t.chart && (
-                    <div className="mt-3 flex items-end gap-1.5 h-8">
+                    <div className="mt-3.5 flex items-end gap-1.5 h-9">
                       {t.chart.map((val, barIdx) => (
                         <div
                           key={barIdx}
-                          className="flex-1 bg-emerald-500 rounded-xs"
+                          className="flex-1 bg-emerald-500/85 hover:bg-emerald-600 rounded-xs transition-all duration-300"
                           style={{ height: `${(val / 150) * 100}%` }}
                         />
                       ))}
@@ -144,9 +144,9 @@ export function LandingTestimonials() {
                 </p>
               </div>
 
-              <div className="mt-5 pt-3 border-t border-border flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                Verified eBookStudio Publisher
+              <div className="mt-5 pt-3.5 border-t border-border flex items-center gap-2 text-[11px] text-muted-foreground">
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                <span>Verified eBookStudio Publisher</span>
               </div>
             </div>
           ))}

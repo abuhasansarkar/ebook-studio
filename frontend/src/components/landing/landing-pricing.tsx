@@ -44,29 +44,29 @@ export function LandingPricing() {
   const [annual, setAnnual] = useState(true);
 
   return (
-    <section id="pricing" className="py-24 bg-background">
+    <section id="pricing" className="py-24 bg-background relative overflow-hidden">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
         <div className="text-center max-w-3xl mx-auto">
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-primary-soft px-3 py-1 text-xs font-semibold text-primary">
+          <div className="inline-flex items-center gap-1.5 rounded-full bg-primary-soft px-3.5 py-1 text-xs font-semibold text-primary transition-transform hover:scale-105">
             <Sparkles className="h-3 w-3" />
             TRANSPARENT PRICING
           </div>
           <h2 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-5xl text-foreground">
             Plans from $19/mo, pay only when you're ready to sell.
           </h2>
-          <p className="mt-4 text-base text-muted-foreground sm:text-lg">
+          <p className="mt-4 text-base text-muted-foreground sm:text-lg leading-relaxed">
             Start completely free with 100 credits. Upgrade to unlock full-resolution commercial exports and unlimited generation.
           </p>
 
-          {/* Billing Cycle Toggle */}
-          <div className="mt-8 inline-flex items-center gap-3 rounded-full border border-border bg-surface p-1.5 shadow-xs">
+          {/* Billing Cycle Toggle with Lively Pill Animation */}
+          <div className="mt-8 inline-flex items-center gap-2 rounded-full border border-border bg-surface p-1.5 shadow-sm">
             <button
               type="button"
               onClick={() => setAnnual(false)}
-              className={`rounded-full px-4 py-1.5 text-xs font-semibold transition-all ${
+              className={`rounded-full px-4 py-2 text-xs font-semibold transition-all duration-300 cursor-pointer ${
                 !annual
-                  ? "bg-foreground text-background shadow-xs"
+                  ? "bg-foreground text-background shadow-xs scale-100"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -75,23 +75,23 @@ export function LandingPricing() {
             <button
               type="button"
               onClick={() => setAnnual(true)}
-              className={`flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold transition-all ${
+              className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-all duration-300 cursor-pointer ${
                 annual
-                  ? "bg-[#e8603c] text-white shadow-xs"
+                  ? "bg-[#e8603c] text-white shadow-xs scale-100"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
               <span>Annual billing</span>
-              <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider">
+              <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider animate-pulse-subtle">
                 Save 20%
               </span>
             </button>
           </div>
         </div>
 
-        {/* Featured Pricing Card */}
+        {/* Featured Pricing Card with Glow & Hover Lift */}
         <div className="mt-14 max-w-xl mx-auto">
-          <div className="relative rounded-3xl border-2 border-[#e8603c] bg-surface p-8 sm:p-10 shadow-2xl shadow-[#e8603c]/10">
+          <div className="group relative rounded-3xl border-2 border-[#e8603c] bg-surface p-8 sm:p-10 shadow-2xl shadow-[#e8603c]/10 transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-[#e8603c]/20">
             {/* Ribbon */}
             <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-[#e8603c] to-[#ff7854] px-4 py-1 text-xs font-bold uppercase tracking-wider text-white shadow-md">
               Most Popular • Creator Tier
@@ -104,21 +104,21 @@ export function LandingPricing() {
               </p>
 
               <div className="mt-6 flex items-baseline justify-center gap-1">
-                <span className="text-5xl font-black tracking-tight text-foreground">
+                <span className="text-5xl font-black tracking-tight text-foreground transition-all duration-300">
                   {annual ? "$15" : "$19"}
                 </span>
                 <span className="text-sm font-semibold text-muted-foreground">/ month</span>
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                {annual ? "Billed annually ($180/yr)" : "Billed monthly, cancel anytime"}
+                {annual ? "Billed annually ($180/yr) • 2 months free" : "Billed monthly, cancel anytime"}
               </p>
 
               <Link
                 href="/signup"
-                className="mt-8 flex w-full items-center justify-center gap-2 rounded-xl bg-[#e8603c] hover:bg-[#d4512e] py-3.5 text-sm font-bold text-white shadow-md transition-all hover:shadow-lg group"
+                className="shimmer-mask mt-8 flex w-full items-center justify-center gap-2 rounded-xl bg-[#e8603c] hover:bg-[#d4512e] py-3.5 text-sm font-bold text-white shadow-md transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 active:scale-98 group/btn"
               >
                 <span>Start 14-Day Free Trial</span>
-                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover/btn:translate-x-1" />
               </Link>
               <p className="mt-2 text-[11px] text-muted-foreground">
                 Instant access • Includes 1,000 monthly credits • No risk
@@ -147,9 +147,9 @@ export function LandingPricing() {
             return (
               <div
                 key={idx}
-                className="rounded-xl border border-border bg-surface p-5 text-center transition-all hover:border-border/80 hover:shadow-xs"
+                className="group rounded-2xl border border-border bg-surface p-5 text-center transition-all duration-300 hover:border-[#e8603c]/30 hover:shadow-md hover:-translate-y-1"
               >
-                <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-primary-soft text-[#e8603c]">
+                <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-primary-soft text-[#e8603c] transition-transform duration-300 group-hover:scale-110">
                   <Icon className="h-5 w-5" />
                 </div>
                 <h4 className="mt-3 font-bold text-foreground text-sm">{g.title}</h4>

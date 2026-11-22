@@ -42,50 +42,59 @@ export function LandingFAQ() {
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
         <div className="text-center max-w-2xl mx-auto">
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-primary-soft px-3 py-1 text-xs font-semibold text-primary">
+          <div className="inline-flex items-center gap-1.5 rounded-full bg-primary-soft px-3.5 py-1 text-xs font-semibold text-primary transition-transform hover:scale-105">
             <Sparkles className="h-3 w-3" />
             FREQUENTLY ASKED QUESTIONS
           </div>
           <h2 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-5xl text-foreground">
             Questions? We've got answers.
           </h2>
-          <p className="mt-4 text-base text-muted-foreground sm:text-lg">
+          <p className="mt-4 text-base text-muted-foreground sm:text-lg leading-relaxed">
             Everything you need to know about commercial publishing, file compliance, and royalties.
           </p>
         </div>
 
-        {/* Accordion List */}
-        <div className="mt-14 space-y-3">
+        {/* Accordion List with Butter-Smooth Grid Expansion */}
+        <div className="mt-14 space-y-3.5">
           {FAQS.map((faq, idx) => {
             const isOpen = openIdx === idx;
             return (
               <div
                 key={idx}
-                className="rounded-2xl border border-border bg-surface shadow-xs transition-all"
+                className="rounded-2xl border border-border bg-surface shadow-xs transition-all duration-300 hover:border-[#e8603c]/30"
               >
                 <button
                   type="button"
                   onClick={() => toggle(idx)}
-                  className="flex w-full items-center justify-between p-5 sm:p-6 text-left cursor-pointer"
+                  className="flex w-full items-center justify-between p-5 sm:p-6 text-left cursor-pointer group"
                   aria-expanded={isOpen}
                 >
-                  <span className="text-base font-bold text-foreground pr-4">
+                  <span className="text-base font-bold text-foreground pr-4 group-hover:text-[#a9462c] transition-colors">
                     {faq.q}
                   </span>
                   <span
-                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted transition-transform duration-200 ${
-                      isOpen ? "rotate-180 bg-[#e8603c]/15 text-[#e8603c]" : "text-muted-foreground"
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-all duration-300 ${
+                      isOpen
+                        ? "rotate-180 bg-[#e8603c] text-white shadow-xs"
+                        : "bg-muted text-muted-foreground group-hover:bg-muted/80"
                     }`}
                   >
                     <ChevronDown className="h-4 w-4" />
                   </span>
                 </button>
 
-                {isOpen && (
-                  <div className="px-5 pb-6 pt-0 text-sm text-muted-foreground leading-relaxed sm:px-6 border-t border-border/50">
-                    <p className="mt-3">{faq.a}</p>
+                {/* CSS Grid Smooth Height Transition */}
+                <div
+                  className={`grid transition-[grid-template-rows] duration-300 ease-out ${
+                    isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                  }`}
+                >
+                  <div className="overflow-hidden">
+                    <div className="px-5 pb-6 pt-0 text-sm text-muted-foreground leading-relaxed sm:px-6 border-t border-border/50">
+                      <p className="mt-3.5 leading-relaxed">{faq.a}</p>
+                    </div>
                   </div>
-                )}
+                </div>
               </div>
             );
           })}
