@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   Check,
@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Save,
   Sparkles,
+  Upload,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -35,6 +36,8 @@ export default function ColoringBookEditorPage({ params }: { params: Promise<{ b
   const [editTitle, setEditTitle] = useState("");
   const [editPrompt, setEditPrompt] = useState("");
   const [editCaption, setEditCaption] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (isLoading) {
     return <PageLoader label="Loading editor canvas…" />;
@@ -87,6 +90,34 @@ export default function ColoringBookEditorPage({ params }: { params: Promise<{ b
     } catch (err) {
       toast.dismiss();
       toast.error((err as Error).message || "Regeneration failed");
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activePage) return;
+    setUploading(true);
+    try {
+      toast.loading("Uploading custom line-art illustration…");
+      const res = await fetch("/api/v1/assets", {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const { asset } = await res.json();
+      await updatePage.mutateAsync({
+        pageId: activePage.id,
+        updates: { assetId: asset.id },
+      });
+      toast.dismiss();
+      toast.success("Custom illustration uploaded!");
+    } catch {
+      toast.dismiss();
+      toast.error("Failed to upload custom illustration");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -256,6 +287,25 @@ export default function ColoringBookEditorPage({ params }: { params: Promise<{ b
                 className="flex-1 gap-1.5 shadow-md"
               >
                 <RefreshCw className="h-3.5 w-3.5" /> Regenerate (8 cr)
+              </Button>
+            </div>
+
+            <div className="pt-2 border-t border-border">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                loading={uploading}
+                className="w-full gap-2 text-xs text-muted-foreground hover:text-foreground"
+              >
+                <Upload className="h-3.5 w-3.5" /> Upload Custom Line Art Replacement
               </Button>
             </div>
           </Card>

@@ -225,6 +225,7 @@ export const coloringPageUpdateSchema = z.object({
   prompt: z.string().trim().min(5).max(2000).optional(),
   negativePrompt: z.string().trim().max(1000).optional().nullable(),
   caption: z.string().trim().max(100).optional().nullable(),
+  assetId: z.string().optional().nullable(),
 });
 export type ColoringPageUpdateInput = z.infer<typeof coloringPageUpdateSchema>;
 

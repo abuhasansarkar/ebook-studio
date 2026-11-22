@@ -15,7 +15,7 @@ assetRouter.get('/assets', async (req, res) => {
 assetRouter.post('/assets', raw({ type: ['image/png', 'image/jpeg', 'image/webp'], limit: MAX_IMAGE_BYTES, inflate: false }), async (req, res) => {
   res.status(201).json({ asset: await assetService.upload(userId(req), req.body, req.get('content-type')?.split(';')[0] ?? '') });
 });
-assetRouter.get('/assets/:id/content', async (req, res) => {
+assetRouter.get(['/assets/:id/content', '/assets/:id/view'], async (req, res) => {
   const { stream, size } = await assetService.content(userId(req), String(req.params.id));
   res.set({ 'Content-Type': 'image/webp', 'Cache-Control': 'private, no-store', 'Content-Disposition': 'inline', 'X-Content-Type-Options': 'nosniff' });
   if (size !== undefined) res.setHeader('Content-Length', size);

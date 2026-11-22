@@ -256,6 +256,7 @@ export const coloringPlanService = {
         ...(updates.prompt !== undefined ? { prompt: updates.prompt } : {}),
         ...(updates.negativePrompt !== undefined ? { negativePrompt: updates.negativePrompt } : {}),
         ...(updates.caption !== undefined ? { caption: updates.caption } : {}),
+        ...(updates.assetId ? { assetId: updates.assetId, status: "completed", error: null } : {}),
       },
     });
   },
