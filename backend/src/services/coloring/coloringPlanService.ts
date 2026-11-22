@@ -1,16 +1,19 @@
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
 import {
   coloringBookBriefSchema,
   COLORING_STYLE_CATALOG,
+  COLORING_CREDIT_COSTS,
   type ColoringBookBrief,
   type ColoringPageUpdateInput,
   type ColoringStyle,
 } from "@ebook/shared";
 import { prisma } from "../../database/prisma.js";
 import { env } from "../../config/env.js";
-import { badRequest, notFound } from "../../utils/errors.js";
+import { badRequest, notFound, paymentRequired } from "../../utils/errors.js";
 import { openaiProvider, type AiUsage } from "../ai/openaiClient.js";
 import { getOwnedBook } from "../books/bookService.js";
+import { creditService } from "../credits/creditService.js";
 
 const aiPlanSchema = z.object({
   title: z.string(),
@@ -26,6 +29,55 @@ const aiPlanSchema = z.object({
 
 const mockUsage: AiUsage = { model: "mock-coloring-planner", inputTokens: 0, outputTokens: 0 };
 
+function enrichPages(
+  basePages: { title: string; description: string; prompt: string }[],
+  brief: ColoringBookBrief,
+): { title: string; description: string; prompt: string }[] {
+  const styleMeta = COLORING_STYLE_CATALOG[brief.artStyle] || COLORING_STYLE_CATALOG.cute_animals;
+  const topicClean = brief.topic.trim().replace(/\.$/, "");
+  const pages = [...basePages];
+
+  const atmospheres = [
+    "in a sunny flower garden full of blooming daisies",
+    "beside a wooden countryside fence with grassy hills",
+    "under a shady leafy tree with dappled sunlight",
+    "splashing near a crystal-clear peaceful forest stream",
+    "exploring a gentle rolling meadow with fluttering butterflies",
+    "on a cozy picnic blanket with basket and sweet treats",
+    "discovering a hidden magical glade with mushroom houses",
+    "enjoying a warm morning sunrise with soft clouds",
+    "playing cheerfully with a pile of autumn leaves",
+    "resting beneath a starry night sky with crescent moon",
+    "at a colorful garden festival with decorative lanterns",
+    "wandering through an enchanted path surrounded by nature",
+  ];
+
+  const actions = [
+    "joyfully exploring and having fun",
+    "peacefully relaxing and enjoying the day",
+    "playing a cheerful game with playful friends",
+    "curiously discovering a new surprise",
+    "standing proudly with a warm cheerful smile",
+    "celebrating a happy moment surrounded by flowers",
+    "adventuring through the outdoors with curiosity",
+    "taking a sweet rest after an exciting adventure",
+  ];
+
+  let i = pages.length;
+  while (pages.length < brief.pageCount) {
+    i++;
+    const atm = atmospheres[(i - 1) % atmospheres.length];
+    const act = actions[(i - 1) % actions.length];
+    const title = `${capitalize(topicClean)} - Scene ${i}`;
+    const description = `${capitalize(topicClean)} ${act} ${atm}.`;
+    const prompt = `A delightful ${styleMeta.label} line-art coloring page of ${topicClean} ${act} ${atm}. Bold clean outlines, pure white background, no shading, no greyscale, high contrast black ink, perfect for coloring.`;
+
+    pages.push({ title, description, prompt });
+  }
+
+  return pages.slice(0, brief.pageCount);
+}
+
 function mockGeneratePages(brief: ColoringBookBrief) {
   const styleMeta = COLORING_STYLE_CATALOG[brief.artStyle] || COLORING_STYLE_CATALOG.cute_animals;
   const topicClean = brief.topic.trim().replace(/\.$/, "");
@@ -34,39 +86,11 @@ function mockGeneratePages(brief: ColoringBookBrief) {
     brief.subtitle?.trim() ||
     `${brief.pageCount} ${styleMeta.label} Coloring Pages for ${capitalize(brief.targetAudience)}`;
 
-  const pageConcepts: { title: string; description: string; prompt: string }[] = [];
-
-  const adjectives = ["Happy", "Curious", "Playful", "Gentle", "Brave", "Little", "Cheerful", "Charming", "Friendly", "Sweet"];
-  const environments = [
-    "in a sunny flower garden",
-    "beside a wooden countryside fence",
-    "under a shady leafy tree",
-    "splashing near a peaceful stream",
-    "exploring a gentle grassy hill",
-    "on a cozy picnic blanket with snacks",
-    "discovering a hidden forest glade",
-    "enjoying a warm morning sunrise",
-    "relaxing surrounded by blooming daisies",
-    "watching butterflies flutter through the air",
-    "playing with a pile of autumn leaves",
-    "resting beneath starry clouds",
-  ];
-
-  for (let i = 1; i <= brief.pageCount; i++) {
-    const adj = adjectives[(i - 1) % adjectives.length];
-    const envir = environments[(i - 1) % environments.length];
-    const pageTitle = `${adj} Scene ${i}`;
-    const desc = `${adj} subject ${envir}, created in ${styleMeta.label} style with clear coloring areas.`;
-    const prompt = `A delightful ${styleMeta.label} illustration of ${topicClean} ${envir}. Clear line art, bold outlines, friendly mood.`;
-
-    pageConcepts.push({
-      title: pageTitle,
-      description: desc,
-      prompt,
-    });
-  }
-
-  return { title, subtitle, pages: pageConcepts };
+  return {
+    title,
+    subtitle,
+    pages: enrichPages([], brief),
+  };
 }
 
 function capitalize(str: string): string {
@@ -78,17 +102,27 @@ export const coloringPlanService = {
   async createPlan(userId: string, input: ColoringBookBrief) {
     const brief = coloringBookBriefSchema.parse(input);
 
+    // Charge credits upfront (throws 402 paymentRequired if balance is insufficient)
+    const spendKey = `coloring-plan:${userId}:${randomUUID()}`;
+    await creditService.spend(
+      userId,
+      COLORING_CREDIT_COSTS.plan,
+      spendKey,
+      `Coloring book plan: ${brief.topic.slice(0, 50)}`,
+    );
+
     let planData: { title: string; subtitle: string; pages: { title: string; description: string; prompt: string }[] };
 
     if (env.AI_MOCK || !env.OPENAI_API_KEY) {
       planData = mockGeneratePages(brief);
     } else {
       const styleMeta = COLORING_STYLE_CATALOG[brief.artStyle] || COLORING_STYLE_CATALOG.cute_animals;
+      const sampleTarget = Math.min(brief.pageCount, 12);
       const prompt = {
         system: [
           `You are a master coloring book designer and art director specializing in commercial, bestselling Amazon KDP coloring books.`,
           `Create a cohesive, engaging coloring book concept based on the user's idea.`,
-          `You must generate EXACTLY ${brief.pageCount} distinct, imaginative, and age-appropriate page concepts.`,
+          `Generate ${sampleTarget} distinct, imaginative, and age-appropriate scene concepts.`,
           `Every page must have:`,
           `1. 'title': A short, catchy title (e.g. 'Playful Piglet in Mud').`,
           `2. 'description': A 1-2 sentence description of the action, composition, and background context.`,
@@ -96,85 +130,101 @@ export const coloringPlanService = {
           `Style: ${styleMeta.label} (${styleMeta.description}).`,
           `Audience: ${brief.targetAudience}, Complexity: ${brief.difficulty}, Line weight: ${brief.lineThickness}.`,
         ].join("\n"),
-        user: `Idea: ${brief.topic}\nSuggested Title: ${brief.title || "Auto"}\nPage Count: ${brief.pageCount}\nLanguage: ${brief.language}`,
+        user: `Idea: ${brief.topic}\nSuggested Title: ${brief.title || "Auto"}\nTarget Count: ${sampleTarget}\nLanguage: ${brief.language}`,
       };
 
       try {
-        const result = await openaiProvider.json({
-          ...prompt,
-          schema: aiPlanSchema,
-          name: "coloring_book_plan",
-          maxOutputTokens: 8000,
-        });
+        // Enforce 18s timeout to avoid upstream proxy socket hangup (ECONNRESET)
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Coloring plan AI timeout")), 18000),
+        );
+
+        const result = await Promise.race([
+          openaiProvider.json({
+            ...prompt,
+            schema: aiPlanSchema,
+            name: "coloring_book_plan",
+            maxOutputTokens: 2500,
+          }),
+          timeoutPromise,
+        ]);
+
+        const aiPages = result.data.pages || [];
+        const baseTitle = brief.title?.trim() || result.data.title;
+        const baseSubtitle = brief.subtitle?.trim() || result.data.subtitle;
+
         planData = {
-          title: brief.title?.trim() || result.data.title,
-          subtitle: brief.subtitle?.trim() || result.data.subtitle,
-          pages: result.data.pages.slice(0, brief.pageCount),
+          title: baseTitle,
+          subtitle: baseSubtitle,
+          pages: enrichPages(aiPages, brief),
         };
-        // Fill up to pageCount if AI returned slightly fewer
-        while (planData.pages.length < brief.pageCount) {
-          const idx = planData.pages.length + 1;
-          planData.pages.push({
-            title: `Bonus Scene ${idx}`,
-            description: `A charming scene matching ${brief.topic}`,
-            prompt: `A beautiful coloring line art illustration of ${brief.topic}`,
-          });
-        }
       } catch {
         planData = mockGeneratePages(brief);
       }
     }
 
-    return prisma.$transaction(async (tx) => {
-      const book = await tx.book.create({
-        data: {
-          userId,
-          title: planData.title,
-          subtitle: planData.subtitle,
-          language: brief.language,
-          bookType: "coloring_book",
-          status: "outline_ready",
-          projectId: brief.projectId || null,
-        },
-      });
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const book = await tx.book.create({
+          data: {
+            userId,
+            title: planData.title,
+            subtitle: planData.subtitle,
+            language: brief.language,
+            bookType: "coloring_book",
+            status: "outline_ready",
+            projectId: brief.projectId || null,
+          },
+        });
 
-      const coloringPlan = await tx.coloringPlan.create({
-        data: {
-          bookId: book.id,
-          topic: brief.topic,
-          artStyle: brief.artStyle,
-          targetAudience: brief.targetAudience,
-          difficulty: brief.difficulty,
-          lineThickness: brief.lineThickness,
-          trimSize: brief.trimSize,
-          bleed: brief.bleed,
-          singleSided: brief.singleSided,
-          pageCount: brief.pageCount,
-          density: brief.density,
-        },
-      });
+        const coloringPlan = await tx.coloringPlan.create({
+          data: {
+            bookId: book.id,
+            topic: brief.topic,
+            artStyle: brief.artStyle,
+            targetAudience: brief.targetAudience,
+            difficulty: brief.difficulty,
+            lineThickness: brief.lineThickness,
+            trimSize: brief.trimSize,
+            bleed: brief.bleed,
+            singleSided: brief.singleSided,
+            pageCount: brief.pageCount,
+            density: brief.density,
+          },
+        });
 
-      const createdPages = await Promise.all(
-        planData.pages.map((p, idx) =>
-          tx.coloringPage.create({
-            data: {
-              bookId: book.id,
-              pageNumber: idx + 1,
-              title: p.title,
-              description: p.description,
-              prompt: p.prompt,
-              status: "pending",
-            },
-          }),
-        ),
+        await tx.coloringPage.createMany({
+          data: planData.pages.map((p, idx) => ({
+            bookId: book.id,
+            pageNumber: idx + 1,
+            title: p.title,
+            description: p.description,
+            prompt: p.prompt,
+            status: "pending",
+          })),
+        });
+
+        const createdPages = await tx.coloringPage.findMany({
+          where: { bookId: book.id },
+          orderBy: { pageNumber: "asc" },
+        });
+
+        return {
+          book,
+          plan: coloringPlan,
+          pages: createdPages,
+        };
+      });
+    } catch (err) {
+      // Refund credits if book transaction failed
+      await creditService.grant(
+        userId,
+        COLORING_CREDIT_COSTS.plan,
+        `refund:${spendKey}`,
+        "Refund: failed to create coloring book plan",
       );
-
-      return {
-        book,
-        plan: coloringPlan,
-        pages: createdPages,
-      };
-    });
+      throw err;
+    }
   },
 
   async getPlan(userId: string, bookId: string) {

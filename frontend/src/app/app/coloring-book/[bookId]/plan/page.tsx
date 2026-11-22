@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge, Card, PageLoader } from "@/components/ui/misc";
+import { COLORING_CREDIT_COSTS } from "@ebook/shared";
 import {
   useAddColoringPage,
   useColoringBook,
@@ -209,7 +210,7 @@ export default function ColoringBookPlanPage({ params }: { params: Promise<{ boo
           <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Planned Illustrations ({pages.length} Pages)
           </span>
-          <span className="text-xs text-muted-foreground">Planning cost: 0 credits (Free)</span>
+          <span className="text-xs text-muted-foreground">Planning: {COLORING_CREDIT_COSTS.plan} credits</span>
         </div>
 
         <div className="grid grid-cols-1 gap-3">

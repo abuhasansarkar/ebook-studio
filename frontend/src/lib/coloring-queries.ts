@@ -115,6 +115,7 @@ export function useCreateColoringPlan() {
       api.post<{ book: { id: string }; plan: ColoringPlanRecord; pages: ColoringPageRecord[] }>("/coloring/plan", input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: coloringKeys.all });
+      void queryClient.invalidateQueries({ queryKey: ["credits"] });
     },
   });
 }

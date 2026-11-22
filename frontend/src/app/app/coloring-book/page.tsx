@@ -53,7 +53,7 @@ export default function ColoringStudioDashboardPage() {
           <EmptyState
             icon={<Palette className="h-8 w-8" />}
             title="No coloring books yet"
-            description="Turn an idea into a 24 to 60-page printable coloring book with clean line-art outlines in minutes. Planning is completely free."
+            description="Turn an idea into a 24 to 60-page printable coloring book with clean line-art outlines in minutes."
             action={
               <Link href="/app/coloring-book/create">
                 <Button className="gap-2">

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, Suspense } from "react";
 import { useForm, useWatch } from "react-hook-form";
@@ -89,6 +90,8 @@ function CreateColoringBookWizard() {
   const lineThickness = useWatch({ control, name: "lineThickness" });
 
   const estimatedCredits = estimateColoringCredits(pageCount);
+  const userBalance = credits.data?.wallet.balance ?? 0;
+  const hasEnoughCredits = userBalance >= COLORING_CREDIT_COSTS.plan;
 
   const nextStep = async () => {
     let valid = true;
@@ -105,8 +108,15 @@ function CreateColoringBookWizard() {
   };
 
   const onSubmit = handleSubmit(async (values) => {
+    if (!hasEnoughCredits) {
+      toast.error(
+        `You need at least ${COLORING_CREDIT_COSTS.plan} credits to generate a coloring book plan (current balance: ${userBalance}). Please top up your credits.`,
+      );
+      return;
+    }
+
     try {
-      toast.loading("Generating coloring book plan… (Free)");
+      toast.loading(`Generating coloring book plan… (${COLORING_CREDIT_COSTS.plan} credits)`);
       const res = await createPlan.mutateAsync(values);
       toast.dismiss();
       toast.success("Coloring book plan created!");
@@ -432,13 +442,22 @@ function CreateColoringBookWizard() {
                 </label>
               </div>
 
-              {/* Free Planning Callout */}
-              <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-4 text-xs text-muted-foreground flex items-center justify-between">
+              {/* Planning Cost Callout */}
+              <div className="rounded-2xl border border-primary/20 bg-primary-soft/30 p-4 text-xs text-muted-foreground flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <div className="flex items-center gap-2 text-foreground font-semibold">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                  <span>Planning is 100% Free (0 Credits)</span>
+                  <Coins className="h-4 w-4 text-primary" />
+                  <span>Planning Cost: {COLORING_CREDIT_COSTS.plan} Credits</span>
                 </div>
-                <div>Credits are only spent when you choose to generate illustrations.</div>
+                <div className="flex items-center gap-2">
+                  <span>
+                    Your Balance: <strong className="text-foreground">{formatNumber(userBalance)}</strong> credits
+                  </span>
+                  {!hasEnoughCredits && (
+                    <Link href="/app/settings/billing" className="text-primary font-semibold underline hover:text-primary-hover">
+                      Get Credits →
+                    </Link>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -458,9 +477,22 @@ function CreateColoringBookWizard() {
                 Continue <ArrowRight className="h-4 w-4" />
               </Button>
             ) : (
-              <Button type="submit" size="lg" loading={createPlan.isPending} className="gap-2 shadow-md">
-                <Sparkles className="h-5 w-5" /> Generate Book Plan (Free)
-              </Button>
+              <div className="flex flex-col items-end gap-1.5">
+                <Button
+                  type="submit"
+                  size="lg"
+                  loading={createPlan.isPending}
+                  disabled={createPlan.isPending || (!credits.isLoading && !hasEnoughCredits)}
+                  className="gap-2 shadow-md"
+                >
+                  <Sparkles className="h-5 w-5" /> Generate Book Plan ({COLORING_CREDIT_COSTS.plan} Credits)
+                </Button>
+                {!credits.isLoading && !hasEnoughCredits && (
+                  <span className="text-xs text-destructive font-medium">
+                    Insufficient balance ({userBalance}/{COLORING_CREDIT_COSTS.plan} credits)
+                  </span>
+                )}
+              </div>
             )}
           </div>
         </form>

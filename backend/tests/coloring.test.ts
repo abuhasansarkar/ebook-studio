@@ -11,7 +11,7 @@ import { closeQueues } from "../src/queues/index.js";
 import { buildColoringPrompt } from "../src/services/coloring/coloringPromptBuilder.js";
 import { coloringQualityService } from "../src/services/coloring/coloringQualityService.js";
 import { calculateSpine } from "../src/services/coloring/coloringCoverService.js";
-import { createUser, ORIGIN } from "./helpers.js";
+import { createUser, grantEntitlements, ORIGIN } from "./helpers.js";
 
 afterAll(async () => {
   await closeQueues();
@@ -20,14 +20,14 @@ afterAll(async () => {
 
 describe("Coloring Contracts & Pricing", () => {
   it("computes credit estimates accurately", () => {
-    expect(COLORING_CREDIT_COSTS.plan).toBe(0); // 100% free planning
+    expect(COLORING_CREDIT_COSTS.plan).toBe(10); // Standard 10 credits for planning
     expect(COLORING_CREDIT_COSTS.perIllustration).toBe(8);
     expect(COLORING_CREDIT_COSTS.cover).toBe(10);
-    expect(estimateColoringCredits(24)).toBe(192);
-    expect(estimateColoringCredits(30)).toBe(240);
-    expect(estimateColoringCredits(40)).toBe(320);
-    expect(estimateColoringCredits(50)).toBe(400);
-    expect(estimateColoringCredits(60)).toBe(480);
+    expect(estimateColoringCredits(24)).toBe(202);
+    expect(estimateColoringCredits(30)).toBe(250);
+    expect(estimateColoringCredits(40)).toBe(330);
+    expect(estimateColoringCredits(50)).toBe(410);
+    expect(estimateColoringCredits(60)).toBe(490);
   });
 
   it("validates brief schema and applies defaults", () => {
@@ -158,7 +158,32 @@ describe("KDP Spine Math", () => {
 });
 
 describe("AI Coloring Studio End-to-End API Integration", () => {
-  it("runs full lifecycle: create plan (free), reorder, generate page, clean, cover, and export", async () => {
+  it("rejects plan generation when user has insufficient credits", async () => {
+    const { user, agent } = await createUser("coloring-poor-user");
+    await prisma.creditWallet.upsert({
+      where: { userId: user.id },
+      create: { userId: user.id, balance: 5 },
+      update: { balance: 5 },
+    });
+
+    const res = await agent
+      .post("/api/v1/coloring/plan")
+      .set("Origin", ORIGIN)
+      .send({
+        topic: "Cute baby animals exploring a sunny flower meadow",
+        artStyle: "kawaii_chibi",
+        targetAudience: "children",
+        difficulty: "easy",
+        lineThickness: "medium",
+        trimSize: "8.5x11",
+        singleSided: true,
+        pageCount: 24,
+      });
+
+    expect(res.status).toBe(402);
+  });
+
+  it("runs full lifecycle: create plan (10 credits), reorder, generate page, clean, cover, and export", async () => {
     const { user, agent } = await createUser("coloring-test-user");
 
     // Grant 150 credits to wallet for generation tests
@@ -167,8 +192,9 @@ describe("AI Coloring Studio End-to-End API Integration", () => {
       create: { userId: user.id, balance: 150 },
       update: { balance: 150 },
     });
+    await grantEntitlements(user.id, { exports: true });
 
-    // 1. Create Coloring Book Plan (100% Free - 0 credits spent)
+    // 1. Create Coloring Book Plan (Deducts 10 credits)
     const createRes = await agent
       .post("/api/v1/coloring/plan")
       .set("Origin", ORIGIN)
@@ -190,9 +216,9 @@ describe("AI Coloring Studio End-to-End API Integration", () => {
 
     const bookId = createRes.body.book.id;
 
-    // Verify wallet balance is completely untouched (0 credits charged for planning)
+    // Verify wallet balance reflects 10 credits deducted (150 - 10 = 140)
     const walletAfterPlan = await prisma.creditWallet.findUnique({ where: { userId: user.id } });
-    expect(walletAfterPlan?.balance).toBe(150);
+    expect(walletAfterPlan?.balance).toBe(140);
 
     // 2. List User Coloring Books
     const listRes = await agent.get("/api/v1/coloring/books").set("Origin", ORIGIN).expect(200);
@@ -254,9 +280,9 @@ describe("AI Coloring Studio End-to-End API Integration", () => {
     expect(genPageRes.body.page.status).toBe("completed");
     expect(genPageRes.body.page.assetId).toBeDefined();
 
-    // Verify 8 credits deducted
+    // Verify 8 credits deducted for page generation (150 - 10 - 8 = 132)
     const walletAfterPage = await prisma.creditWallet.findUnique({ where: { userId: user.id } });
-    expect(walletAfterPage?.balance).toBe(150 - 8);
+    expect(walletAfterPage?.balance).toBe(150 - 10 - 8);
 
     // 9. Auto-clean line art on generated page
     const cleanRes = await agent
@@ -280,9 +306,9 @@ describe("AI Coloring Studio End-to-End API Integration", () => {
     expect(coverGenRes.body.cover).toBeDefined();
     expect(coverGenRes.body.asset).toBeDefined();
 
-    // Verify 10 credits deducted (total: 150 - 8 - 10 = 132)
+    // Verify 10 credits deducted for cover (total: 150 - 10 - 8 - 10 = 122)
     const walletAfterCover = await prisma.creditWallet.findUnique({ where: { userId: user.id } });
-    expect(walletAfterCover?.balance).toBe(132);
+    expect(walletAfterCover?.balance).toBe(122);
 
     // 11. Get Cover Details & Spine
     const coverDetailsRes = await agent.get(`/api/v1/coloring/books/${bookId}/cover`).set("Origin", ORIGIN).expect(200);

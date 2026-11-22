@@ -157,13 +157,13 @@ export const COLORING_PAGE_COUNTS = [24, 30, 40, 50, 60] as const;
 
 // ---------- Credit Costs ----------
 export const COLORING_CREDIT_COSTS = {
-  plan: 0,
+  plan: 10,
   perIllustration: 8,
   cover: 10,
 } as const;
 
 export function estimateColoringCredits(pageCount: number): number {
-  return pageCount * COLORING_CREDIT_COSTS.perIllustration;
+  return COLORING_CREDIT_COSTS.plan + pageCount * COLORING_CREDIT_COSTS.perIllustration;
 }
 
 // ---------- Zod Schemas ----------
