@@ -103,6 +103,15 @@ export interface PaymentProvider {
   verifyWebhook(rawBody: string, signature: string | undefined): ProviderEvent | null;
   /** The provider's current view of a subscription, for reconciliation. */
   fetchSubscription(providerSubscriptionId: string): Promise<{ status: string; currentPeriodEnd: Date | null } | null>;
+  /** Fetches a checkout session directly from the provider, for syncing pending checkouts. */
+  fetchCheckoutSession?(providerCheckoutId: string): Promise<{
+    status: string | null;
+    paymentStatus: string;
+    paymentIntentId?: string;
+    subscriptionId?: string;
+    amountTotal?: number | null;
+    currency?: string | null;
+  } | null>;
   /**
    * The checkout a payment belongs to, when the event did not name it.
    *
@@ -153,6 +162,10 @@ export class LocalProvider implements PaymentProvider {
     // The local provider holds no authoritative state of its own, so there is
     // nothing to reconcile against beyond what the webhook inbox recorded.
     void providerSubscriptionId;
+    return null;
+  }
+
+  async fetchCheckoutSession(_providerCheckoutId: string) {
     return null;
   }
 

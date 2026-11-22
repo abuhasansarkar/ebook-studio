@@ -56,6 +56,12 @@ billingRouter.get("/billing", async (req: Request, res: Response) => {
   res.set("Cache-Control", "private, no-store").json(await billingService.state(userId(req)));
 });
 
+/** Syncs pending provider checkouts and returns fresh billing state. */
+billingRouter.post("/billing/sync", async (req: Request, res: Response) => {
+  await billingService.syncPendingPayments(userId(req));
+  res.json(await billingService.state(userId(req)));
+});
+
 /** Starts a checkout. It grants nothing until a verified payment arrives. */
 billingRouter.post("/billing/checkout", validateBody(checkoutSchema), async (req: Request, res: Response) => {
   res.status(201).json({ checkout: await billingService.startCheckout(userId(req), req.body.planId) });

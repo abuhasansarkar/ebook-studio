@@ -700,10 +700,45 @@ export const billingService = {
     });
   },
 
+  /** Synchronizes any pending checkouts directly with the provider (e.g. Stripe). */
+  async syncPendingPayments(userId: string) {
+    const provider = getProvider();
+    if (provider.name !== "stripe" || !provider.fetchCheckoutSession) return;
+    const pending = await prisma.payment.findMany({
+      where: { userId, status: "pending" },
+    });
+    if (!pending.length) return;
+
+    for (const p of pending) {
+      if (!p.providerCheckoutId) continue;
+      try {
+        const remote = await provider.fetchCheckoutSession(p.providerCheckoutId);
+        if (remote && (remote.paymentStatus === "paid" || remote.status === "complete")) {
+          await this.applyEventBody({
+            providerEventId: `sync_${p.providerCheckoutId}_${Date.now()}`,
+            type: "payment.succeeded",
+            occurredAt: new Date(),
+            customerReference: p.providerCustomerReference,
+            providerCheckoutId: p.providerCheckoutId,
+            providerPaymentId: remote.paymentIntentId ?? `pi_sync_${p.providerCheckoutId}`,
+            providerSubscriptionId: remote.subscriptionId,
+            planId: p.planId ?? undefined,
+            credits: p.credits,
+            amountMinor: remote.amountTotal ?? p.amountMinor,
+            currency: (remote.currency?.toUpperCase() as any) ?? p.currency,
+          });
+        }
+      } catch (err) {
+        logger.warn({ err, checkoutId: p.providerCheckoutId }, "Failed to sync pending Stripe payment");
+      }
+    }
+  },
+
   /** The author's billing state. */
   async state(userId: string) {
+    await this.syncPendingPayments(userId).catch(() => undefined);
     const provider = getProvider();
-    const [plans, subscription, entitlements, payments] = await Promise.all([
+    const [plans, subscription, allSubscriptions, entitlements, payments, wallet] = await Promise.all([
       this.plans(),
       prisma.subscription.findFirst({
         // A cancelled subscription is shown until its paid period ends.
@@ -711,8 +746,14 @@ export const billingService = {
         orderBy: { createdAt: "desc" },
         include: { plan: true },
       }),
+      prisma.subscription.findMany({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+        include: { plan: true },
+      }),
       prisma.entitlement.findMany({ where: { userId } }),
       prisma.payment.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 50, include: { plan: true } }),
+      creditService.getWallet(userId),
     ]);
 
     const values: Partial<Record<EntitlementKey, string | number | boolean>> = {};
@@ -725,6 +766,31 @@ export const billingService = {
       provider: provider.name,
       providerLive: provider.live,
       plans,
+      currentPlan: subscription
+        ? {
+            id: subscription.planId,
+            name: subscription.plan.name,
+            description: subscription.plan.description,
+            priceMinor: subscription.plan.priceMinor,
+            currency: subscription.plan.currency as PaymentCurrency,
+            status: subscription.status as SubscriptionStatus,
+            recurring: true,
+            credits: wallet.balance,
+            currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() ?? null,
+            canceledAt: subscription.canceledAt?.toISOString() ?? null,
+          }
+        : {
+            id: "free",
+            name: "Free Plan",
+            description: "Standard author capabilities and welcome credits.",
+            priceMinor: 0,
+            currency: "USD" as PaymentCurrency,
+            status: "active" as SubscriptionStatus,
+            recurring: false,
+            credits: wallet.balance,
+            currentPeriodEnd: null,
+            canceledAt: null,
+          },
       subscription: subscription
         ? {
             id: subscription.id,
@@ -736,6 +802,15 @@ export const billingService = {
             createdAt: subscription.createdAt.toISOString(),
           }
         : null,
+      subscriptions: allSubscriptions.map((s) => ({
+        id: s.id,
+        planId: s.planId,
+        planName: s.plan.name,
+        status: s.status as SubscriptionStatus,
+        currentPeriodEnd: s.currentPeriodEnd?.toISOString() ?? null,
+        canceledAt: s.canceledAt?.toISOString() ?? null,
+        createdAt: s.createdAt.toISOString(),
+      })),
       entitlements: values,
       payments: payments.map((p) => ({
         id: p.id,

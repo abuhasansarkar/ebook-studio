@@ -219,6 +219,18 @@ export function useCancelSubscription() {
   });
 }
 
+export function useSyncBilling() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<BillingState>("/billing/sync"),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: qk.billing });
+      void qc.invalidateQueries({ queryKey: qk.credits });
+      void qc.invalidateQueries({ queryKey: qk.payments });
+    },
+  });
+}
+
 /**
  * The author's payment history, on its own.
  *

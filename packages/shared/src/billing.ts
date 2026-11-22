@@ -92,18 +92,37 @@ export interface Payment {
   createdAt: string;
 }
 
+export interface CurrentPlanInfo {
+  id: string;
+  name: string;
+  description: string;
+  priceMinor: number;
+  currency: PaymentCurrency;
+  status: SubscriptionStatus;
+  recurring: boolean;
+  credits: number;
+  currentPeriodEnd: string | null;
+  canceledAt: string | null;
+}
+
 /** The billing state of the signed-in author. */
 export interface BillingState {
+  /** The author's current active plan information. */
+  currentPlan?: CurrentPlanInfo;
   /** The author's current subscription, when there is one. */
   subscription: Subscription | null;
+  /** Full subscription history. */
+  subscriptions?: Subscription[];
   /** The entitlements the author currently holds. */
   entitlements: Partial<Record<EntitlementKey, string | number | boolean>>;
   /** The plans on offer. */
   plans: Plan[];
   /** The author's payments, newest first. */
   payments: Payment[];
-  /** True when the provider this build talks to is the local one, not a real payment processor. */
+  /** The provider name (e.g. stripe or local). */
   provider: string;
+  /** True when provider is running in live production mode. */
+  providerLive?: boolean;
 }
 
 /** A checkout session the author was sent to. */

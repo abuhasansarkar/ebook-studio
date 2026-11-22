@@ -335,6 +335,31 @@ export class StripeProvider implements PaymentProvider {
     }
   }
 
+  async fetchCheckoutSession(providerCheckoutId: string): Promise<{
+    status: string | null;
+    paymentStatus: string;
+    paymentIntentId?: string;
+    subscriptionId?: string;
+    amountTotal?: number | null;
+    currency?: string | null;
+  } | null> {
+    try {
+      const session = await this.client.checkout.sessions.retrieve(providerCheckoutId);
+      return {
+        status: session.status,
+        paymentStatus: session.payment_status,
+        paymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id,
+        subscriptionId: typeof session.subscription === "string" ? session.subscription : session.subscription?.id,
+        amountTotal: session.amount_total,
+        currency: session.currency,
+      };
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code === "resource_missing") return null;
+      throw err;
+    }
+  }
+
   /**
    * Finds the Stripe customer for an author, creating one when needed.
    *
