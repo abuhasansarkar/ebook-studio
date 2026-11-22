@@ -21,7 +21,7 @@ import { userId } from "../middleware/requireAuth.js";
 import { badRequest } from "../utils/errors.js";
 import { z } from "zod";
 import { Router } from "express";
-import { assistSchema, bookBriefSchema, chapterOrderSchema, createBookSchema, outlineSchema, updateChapterSchema } from "@ebook/shared";
+import { assistSchema, bookBriefSchema, chapterOrderSchema, createBookSchema, createChapterSchema, outlineSchema, updateChapterSchema } from "@ebook/shared";
 import { accountController, createProjectSchema } from "../controllers/accountController.js";
 import { bookController } from "../controllers/bookController.js";
 import { chapterController } from "../controllers/chapterController.js";
@@ -125,6 +125,7 @@ apiRouter.post("/books/:bookId/generate/cancel", generationController.cancel);
 apiRouter.get("/generation-jobs/:jobId", generationController.getJob);
 
 apiRouter.get("/books/:bookId/chapters", chapterController.listForBook);
+apiRouter.post("/books/:bookId/chapters", validateBody(createChapterSchema), chapterController.create);
 apiRouter.put("/books/:bookId/chapters/order", validateBody(chapterOrderSchema), chapterController.reorder);
 apiRouter.get("/chapters/:chapterId", chapterController.get);
 apiRouter.patch("/chapters/:chapterId", validateBody(updateChapterSchema), chapterController.update);

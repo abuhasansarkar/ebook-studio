@@ -38,7 +38,7 @@ export function BookHeader({ params }: { params: Promise<{ bookId: string }> }) 
       label: "Write",
       tabs: [
         { href: "generate", label: "Write", icon: Wand2, done: allWritten, enabled: approved, hint: "Approve the outline first" },
-        { href: "editor", label: "Edit", icon: PenLine, done: false, enabled: hasText, hint: "Write a chapter first" },
+        { href: "editor", label: "Editor", icon: PenLine, done: false, enabled: true },
         { href: "research", label: "Research", icon: Library, done: false, enabled: true },
       ],
     },

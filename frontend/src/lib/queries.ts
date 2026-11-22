@@ -363,6 +363,15 @@ export function useBookAction(bookId: string) {
   };
 }
 
+export function useCreateChapter(bookId: string) {
+  const invalidate = useInvalidateBook(bookId);
+  return useMutation({
+    mutationFn: (input?: { title?: string }) =>
+      api.post<{ chapter: ChapterFull }>(`/books/${bookId}/chapters`, input ?? {}).then((r) => r.chapter),
+    onSettled: invalidate,
+  });
+}
+
 /** Puts the book's chapters in a new order (every chapter, each once). */
 export function useReorderChapters(bookId: string) {
   const invalidate = useInvalidateBook(bookId);

@@ -25,6 +25,42 @@ function assertDoc(json: unknown): asserts json is PMNode {
 }
 
 export const chapterService = {
+  async create(userId: string, bookId: string, input: { title?: string }) {
+    await getOwnedBook(userId, bookId);
+    return prisma.$transaction(async (tx) => {
+      await lockBook(tx, bookId, userId);
+      await assertIdle(tx, bookId);
+
+      const count = await tx.chapter.count({ where: { bookId } });
+      const last = await tx.chapter.findFirst({
+        where: { bookId },
+        orderBy: { position: "desc" },
+        select: { position: true },
+      });
+      const position = last !== null ? last.position + 1 : 0;
+      const title = input.title?.trim() || `Chapter ${count + 1}`;
+      const defaultDoc = { type: "doc", content: [{ type: "paragraph" }] };
+
+      const chapter = await tx.chapter.create({
+        data: {
+          bookId,
+          position,
+          title,
+          goal: "",
+          keyPoints: [],
+          targetWords: 1500,
+          status: "pending",
+          contentJson: defaultDoc,
+          wordCount: 0,
+          version: 0,
+        },
+      });
+
+      await tx.book.update({ where: { id: bookId }, data: { updatedAt: new Date() } });
+      return chapter;
+    });
+  },
+
   async listForBook(userId: string, bookId: string) {
     await getOwnedBook(userId, bookId);
     return prisma.chapter.findMany({

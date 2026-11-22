@@ -3,14 +3,14 @@
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { AlertTriangle, ChevronDown, ChevronUp, CheckCircle2, Circle, FileDown, Wand2 } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronUp, CheckCircle2, Circle, FileDown, PenLine, Plus, Wand2 } from "lucide-react";
 import { getLanguage } from "@ebook/shared";
 import { ChapterEditor } from "@/components/editor/chapter-editor";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Alert, EmptyState, ErrorState, PageLoader, Spinner } from "@/components/ui/misc";
 import { useSession } from "@/lib/auth-client";
 import { errorMessage } from "@/lib/api";
-import { useBook, useChapter, useChapters, useReorderChapters } from "@/lib/queries";
+import { useBook, useChapter, useChapters, useCreateChapter, useReorderChapters } from "@/lib/queries";
 import { toast } from "sonner";
 import { cn, formatNumber } from "@/lib/utils";
 
@@ -36,6 +36,7 @@ export function EditorScreen({ params }: { params: Promise<{ bookId: string }> }
   const generating = book.data?.activeJob?.type === "chapters";
   const chapters = useChapters(bookId, generating);
   const reorder = useReorderChapters(bookId);
+  const createChapter = useCreateChapter(bookId);
   const [moveNotice, setMoveNotice] = useState("");
   const search = useSearchParams();
   // Links from the quality review open a chapter and highlight one finding.
@@ -64,7 +65,36 @@ export function EditorScreen({ params }: { params: Promise<{ bookId: string }> }
   if (!chapters.data?.length) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-12">
-        <EmptyState icon={<Wand2 className="h-6 w-6" />} title="Nothing to edit yet" description="Approve your outline and write the chapters first." action={<Link href={`/app/books/${bookId}/outline`} className={buttonVariants()}>Go to outline</Link>} />
+        <EmptyState
+          icon={<PenLine className="h-6 w-6 text-primary" />}
+          title="No chapters yet"
+          description="Start writing your first chapter manually or generate your book's outline with AI."
+          action={
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <Button
+                onClick={() => {
+                  createChapter.mutate(
+                    { title: "Chapter 1" },
+                    {
+                      onSuccess: (newChap) => {
+                        setSelectedId(newChap.id);
+                        toast.success("Chapter 1 created! Start writing.");
+                      },
+                      onError: (err) => toast.error(errorMessage(err)),
+                    },
+                  );
+                }}
+                disabled={createChapter.isPending}
+                className="gap-2 shadow-sm"
+              >
+                <Plus className="h-4 w-4" /> Write First Chapter
+              </Button>
+              <Link href={`/app/books/${bookId}/outline`} className={buttonVariants({ variant: "secondary", className: "gap-1.5" })}>
+                <Wand2 className="h-4 w-4" /> Generate Outline with AI
+              </Link>
+            </div>
+          }
+        />
       </div>
     );
   }
@@ -75,14 +105,37 @@ export function EditorScreen({ params }: { params: Promise<{ bookId: string }> }
   return (
     <div className="flex min-h-[calc(100vh-9rem)] flex-col lg:flex-row">
       <aside className="border-b border-border bg-surface lg:sticky lg:top-0 lg:h-screen lg:w-72 lg:shrink-0 lg:overflow-y-auto lg:border-b-0 lg:border-e">
-        <div className="flex items-center justify-between px-4 py-4">
+        <div className="flex items-center justify-between border-b border-border/50 px-4 py-3">
           <div>
             <p className="text-sm font-semibold">Chapters</p>
             <p className="text-xs text-muted-foreground">{formatNumber(totalWords)} words total</p>
           </div>
-          <Link href={`/app/books/${bookId}/export`} className={buttonVariants({ variant: "soft", size: "sm" })}>
-            <FileDown className="h-3.5 w-3.5" /> Export
-          </Link>
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant="secondary"
+              size="sm"
+              className="h-8 gap-1 px-2.5 text-xs font-semibold text-primary hover:text-primary-hover"
+              disabled={createChapter.isPending}
+              onClick={() => {
+                const nextNum = (chapters.data?.length ?? 0) + 1;
+                createChapter.mutate(
+                  { title: `Chapter ${nextNum}` },
+                  {
+                    onSuccess: (newChap) => {
+                      setSelectedId(newChap.id);
+                      toast.success(`Created Chapter ${nextNum}`);
+                    },
+                    onError: (err) => toast.error(errorMessage(err)),
+                  },
+                );
+              }}
+            >
+              <Plus className="h-3.5 w-3.5" /> Chapter
+            </Button>
+            <Link href={`/app/books/${bookId}/export`} className={buttonVariants({ variant: "soft", size: "sm" })}>
+              <FileDown className="h-3.5 w-3.5" />
+            </Link>
+          </div>
         </div>
         <nav className="flex gap-1 overflow-x-auto px-2 pb-3 lg:flex-col lg:overflow-visible" aria-label="Chapters">
           {chapters.data.map((c, index) => {

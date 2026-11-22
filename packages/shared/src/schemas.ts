@@ -100,6 +100,11 @@ export const JOB_STATUSES = ["queued", "running", "completed", "failed", "cancel
 export type JobStatus = (typeof JOB_STATUSES)[number];
 
 // ---------- Chapters / editor ----------
+export const createChapterSchema = z.object({
+  title: z.string().trim().min(1).max(200).optional(),
+}).strict();
+export type CreateChapterInput = z.infer<typeof createChapterSchema>;
+
 export const updateChapterSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
   contentJson: z.record(z.string(), z.unknown()).optional(),

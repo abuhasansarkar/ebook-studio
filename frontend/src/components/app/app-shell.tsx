@@ -14,6 +14,7 @@ import {
   LogOut,
   Menu,
   Palette,
+  PenLine,
   PlusCircle,
   Settings,
   Shield,
@@ -30,6 +31,7 @@ import { cn, formatNumber } from "@/lib/utils";
 const NAV = [
   { href: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/app/create", label: "Create eBook", icon: PlusCircle },
+  { href: "/app/editor", label: "eBook Editor", icon: PenLine },
   { href: "/app/coloring-book", label: "Coloring Studio", icon: Palette },
   { href: "/app/books", label: "My eBooks", icon: BookOpen },
   { href: "/app/projects", label: "Projects", icon: FolderKanban },

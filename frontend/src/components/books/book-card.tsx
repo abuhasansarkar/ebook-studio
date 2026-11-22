@@ -28,7 +28,7 @@ export function BookCard({ book }: { book: BookSummary }) {
   const lang = getLanguage(book.language);
   const status = STATUS_META[book.status] ?? STATUS_META.draft;
   const isColoring = book.bookType === "coloring_book";
-  const bookHref = isColoring ? `/app/coloring-book/${book.id}/pages` : `/app/books/${book.id}`;
+  const bookHref = isColoring ? `/app/coloring-book/${book.id}/pages` : `/app/books/${book.id}/editor`;
   const hasCoverArtwork = !!book.coverArtworkId && !coverFailed;
 
   return (
@@ -69,7 +69,12 @@ export function BookCard({ book }: { book: BookSummary }) {
               ? `${book.chapterCount} chapters · ${formatNumber(book.wordCount)} words`
               : "No chapters yet"}
         </p>
-        <p className="mt-auto pt-2 text-xs text-muted-foreground">Edited {timeAgo(book.updatedAt)}</p>
+        <div className="mt-auto flex items-center justify-between border-t border-border/50 pt-2 text-xs text-muted-foreground">
+          <span>Edited {timeAgo(book.updatedAt)}</span>
+          <span className="flex items-center gap-1 font-semibold text-primary transition-transform group-hover:translate-x-0.5">
+            {isColoring ? "Open Studio →" : "Open Editor →"}
+          </span>
+        </div>
       </div>
     </Link>
   );
