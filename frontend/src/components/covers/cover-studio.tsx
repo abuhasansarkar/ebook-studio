@@ -1,314 +1,584 @@
 "use client";
 
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Sparkles, History, Clock, Check, Loader2, Palette } from 'lucide-react';
+import {
+  Sparkles,
+  History,
+  Clock,
+  Loader2,
+  FileImage,
+  Palette,
+  AlertTriangle,
+  RotateCcw,
+} from 'lucide-react';
 import { toast } from 'sonner';
-import { COVER_FONTS, COVER_HEIGHT, COVER_WIDTH, coverDesignSchema, coverTextStyle, type CoverDesign, type CoverText } from '@ebook/shared';
+import {
+  COVER_FONTS,
+  COVER_HEIGHT,
+  COVER_WIDTH,
+  coverDesignSchema,
+  type CoverDesign,
+  type DesignLayer,
+  type TextLayer,
+  type ShapeLayer,
+  type CanvasSettings,
+} from '@ebook/shared';
 import { api, errorMessage } from '@/lib/api';
 import { operationRequest } from '@/lib/operation-request';
 import { useSession } from '@/lib/auth-client';
-import { qk } from '@/lib/queries';
+import { useBook } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Dialog } from '@/components/ui/dialog';
-import { Field, Input, Select, Textarea } from '@/components/ui/form';
+import { Field, Select, Textarea } from '@/components/ui/form';
 import { Alert } from '@/components/ui/misc';
-import { PageHeader } from '@/components/app/app-shell';
 import { AssetLibrary, imageUrl } from '@/components/assets/asset-library';
 import { timeAgo } from '@/lib/utils';
 
-type SavedCover = { version: number; data: CoverDesign };
-type CoverVersionMeta = { id: string; version: number; createdAt: string; artworkId: string | null; background: string | null };
-type ImageJob = { id: string; status: string; cancelRequested: boolean; assetId: string | null; creditsReserved: number; creditsCharged: number; error: string | null; input: { request: { purpose: string; prompt: string }; visual: CoverDesign['visual'] } };
-const layerKeys = ['title', 'subtitle', 'author'] as const;
-type LayerKey = typeof layerKeys[number];
+// Canva-style modular components
+import { EditorHeader } from './top-bar/editor-header';
+import { ContextualToolbar } from './top-bar/contextual-toolbar';
+import { EditorSidebar } from './left-sidebar/editor-sidebar';
+import { DesignCanvas } from './canvas/design-canvas';
+import { EditorPropertiesPanel } from './right-panel/editor-properties-panel';
+import { ExportModal } from './export/export-modal';
+import { useCoverEditor } from './use-cover-editor';
+import { applyTemplateToDesign } from './templates/cover-templates';
+import type { SavedCover, CoverVersionMeta, TemplateDefinition, EditorTab } from './types';
 
 const STYLE_OPTIONS = [
-  { value: "modern", label: "Modern & Sleek" },
-  { value: "minimalist", label: "Minimalist & Clean" },
-  { value: "business", label: "Professional Business / Corporate" },
-  { value: "tech", label: "Technology & Digital" },
-  { value: "finance", label: "Finance & Wealth" },
-  { value: "marketing", label: "Marketing & Growth" },
-  { value: "fiction", label: "Fiction & Literary" },
-  { value: "romance", label: "Romance & Drama" },
-  { value: "mystery", label: "Mystery & Thriller" },
-  { value: "fantasy", label: "Epic Fantasy & Magic" },
-  { value: "scifi", label: "Science Fiction & Space" },
-  { value: "children", label: "Children's Illustrated & Storybook" },
-  { value: "wellness", label: "Health & Wellness" },
-  { value: "artistic", label: "Creative & Artistic" },
+  { value: 'modern', label: 'Modern & Sleek' },
+  { value: 'minimalist', label: 'Minimalist & Clean' },
+  { value: 'business', label: 'Professional Business / Corporate' },
+  { value: 'tech', label: 'Technology & Digital' },
+  { value: 'finance', label: 'Finance & Wealth' },
+  { value: 'marketing', label: 'Marketing & Growth' },
+  { value: 'fiction', label: 'Fiction & Literary' },
+  { value: 'romance', label: 'Romance & Drama' },
+  { value: 'mystery', label: 'Mystery & Thriller' },
+  { value: 'fantasy', label: 'Epic Fantasy & Magic' },
+  { value: 'scifi', label: 'Science Fiction & Space' },
+  { value: 'children', label: "Children's Illustrated & Storybook" },
+  { value: 'wellness', label: 'Health & Wellness' },
+  { value: 'artistic', label: 'Creative & Artistic' },
 ];
-
-function contrastAgainstBackground(text: string, background: string, shade: number) {
-  const luminance = (hex: string, multiplier: number) => {
-    const rgb = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255 * multiplier).map(c => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4);
-    return rgb[0] * .2126 + rgb[1] * .7152 + rgb[2] * .0722;
-  };
-  const a = luminance(text, 1), b = luminance(background, 1 - shade);
-  return (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
-}
 
 export function CoverStudio({ bookId }: { bookId: string }) {
   const { data: session } = useSession();
-  const query = useQuery({ queryKey: ['cover', session?.user.id, bookId], queryFn: () => api.get<{ cover: SavedCover }>(`/books/${bookId}/cover`), enabled: !!session });
-  if (query.error) return <p role="alert" className="p-6">{errorMessage(query.error)} <Button onClick={() => void query.refetch()}>Retry</Button></p>;
-  if (!query.data || !session) return <p role="status" className="p-6">Loading cover studio…</p>;
-  return <CoverWorkspace key={`${session.user.id}:${bookId}`} bookId={bookId} ownerId={session.user.id} initial={query.data.cover} />;
+  const bookQuery = useBook(bookId);
+  const coverQuery = useQuery({
+    queryKey: ['cover', session?.user.id, bookId],
+    queryFn: () => api.get<{ cover: SavedCover }>(`/books/${bookId}/cover`),
+    enabled: !!session,
+  });
+
+  if (coverQuery.error) {
+    return (
+      <div className="p-8 max-w-xl mx-auto space-y-4">
+        <Alert tone="danger">{errorMessage(coverQuery.error)}</Alert>
+        <Button onClick={() => void coverQuery.refetch()}>Retry loading cover</Button>
+      </div>
+    );
+  }
+
+  if (!coverQuery.data || !session) {
+    return (
+      <div className="flex h-[calc(100vh-60px)] items-center justify-center space-x-3">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        <span className="text-sm font-medium text-muted-foreground">Loading Canva Cover Studio…</span>
+      </div>
+    );
+  }
+
+  return (
+    <CoverWorkspace
+      key={`${session.user.id}:${bookId}`}
+      bookId={bookId}
+      ownerId={session.user.id}
+      initial={coverQuery.data.cover}
+      bookTitle={bookQuery.data?.title}
+      bookAuthor={bookQuery.data?.author ?? session.user.name}
+    />
+  );
 }
 
-function CoverWorkspace({ bookId, ownerId, initial }: { bookId: string; ownerId: string; initial: SavedCover }) {
+function CoverWorkspace({
+  bookId,
+  ownerId,
+  initial,
+  bookTitle,
+  bookAuthor,
+}: {
+  bookId: string;
+  ownerId: string;
+  initial: SavedCover;
+  bookTitle?: string;
+  bookAuthor?: string;
+}) {
   const qc = useQueryClient();
-  const [saved, setSaved] = useState(initial);
+  const [saved, setSaved] = useState<SavedCover>(initial);
   const [baseVersion, setBaseVersion] = useState(initial.version);
-  const [steps, setSteps] = useState<CoverDesign[]>([initial.data]);
-  const [position, setPosition] = useState(0);
-  const data = steps[position];
-  const [layer, setLayer] = useState<LayerKey>('title');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
   const [storageWarning, setStorageWarning] = useState('');
   const [conflict, setConflict] = useState(false);
   const [discardConflict, setDiscardConflict] = useState(false);
-  const [comparison, setComparison] = useState<SavedCover | null>(null);
-  const [picker, setPicker] = useState(false);
-  const [aiOpen, setAiOpen] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
   const [ready, setReady] = useState(false);
   const [recovery, setRecovery] = useState<SavedCover | null>(null);
-  const dirty = JSON.stringify(data) !== JSON.stringify(saved.data);
-  const draftKey = `ebook-cover:${ownerId}:${bookId}`;
-  const preview = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(.25);
-  const drag = useRef<{ x: number; y: number; key: LayerKey } | null>(null);
 
-  function change(next: CoverDesign) { setSteps([...steps.slice(0, position + 1), next].slice(-50)); setPosition(Math.min(position + 1, 49)); setNotice(''); }
-  function changeLayer(patch: Partial<CoverText>) { change({ ...data, [layer]: { ...data[layer], ...patch } }); }
-  function forgetDraft() { try { sessionStorage.removeItem(draftKey); } catch { setStorageWarning('Browser draft storage is unavailable. Download a draft backup before leaving.'); } }
+  // Modals state
+  const [exportOpen, setExportOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [assetPickerOpen, setAssetPickerOpen] = useState(false);
+  const [assetInsertTarget, setAssetInsertTarget] = useState<'background' | 'layer'>('background');
+  const [templatePending, setTemplatePending] = useState<TemplateDefinition | null>(null);
 
+  // Editor hook
+  const editor = useCoverEditor(saved, ownerId, bookId);
+  const dirty = useMemo(() => {
+    return JSON.stringify(editor.design) !== JSON.stringify(saved.data);
+  }, [editor.design, saved.data]);
+
+  const draftKey = `ebook-cover-canva:${ownerId}:${bookId}`;
+
+  const forgetDraft = useCallback(() => {
+    try {
+      sessionStorage.removeItem(draftKey);
+    } catch {
+      setStorageWarning('Browser draft storage is unavailable.');
+    }
+  }, [draftKey]);
+
+  // Restore draft from sessionStorage on mount
   useEffect(() => {
     let active = true;
     void Promise.resolve().then(() => {
       if (!active) return;
       try {
         const raw = sessionStorage.getItem(draftKey);
-        if (raw) { const parsed = JSON.parse(raw) as SavedCover; if (Number.isInteger(parsed.version) && parsed.version >= 0) setRecovery({ version: parsed.version, data: coverDesignSchema.parse(parsed.data) }); }
-      } catch { setStorageWarning('Browser draft could not be read. Keep a downloaded draft backup.'); }
+        if (raw) {
+          const parsed = JSON.parse(raw) as SavedCover;
+          if (Number.isInteger(parsed.version) && parsed.version >= 0) {
+            setRecovery({
+              version: parsed.version,
+              data: coverDesignSchema.parse(parsed.data),
+            });
+          }
+        }
+      } catch {
+        setStorageWarning('Browser draft could not be read.');
+      }
       setReady(true);
     });
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [draftKey]);
 
+  // Sync draft to sessionStorage
   useEffect(() => {
     if (!ready || recovery) return;
     let active = true;
     void Promise.resolve().then(() => {
       if (!active) return;
       try {
-        if (dirty) sessionStorage.setItem(draftKey, JSON.stringify({ version: baseVersion, data }));
-        else sessionStorage.removeItem(draftKey);
-      } catch { setStorageWarning('Browser draft storage is unavailable. Download a draft backup before leaving.'); }
+        if (dirty) {
+          sessionStorage.setItem(
+            draftKey,
+            JSON.stringify({ version: baseVersion, data: editor.design })
+          );
+        } else {
+          sessionStorage.removeItem(draftKey);
+        }
+      } catch {
+        setStorageWarning('Browser draft storage is unavailable.');
+      }
     });
-    return () => { active = false; };
-  }, [ready, recovery, dirty, draftKey, baseVersion, data]);
+    return () => {
+      active = false;
+    };
+  }, [ready, recovery, dirty, draftKey, baseVersion, editor.design]);
 
+  // Warn on tab leave when dirty
   useEffect(() => {
     if (!dirty) return;
-    const leave = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
-    const navigate = (e: MouseEvent) => { const link = (e.target as Element)?.closest?.('a'); if (link?.href && !link.download && !window.confirm('Leave with unsaved cover changes? Your browser draft is kept when storage is available.')) { e.preventDefault(); e.stopPropagation(); } };
-    window.addEventListener('beforeunload', leave); document.addEventListener('click', navigate, true);
-    return () => { window.removeEventListener('beforeunload', leave); document.removeEventListener('click', navigate, true); };
+    const leave = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', leave);
+    return () => {
+      window.removeEventListener('beforeunload', leave);
+    };
   }, [dirty]);
 
-  useEffect(() => {
-    const element = preview.current; if (!element) return;
-    const observer = new ResizeObserver(entries => setScale(entries[0].contentRect.width / COVER_WIDTH)); observer.observe(element); return () => observer.disconnect();
-  }, []);
-
-  async function save() {
-    setBusy(true); setError(''); setNotice('');
+  // Save Cover
+  const handleSave = async () => {
+    setBusy(true);
+    setError('');
     try {
-      const parsed = coverDesignSchema.safeParse(data);
-      if (!parsed.success) throw new Error(parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('. '));
-      const result = await api.put<{ cover: SavedCover }>(`/books/${bookId}/cover`, { baseVersion, data: parsed.data });
-      setSaved(result.cover); setSteps(current => current.map((step, index) => index === position ? result.cover.data : step)); setBaseVersion(result.cover.version); setConflict(false); setComparison(null); forgetDraft(); setNotice(`Cover saved as version ${result.cover.version}.`);
+      const prepared = editor.getPreparedDesign();
+      const parsed = coverDesignSchema.safeParse(prepared);
+      if (!parsed.success) {
+        throw new Error(
+          parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('. ')
+        );
+      }
+      const result = await api.put<{ cover: SavedCover }>(`/books/${bookId}/cover`, {
+        baseVersion,
+        data: parsed.data,
+      });
+
+      setSaved(result.cover);
+      editor.setDesign(result.cover.data);
+      setBaseVersion(result.cover.version);
+      setConflict(false);
+      forgetDraft();
+      toast.success(`Cover saved successfully as Version ${result.cover.version}!`);
       void qc.invalidateQueries({ queryKey: ['cover', ownerId, bookId] });
       void qc.invalidateQueries({ queryKey: ['books'] });
-    } catch (e) { setError(errorMessage(e)); if (typeof e === 'object' && e && 'status' in e && e.status === 409) setConflict(true); } finally { setBusy(false); }
-  }
+    } catch (e: any) {
+      setError(errorMessage(e));
+      if (typeof e === 'object' && e && 'status' in e && e.status === 409) {
+        setConflict(true);
+      }
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
-  async function resolve(keep: boolean) {
-    setBusy(true); setError('');
-    try { const latest = (await api.get<{ cover: SavedCover }>(`/books/${bookId}/cover`)).cover; setSaved(latest); setBaseVersion(latest.version); setComparison(keep ? latest : null); if (!keep) { setSteps([latest.data]); setPosition(0); forgetDraft(); } setConflict(false); setNotice(keep ? 'Your draft is retained. Review it against the latest version before saving.' : 'Loaded the saved cover.'); } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
-  }
-
-  async function download() {
-    setBusy(true); setError('');
+  // Conflict Resolution
+  const handleResolveConflict = async (keep: boolean) => {
+    setBusy(true);
+    setError('');
     try {
-      const response = await fetch(`/api/v1/books/${bookId}/cover/render?version=${saved.version}`, { credentials: 'include' });
-      if (!response.ok) { const body = await response.json().catch(() => null) as { error?: { message?: string } } | null; throw new Error(body?.error?.message ?? `Cover rendering failed (${response.status}). Try again in a moment.`); }
-      const url = URL.createObjectURL(await response.blob()); const a = document.createElement('a'); a.href = url; a.download = `cover-v${saved.version}.jpg`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setNotice('Downloaded the saved 1600 × 2560 cover.');
-    } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
-  }
+      const latest = (await api.get<{ cover: SavedCover }>(`/books/${bookId}/cover`)).cover;
+      setSaved(latest);
+      setBaseVersion(latest.version);
+      if (!keep) {
+        editor.setDesign(latest.data);
+        forgetDraft();
+        toast.info(`Loaded latest cover Version ${latest.version}.`);
+      } else {
+        toast.info('Retained local draft. You can now save it over the latest version.');
+      }
+      setConflict(false);
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
-  function move(key: LayerKey, dx: number, dy: number) {
-    const t = data[key]; change({ ...data, [key]: { ...t, x: Math.max(.04, Math.min(.96 - t.width, t.x + dx)), y: Math.max(.025, Math.min(.975 - t.height, t.y + dy)) } });
-  }
+  // Template Application
+  const handleSelectTemplate = (template: TemplateDefinition) => {
+    setTemplatePending(template);
+  };
 
-  const disabled = busy || !ready || !!recovery;
+  const handleConfirmTemplate = (preserveBookInfo: boolean) => {
+    if (!templatePending) return;
+    const nextDesign = applyTemplateToDesign(
+      templatePending,
+      editor.design,
+      preserveBookInfo ? bookTitle : undefined,
+      preserveBookInfo ? bookAuthor : undefined
+    );
+    editor.setDesign(nextDesign);
+    toast.success(`Applied template "${templatePending.title}"!`);
+    setTemplatePending(null);
+  };
+
+  // Asset Insertion
+  const handleAssetSelect = (asset: { id: string; originalFilename?: string }) => {
+    if (assetInsertTarget === 'background') {
+      editor.setArtworkId(asset.id);
+      toast.success('Applied artwork to background.');
+    } else {
+      editor.addLayer({
+        type: 'image',
+        name: asset.originalFilename || 'Custom Image',
+        url: imageUrl(asset.id),
+        assetId: asset.id,
+        x: 0.25,
+        y: 0.35,
+        width: 0.5,
+        height: 0.3,
+        rotation: 0,
+        opacity: 1,
+        locked: false,
+        hidden: false,
+      });
+      toast.success('Added image layer.');
+    }
+    setAssetPickerOpen(false);
+  };
+
+  // Dimensions Preset
+  const handleSetDimensionsPreset = (preset: CanvasSettings['preset']) => {
+    editor.setDimensionsPreset(preset);
+    toast.info(`Canvas updated to ${preset} preset.`);
+  };
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-6">
+    <div className="flex flex-col h-[calc(100vh-64px)] w-full overflow-hidden bg-background select-none">
+      {/* Dynamic Font Styles */}
       <style>{COVER_FONTS.map(font => `@font-face{font-family:${font};src:url('/api/v1/cover-fonts/${font}') format('truetype');font-weight:100 900;font-display:block}`).join('\n')}</style>
-      <PageHeader
-        title="Cover & Illustration Studio"
-        description="Artwork and editable typography are separate layers. Changing text costs zero image credits. High-resolution 1600 × 2560 portrait layout."
-        actions={
+      {/* Google Web Fonts for Book Covers */}
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400..900&family=Lora:ital,wght@0,400..700;1,400..700&family=Merriweather:ital,wght@0,300..900;1,300..900&family=Montserrat:ital,wght@0,100..900;1,100..900&family=Oswald:wght@200..700&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Roboto:ital,wght@0,100..900;1,100..900&display=swap"
+      />
+
+      {/* Editor Top Bar */}
+      <EditorHeader
+        bookId={bookId}
+        bookTitle={bookTitle}
+        savedVersion={saved.version}
+        dirty={dirty}
+        busy={busy}
+        canUndo={editor.canUndo}
+        canRedo={editor.canRedo}
+        zoom={editor.zoom}
+        showRulers={editor.showRulers}
+        showGuides={editor.showGuides}
+        showSafeMargin={editor.showSafeMargin}
+        onUndo={editor.undo}
+        onRedo={editor.redo}
+        onZoomIn={editor.zoomIn}
+        onZoomOut={editor.zoomOut}
+        onZoomFit={() => editor.setZoom(0.38)}
+        onToggleRulers={() => editor.setShowRulers(!editor.showRulers)}
+        onToggleGuides={() => editor.setShowGuides(!editor.showGuides)}
+        onToggleSafeMargin={() => editor.setShowSafeMargin(!editor.showSafeMargin)}
+        onSave={() => void handleSave()}
+        onOpenExport={() => setExportOpen(true)}
+        onOpenHistory={() => setHistoryOpen(true)}
+        onOpenAi={() => setAiOpen(true)}
+      />
+
+      {/* Contextual Toolbar (Canva dynamic tools above canvas) */}
+      <ContextualToolbar
+        design={editor.design}
+        selectedLayers={editor.selectedLayers}
+        onUpdateLayer={editor.updateLayer}
+        onUpdateSelectedLayers={editor.updateSelectedLayers}
+        onToggleBold={editor.toggleBold}
+        onToggleItalic={editor.toggleItalic}
+        onToggleUnderline={editor.toggleUnderline}
+        onToggleStrike={editor.toggleStrike}
+        onToggleUppercase={editor.toggleUppercase}
+        onAlignSelected={editor.alignSelected}
+        onBringForward={() => {
+          if (editor.primarySelectedLayer) editor.bringForward(editor.primarySelectedLayer.id);
+        }}
+        onSendBackward={() => {
+          if (editor.primarySelectedLayer) editor.sendBackward(editor.primarySelectedLayer.id);
+        }}
+        onBringToFront={() => {
+          if (editor.primarySelectedLayer) editor.bringToFront(editor.primarySelectedLayer.id);
+        }}
+        onSendToBack={() => {
+          if (editor.primarySelectedLayer) editor.sendToBack(editor.primarySelectedLayer.id);
+        }}
+        onDuplicate={() => editor.duplicateLayers(editor.selectedLayerIds)}
+        onDelete={() => editor.removeLayers(editor.selectedLayerIds)}
+        onSetBackground={editor.setBackground}
+        onSetShade={editor.setShade}
+        onSetDimensionsPreset={handleSetDimensionsPreset}
+        onOpenAssetPicker={() => {
+          setAssetInsertTarget('background');
+          setAssetPickerOpen(true);
+        }}
+      />
+
+      {/* Unsaved recovery & conflict alerts */}
+      {recovery && (
+        <div className="px-4 py-2 bg-primary/10 border-b border-primary/20 flex items-center justify-between z-20">
+          <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+            <RotateCcw className="h-4 w-4 text-primary" />
+            <span>Unsaved local cover draft found from previous session (Version {recovery.version}).</span>
+          </div>
           <div className="flex items-center gap-2">
             <Button
-              className="gap-1.5 font-semibold shadow-sm"
-              onClick={() => setAiOpen(true)}
-              disabled={disabled}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => {
+                editor.setDesign(recovery.data);
+                setBaseVersion(recovery.version);
+                setRecovery(null);
+                toast.success('Recovered local draft!');
+              }}
             >
-              <Sparkles className="h-4 w-4" />
-              AI Cover Designer
+              Recover Draft
             </Button>
             <Button
-              variant="secondary"
-              className="gap-1.5"
-              onClick={() => setHistoryOpen(true)}
-              disabled={disabled}
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs"
+              onClick={() => {
+                forgetDraft();
+                setRecovery(null);
+              }}
             >
-              <History className="h-4 w-4" />
-              Version History
+              Discard
             </Button>
           </div>
-        }
-      />
-
-      {error && <Alert tone="danger">{error}</Alert>}
-      {notice && <Alert tone="success">{notice}</Alert>}
-      {storageWarning && <Alert tone="warning">{storageWarning}</Alert>}
-      {recovery && <Alert tone="info" className="flex flex-wrap items-center gap-2"><span>Unsaved cover draft found (version {recovery.version}).</span><Button size="sm" onClick={() => { setSteps([recovery.data]); setPosition(0); setBaseVersion(recovery.version); setRecovery(null); }}>Recover cover draft</Button> <Button size="sm" variant="secondary" onClick={() => { forgetDraft(); setRecovery(null); }}>Discard cover draft</Button></Alert>}
-      {conflict && <Alert tone="warning" className="flex flex-wrap items-center gap-2"><span>This cover was changed elsewhere. Choose how to continue.</span><Button size="sm" disabled={busy} onClick={() => void resolve(true)}>Keep draft and review latest version</Button><Button size="sm" variant="secondary" disabled={busy} onClick={() => setDiscardConflict(true)}>Load saved cover</Button></Alert>}
-      <ConfirmDialog
-        open={discardConflict}
-        onClose={() => setDiscardConflict(false)}
-        onConfirm={() => {
-          setDiscardConflict(false);
-          void resolve(false);
-        }}
-        title="Discard your cover edits?"
-        description="The saved cover will be loaded and your browser draft will be dropped."
-        confirmLabel="Load saved cover"
-      >
-        <p>The cover you saved earlier replaces the version currently on screen. This cannot be undone.</p>
-      </ConfirmDialog>
-      {comparison && <aside className="rounded border border-border p-4"><p className="font-semibold">Latest saved text (version {comparison.version})</p>{layerKeys.map(key => <p key={key} className="mt-2 text-sm"><strong>{key}:</strong> {comparison.data[key].text || '(empty)'} · {comparison.data[key].font} · position {Math.round(comparison.data[key].x * 100)}%, {Math.round(comparison.data[key].y * 100)}%</p>)}<p className="mt-2 text-sm">Your editable draft remains below. Saving creates a new version; the existing version is retained.</p></aside>}
-
-      <div className="flex flex-wrap items-center justify-between gap-3 border-y border-border py-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <Button disabled={disabled || conflict || (!dirty && saved.version > 0)} onClick={() => void save()}>Save cover</Button>
-          <Button variant="secondary" disabled={disabled || dirty || !saved.version} onClick={() => void download()}>Download cover JPG</Button>
-          <Button variant="secondary" disabled={disabled || position === 0} onClick={() => setPosition(p => p - 1)}>Undo</Button>
-          <Button variant="secondary" disabled={disabled || position === steps.length - 1} onClick={() => setPosition(p => p + 1)}>Redo</Button>
-          <Button variant="secondary" onClick={() => { const url = URL.createObjectURL(new Blob([JSON.stringify({ version: baseVersion, data }, null, 2)], { type: 'application/json' })); const a = document.createElement('a'); a.href = url; a.download = 'cover-draft.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }}>Backup draft</Button>
         </div>
-        <span role="status" className="text-xs font-semibold text-muted-foreground">{dirty ? '• Unsaved cover edits' : `Saved Version ${saved.version}`}</span>
+      )}
+
+      {conflict && (
+        <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 flex items-center justify-between z-20">
+          <div className="flex items-center gap-2 text-xs font-medium text-amber-700 dark:text-amber-400">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>This cover was updated elsewhere. Choose how to proceed:</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              className="h-7 text-xs"
+              disabled={busy}
+              onClick={() => void handleResolveConflict(true)}
+            >
+              Keep local draft & overwrite
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs"
+              disabled={busy}
+              onClick={() => setDiscardConflict(true)}
+            >
+              Load latest saved
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Main 3-Column Studio Interface */}
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* Left Sidebar (Rail + Drawer) */}
+        <EditorSidebar
+          activeTab={editor.activeTab}
+          onSelectTab={editor.setActiveTab}
+          bookId={bookId}
+          backgroundColor={editor.design.background}
+          shade={editor.design.shade}
+          hasArtwork={!!editor.design.artworkId}
+          onApplyTemplate={handleSelectTemplate}
+          onAddShape={(shape) => editor.addLayer({ type: 'shape', ...shape })}
+          onAddIcon={(iconName) =>
+            editor.addLayer({
+              type: 'icon',
+              iconName,
+              name: `Icon (${iconName})`,
+              color: '#ffffff',
+              width: 0.1,
+              height: 0.06,
+            })
+          }
+          onAddText={(textLayer) => editor.addLayer({ type: 'text', ...textLayer })}
+          onAddImageLayer={(url, name) =>
+            editor.addLayer({
+              type: 'image',
+              url,
+              name: name || 'Uploaded Image',
+              width: 0.4,
+              height: 0.25,
+            })
+          }
+          onSetBackgroundArtwork={(url) => {
+            // direct URL or asset insertion
+          }}
+          onOpenAssetLibrary={() => {
+            setAssetInsertTarget('layer');
+            setAssetPickerOpen(true);
+          }}
+          onSetBackground={editor.setBackground}
+          onSetShade={editor.setShade}
+          onRemoveArtwork={() => editor.setArtworkId(null)}
+          onApplyCover={(newCover) => {
+            setSaved(newCover);
+            editor.setDesign(newCover.data);
+            setBaseVersion(newCover.version);
+            forgetDraft();
+          }}
+          onSetArtwork={editor.setArtworkId}
+        />
+
+        {/* Central Design Canvas */}
+        <div className="flex-1 h-full overflow-hidden relative flex flex-col bg-slate-900/90 dark:bg-slate-950">
+          <DesignCanvas
+            design={editor.design}
+            selectedLayerIds={editor.selectedLayerIds}
+            zoom={editor.zoom}
+            showRulers={editor.showRulers}
+            showGuides={editor.showGuides}
+            showSafeMargin={editor.showSafeMargin}
+            snapToGrid={editor.snapToGrid}
+            onSelectLayer={editor.selectLayer}
+            onDeselectAll={editor.deselectAll}
+            onSelectAll={editor.selectAll}
+            onUpdateLayer={editor.updateLayer}
+            onRemoveLayers={editor.removeLayers}
+            onDuplicateLayers={editor.duplicateLayers}
+            onToggleLock={editor.toggleLock}
+            onBringForward={editor.bringForward}
+            onSendBackward={editor.sendBackward}
+            onBringToFront={editor.bringToFront}
+            onSendToBack={editor.sendToBack}
+            onUndo={editor.undo}
+            onRedo={editor.redo}
+          />
+        </div>
+
+        {/* Right Properties & Layers Panel */}
+        <EditorPropertiesPanel
+          layers={editor.design.layers || []}
+          selectedLayerIds={editor.selectedLayerIds}
+          primarySelectedLayer={editor.primarySelectedLayer}
+          backgroundColor={editor.design.background}
+          shade={editor.design.shade}
+          onSelectLayer={editor.selectLayer}
+          onUpdateLayer={editor.updateLayer}
+          onToggleLock={editor.toggleLock}
+          onToggleHide={editor.toggleHide}
+          onBringForward={editor.bringForward}
+          onSendBackward={editor.sendBackward}
+          onDuplicate={(id) => editor.duplicateLayers([id])}
+          onDelete={(id) => editor.removeLayers([id])}
+        />
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-2">
-        <div>
-          <div ref={preview} className="relative w-full overflow-hidden rounded-xl border border-border shadow-lg" style={{ aspectRatio: `${COVER_WIDTH}/${COVER_HEIGHT}` }} aria-label="Cover preview">
-            <div style={{ width: COVER_WIDTH, height: COVER_HEIGHT, transform: `scale(${scale})`, transformOrigin: 'top left', position: 'relative', background: data.background }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              {data.artworkId && <img src={imageUrl(data.artworkId)} alt="Selected cover artwork" draggable={false} style={{ position: 'absolute', width: '100%', height: '100%', objectFit: 'cover' }} />}
-              <div style={{ position: 'absolute', inset: 0, background: `rgba(0,0,0,${data.shade})` }} />
-              {layerKeys.map(key => <div key={key} role="button" tabIndex={disabled ? -1 : 0} aria-label={`Move ${key} text`} style={{ ...coverTextStyle(data[key]), outline: layer === key ? '3px dashed #56b8ff' : undefined, cursor: 'move', touchAction: 'none', overflow: 'hidden' }} onFocus={() => setLayer(key)} onKeyDown={e => {
-                if (disabled) return; const d = .005; const delta: Record<string, [number, number]> = { ArrowLeft: [-d, 0], ArrowRight: [d, 0], ArrowUp: [0, -d], ArrowDown: [0, d] }; if (delta[e.key]) { e.preventDefault(); move(key, ...delta[e.key]); }
-              }} onPointerDown={e => { if (disabled) return; setLayer(key); drag.current = { x: e.clientX, y: e.clientY, key }; e.currentTarget.setPointerCapture(e.pointerId); }} onPointerMove={e => { if (drag.current?.key === key) e.currentTarget.style.transform = `translate(${(e.clientX - drag.current.x) / scale}px,${(e.clientY - drag.current.y) / scale}px)`; }} onPointerCancel={e => { drag.current = null; e.currentTarget.style.transform = ''; }} onPointerUp={e => { if (!drag.current) return; const start = drag.current; drag.current = null; e.currentTarget.style.transform = ''; move(key, (e.clientX - start.x) / scale / COVER_WIDTH, (e.clientY - start.y) / scale / COVER_HEIGHT); }}>{data[key].text}</div>)}
-            </div>
-          </div>
-          <p className="mt-2 text-xs text-muted-foreground">Drag text layers to reposition or use the numeric coordinates. Artwork preserves aspect ratio and fills the canvas. Text layers remain editable.</p>
-        </div>
-
-        <fieldset disabled={disabled} className="min-w-0 space-y-4">
-          <div className="flex gap-2">
-            <Button variant="secondary" disabled={disabled} onClick={() => setPicker(true)}>Choose artwork</Button>
-            <Button variant="secondary" disabled={disabled || !data.artworkId} onClick={() => change({ ...data, artworkId: null })}>Remove artwork</Button>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Background" htmlFor="cover-background">
-              <Input id="cover-background" aria-label="Cover background" type="color" className="h-11 p-1" value={data.background} onChange={e => change({ ...data, background: e.target.value })} />
-            </Field>
-            <Field label="Dark overlay" htmlFor="cover-shade">
-              <Input id="cover-shade" aria-label="Dark overlay" type="range" min="0" max="0.85" step="0.05" className="mt-1 h-11 w-full accent-primary" value={data.shade} onChange={e => change({ ...data, shade: Number(e.target.value) })} />
-            </Field>
-          </div>
-          <Field label="Text layer" htmlFor="cover-layer">
-            <Select id="cover-layer" aria-label="Text layer" value={layer} onChange={e => setLayer(e.target.value as LayerKey)}>{layerKeys.map(key => <option key={key}>{key}</option>)}</Select>
-          </Field>
-          <Field label={`${layer} text`} htmlFor={`cover-${layer}-text`}>
-            <Textarea id={`cover-${layer}-text`} aria-label={`${layer} text`} maxLength={300} className="min-h-16" value={data[layer].text} onChange={e => changeLayer({ text: e.target.value })} />
-          </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Font" htmlFor="cover-font">
-              <Select id="cover-font" aria-label="Font" value={data[layer].font} onChange={e => changeLayer({ font: e.target.value as CoverText['font'] })}>{COVER_FONTS.map(font => <option key={font}>{font}</option>)}</Select>
-            </Field>
-            <Field label="Text color" htmlFor="cover-color">
-              <Input id="cover-color" aria-label="Text color" type="color" className="h-11 p-1" value={data[layer].color} onChange={e => changeLayer({ color: e.target.value })} />
-            </Field>
-            <Field label="Weight" htmlFor="cover-weight">
-              <Select id="cover-weight" aria-label="Weight" value={data[layer].weight} onChange={e => changeLayer({ weight: e.target.value as CoverText['weight'] })}><option value="400">Regular</option><option value="700">Bold</option></Select>
-            </Field>
-            <Field label="Alignment" htmlFor="cover-align">
-              <Select id="cover-align" aria-label="Alignment" value={data[layer].align} onChange={e => changeLayer({ align: e.target.value as CoverText['align'] })}>{['left', 'center', 'right'].map(value => <option key={value}>{value}</option>)}</Select>
-            </Field>
-            <Field label="Direction" htmlFor="cover-direction">
-              <Select id="cover-direction" aria-label="Direction" value={data[layer].direction} onChange={e => changeLayer({ direction: e.target.value as CoverText['direction'] })}><option value="ltr">Left to right</option><option value="rtl">Right to left</option></Select>
-            </Field>
-            {(['x', 'y', 'width', 'height', 'size'] as const).map(key => (
-              <Field key={key} label={`${key} (%)`} htmlFor={`cover-${key}`}>
-                <Input id={`cover-${key}`} aria-label={`${key} percent`} type="number" className="h-11" min={key === 'size' ? 1.2 : key === 'width' ? 10 : key === 'x' ? 4 : key === 'y' ? 2.5 : 3} max={key === 'size' ? 15 : key === 'height' ? 50 : 96} step="0.1" value={Math.round(data[layer][key] * 1000) / 10} onChange={e => changeLayer({ [key]: Number(e.target.value) / 100 })} />
-              </Field>
-            ))}
-          </div>
-          <p className="text-xs text-muted-foreground">Noto Sans supports global scripts. Overlapping text that exceeds safe bounds will be flagged before final export.</p>
-          <p className="text-sm" role="status">{contrastAgainstBackground(data[layer].color, data.background, data.shade) < 3 ? 'Low contrast against background. ' : ''}Contrast ratio: {contrastAgainstBackground(data[layer].color, data.background, data.shade).toFixed(1)}:1.</p>
-        </fieldset>
-      </div>
-
-      <ImageGenerator
+      {/* Export Modal */}
+      <ExportModal
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
         bookId={bookId}
-        disabled={disabled || conflict}
-        onEnsureSaved={dirty || saved.version === 0 ? save : undefined}
-        selectArtwork={id => change({ ...data, artworkId: id })}
+        savedVersion={saved.version}
       />
 
-      <Dialog open={picker} onClose={() => setPicker(false)} title="Choose or upload artwork" className="max-w-4xl">
-        <AssetLibrary key={ownerId} onInsert={asset => { change({ ...data, artworkId: asset.id }); setPicker(false); }} />
-      </Dialog>
-
+      {/* AI Cover Designer Modal */}
       <AiCoverDesignerModal
         bookId={bookId}
         open={aiOpen}
         onClose={() => setAiOpen(false)}
         onApplyCover={(newCover) => {
           setSaved(newCover);
+          editor.setDesign(newCover.data);
           setBaseVersion(newCover.version);
-          setSteps([newCover.data]);
-          setPosition(0);
           forgetDraft();
-          setNotice(`AI cover generated and applied as version ${newCover.version}!`);
+          toast.success(`AI cover applied as Version ${newCover.version}!`);
           setAiOpen(false);
           void qc.invalidateQueries({ queryKey: ['cover', ownerId, bookId] });
           void qc.invalidateQueries({ queryKey: ['books'] });
         }}
       />
 
+      {/* Version History Modal */}
       <VersionHistoryModal
         bookId={bookId}
         open={historyOpen}
@@ -316,15 +586,87 @@ function CoverWorkspace({ bookId, ownerId, initial }: { bookId: string; ownerId:
         onClose={() => setHistoryOpen(false)}
         onRestoreCover={(restored) => {
           setSaved(restored);
+          editor.setDesign(restored.data);
           setBaseVersion(restored.version);
-          setSteps([restored.data]);
-          setPosition(0);
           forgetDraft();
-          setNotice(`Restored cover to version ${restored.version}.`);
+          toast.success(`Restored to Version ${restored.version}!`);
           setHistoryOpen(false);
           void qc.invalidateQueries({ queryKey: ['cover', ownerId, bookId] });
           void qc.invalidateQueries({ queryKey: ['books'] });
         }}
+      />
+
+      {/* Asset Library Dialog */}
+      <Dialog
+        open={assetPickerOpen}
+        onClose={() => setAssetPickerOpen(false)}
+        title={assetInsertTarget === 'background' ? 'Choose Cover Artwork' : 'Insert Image Layer'}
+        className="max-w-4xl"
+      >
+        <AssetLibrary
+          key={ownerId}
+          onInsert={(asset) => handleAssetSelect(asset)}
+        />
+      </Dialog>
+
+      {/* Template Apply Confirmation */}
+      <Dialog
+        open={!!templatePending}
+        onClose={() => setTemplatePending(null)}
+        title="Apply Cover Template"
+        description={`Do you want to apply "${templatePending?.title}"?`}
+        className="max-w-md"
+      >
+        <div className="space-y-4 pt-2">
+          <p className="text-sm text-muted-foreground">
+            Choose whether to automatically fill the template with your book’s real title and author name:
+          </p>
+
+          <div className="rounded-xl border border-border bg-muted/30 p-3 space-y-1 text-xs">
+            <p className="font-semibold text-foreground">
+              Book Title: <span className="font-normal text-muted-foreground">{bookTitle || '(Untitled)'}</span>
+            </p>
+            <p className="font-semibold text-foreground">
+              Author: <span className="font-normal text-muted-foreground">{bookAuthor || '(Anonymous)'}</span>
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2 pt-2">
+            <Button
+              onClick={() => handleConfirmTemplate(true)}
+              className="w-full justify-center"
+            >
+              Apply with My Book Title & Author
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => handleConfirmTemplate(false)}
+              className="w-full justify-center"
+            >
+              Apply with Template Defaults
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => setTemplatePending(null)}
+              className="w-full justify-center text-xs"
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* Discard Conflict Confirm */}
+      <ConfirmDialog
+        open={discardConflict}
+        onClose={() => setDiscardConflict(false)}
+        onConfirm={() => {
+          setDiscardConflict(false);
+          void handleResolveConflict(false);
+        }}
+        title="Discard local draft?"
+        description="The latest saved cover on the server will be loaded."
+        confirmLabel="Discard & Load Saved"
       />
     </div>
   );
@@ -346,11 +688,11 @@ function AiCoverDesignerModal({
   const [busy, setBusy] = useState(false);
   const [variations, setVariations] = useState<{ id: string; styleName: string; plan: any }[] | null>(null);
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (selectedStyle = style) => {
     setBusy(true);
     try {
       const res = await operationRequest<{ cover: SavedCover }>(`/books/${bookId}/cover/ai-generate`, {
-        style,
+        style: selectedStyle,
         userPrompt: userPrompt.trim() || undefined,
       });
       toast.success('AI cover generated successfully!');
@@ -379,31 +721,65 @@ function AiCoverDesignerModal({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title="AI Book Cover Designer" description="Generate an intelligent commercial book cover using OpenAI." className="max-w-xl">
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="AI Book Cover Designer"
+      description="Generate an intelligent commercial book cover using OpenAI."
+      className="max-w-xl"
+    >
       <div className="space-y-5">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Design Direction / Genre" htmlFor="ai-modal-style">
-            <Select id="ai-modal-style" value={style} onChange={e => setStyle(e.target.value)} disabled={busy}>
-              {STYLE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-            </Select>
-          </Field>
-        </div>
+        <Field label="Design Direction / Genre" htmlFor="ai-modal-style">
+          <Select id="ai-modal-style" value={style} onChange={(e) => setStyle(e.target.value)} disabled={busy}>
+            {STYLE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
 
-        <Field label="Visual Prompt / Custom Instructions (Optional)" htmlFor="ai-modal-prompt" hint="Specific visual motifs, color schemes, or moods to guide the AI.">
-          <Textarea id="ai-modal-prompt" className="min-h-20" placeholder="e.g. Cinematic lighting, dramatic atmosphere, isometric tech elements" value={userPrompt} onChange={e => setUserPrompt(e.target.value)} maxLength={1000} disabled={busy} />
+        <Field
+          label="Visual Prompt / Custom Instructions (Optional)"
+          htmlFor="ai-modal-prompt"
+          hint="Specific visual motifs, color schemes, or moods to guide OpenAI."
+        >
+          <Textarea
+            id="ai-modal-prompt"
+            className="min-h-20"
+            placeholder="e.g. Cinematic golden hour lighting, dramatic sea horizon, minimalist typography"
+            value={userPrompt}
+            onChange={(e) => setUserPrompt(e.target.value)}
+            maxLength={1000}
+            disabled={busy}
+          />
         </Field>
 
         {variations && (
           <div className="space-y-3 rounded-xl border border-border bg-muted/30 p-4">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Explore Style Concepts</h4>
+            <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Explore Style Concepts
+            </h4>
             <div className="grid gap-3 sm:grid-cols-3">
               {variations.map((v) => (
-                <div key={v.id} className="flex flex-col justify-between rounded-lg border border-border bg-surface p-3 text-xs">
+                <div
+                  key={v.id}
+                  className="flex flex-col justify-between rounded-lg border border-border bg-surface p-3 text-xs"
+                >
                   <div className="space-y-1">
                     <span className="font-bold capitalize text-primary">{v.styleName}</span>
                     <p className="line-clamp-3 text-[11px] text-muted-foreground">{v.plan.visualConcept}</p>
                   </div>
-                  <Button size="sm" variant="secondary" className="mt-3 text-xs" disabled={busy} onClick={() => { setStyle(v.styleName); void handleGenerate(); }}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="mt-3 text-xs"
+                    disabled={busy}
+                    onClick={() => {
+                      setStyle(v.styleName);
+                      void handleGenerate(v.styleName);
+                    }}
+                  >
                     Generate This
                   </Button>
                 </div>
@@ -414,13 +790,27 @@ function AiCoverDesignerModal({
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
           <Button variant="secondary" size="sm" disabled={busy} onClick={handleExploreVariations}>
-            {busy && !variations ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
+            {busy && !variations ? (
+              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+            )}
             Preview 3 Variations
           </Button>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>Cancel</Button>
-            <Button size="sm" disabled={busy} onClick={handleGenerate}>
-              {busy ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Generating…</> : <><Sparkles className="mr-1.5 h-3.5 w-3.5" /> Generate & Apply Cover</>}
+            <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>
+              Cancel
+            </Button>
+            <Button size="sm" disabled={busy} onClick={() => void handleGenerate()}>
+              {busy ? (
+                <>
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Generating…
+                </>
+              ) : (
+                <>
+                  <Sparkles className="mr-1.5 h-3.5 w-3.5" /> Generate & Apply Cover
+                </>
+              )}
             </Button>
           </div>
         </div>
@@ -465,7 +855,13 @@ function VersionHistoryModal({
   const versions = versionsQuery.data?.versions ?? [];
 
   return (
-    <Dialog open={open} onClose={onClose} title="Cover Version History" description="Every saved cover change creates an immutable version." className="max-w-md">
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="Cover Version History"
+      description="Every saved cover change creates an immutable version."
+      className="max-w-md"
+    >
       <div className="space-y-4">
         {versionsQuery.isLoading ? (
           <p className="py-6 text-center text-sm text-muted-foreground">Loading version history…</p>
@@ -478,7 +874,10 @@ function VersionHistoryModal({
               return (
                 <div key={v.id} className="flex items-center justify-between p-3.5 hover:bg-muted/30 transition-colors">
                   <div className="flex items-center gap-3">
-                    <div className="h-10 w-7 rounded overflow-hidden border border-border shadow-xs shrink-0" style={{ background: v.background || '#1e293b' }}>
+                    <div
+                      className="h-10 w-7 rounded overflow-hidden border border-border shadow-xs shrink-0"
+                      style={{ background: v.background || '#1e293b' }}
+                    >
                       {v.artworkId && (
                         /* eslint-disable-next-line @next/next/no-img-element */
                         <img src={imageUrl(v.artworkId)} alt="" className="h-full w-full object-cover" />
@@ -512,85 +911,11 @@ function VersionHistoryModal({
         )}
 
         <div className="flex justify-end pt-2 border-t border-border">
-          <Button variant="secondary" size="sm" onClick={onClose} disabled={busy}>Close</Button>
+          <Button variant="secondary" size="sm" onClick={onClose} disabled={busy}>
+            Close
+          </Button>
         </div>
       </div>
     </Dialog>
-  );
-}
-
-function ImageGenerator({
-  bookId,
-  disabled,
-  onEnsureSaved,
-  selectArtwork,
-}: {
-  bookId: string;
-  disabled: boolean;
-  onEnsureSaved?: () => Promise<void>;
-  selectArtwork: (id: string) => void;
-}) {
-  const qc = useQueryClient();
-  const [prompt, setPrompt] = useState(''); const [purpose, setPurpose] = useState<'cover' | 'illustration'>('cover');
-  const [aspect, setAspect] = useState<'portrait' | 'square' | 'landscape'>('portrait');
-  const [cursor, setCursor] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [error, setError] = useState('');
-  const config = useQuery({ queryKey: ['image-config'], queryFn: () => api.get<{ credits: number; model: string; mock: boolean; enabled: boolean }>('/image-config') });
-  const history = useQuery({ queryKey: ['image-jobs', bookId, cursor], queryFn: () => api.get<{ jobs: ImageJob[]; nextCursor: string | null }>(`/books/${bookId}/images${cursor ? `?cursor=${cursor}` : ''}`), refetchInterval: q => q.state.data?.jobs.some(j => ['queued', 'running'].includes(j.status)) ? 1500 : false });
-
-  const settled = history.data?.jobs.filter(j => !['queued', 'running'].includes(j.status)).map(j => `${j.id}:${j.status}`).join(',') ?? '';
-  useEffect(() => { if (!settled) return; void qc.invalidateQueries({ queryKey: qk.credits }); void qc.invalidateQueries({ queryKey: ['assets'] }); }, [settled, qc]);
-  const active = history.data?.jobs.some(j => ['queued', 'running'].includes(j.status));
-
-  return (
-    <section className="space-y-4 border-t border-border pt-6">
-      <h2 className="text-xl font-semibold">Custom Artwork Prompts</h2>
-      <p className="text-sm text-muted-foreground">{config.data ? `${config.data.credits} credits per image. Model: ${config.data.model}.` : 'Loading image pricing…'} Credits are reserved when queued and charged only for a saved result.</p>
-      {config.error && <Alert tone="danger">{errorMessage(config.error)}</Alert>}
-      {config.data && !config.data.enabled && <Alert tone="warning">Image generation is not configured. You can upload your own artwork.</Alert>}
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Purpose" htmlFor="image-purpose">
-          <Select id="image-purpose" aria-label="Image purpose" value={purpose} onChange={e => { setPurpose(e.target.value as typeof purpose); if (e.target.value === 'cover') setAspect('portrait'); }}><option value="cover">Cover concept</option><option value="illustration">Interior illustration</option></Select>
-        </Field>
-        <Field label="Aspect" htmlFor="image-aspect">
-          <Select id="image-aspect" aria-label="Image aspect" value={aspect} disabled={purpose === 'cover'} onChange={e => setAspect(e.target.value as typeof aspect)}>{['portrait', 'square', 'landscape'].map(a => <option key={a}>{a}</option>)}</Select>
-        </Field>
-      </div>
-      <Field label="Artwork prompt" htmlFor="artwork-prompt" hint="At least 10 characters. Describe the scene, subject and mood.">
-        <Textarea id="artwork-prompt" aria-label="Artwork prompt" className="min-h-20" minLength={10} maxLength={2000} value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="Describe the scene, subject and mood. Text is added separately." />
-      </Field>
-      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center">
-        <Button disabled={disabled || busy || active || !config.data?.enabled || prompt.trim().length < 10} onClick={async () => {
-          setBusy(true); setError('');
-          try {
-            if (onEnsureSaved) {
-              await onEnsureSaved();
-            }
-            await operationRequest(`/books/${bookId}/images`, { purpose, prompt, aspect, expectedCredits: config.data!.credits });
-            setCursor(null);
-            await qc.invalidateQueries({ queryKey: ['image-jobs', bookId] });
-          } catch (e) {
-            setError(errorMessage(e));
-          } finally {
-            setBusy(false);
-          }
-        }}>Generate image{config.data ? ` · ${config.data.credits} credits` : ''}</Button>
-      </div>
-      {(error || history.error) && <p role="alert" className="text-danger">{error || errorMessage(history.error)}</p>}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{history.data?.jobs.map(job => (
-        <article key={job.id} className="space-y-2 rounded border border-border p-3">
-          <p className="font-semibold">{job.input.request.purpose} · {job.cancelRequested && ['queued', 'running'].includes(job.status) ? 'Cancelling…' : job.status}</p>
-          <p className="text-sm">{job.input.request.prompt}</p>
-          {job.status === 'completed' && job.assetId && (
-            <>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={imageUrl(job.assetId)} alt="Generated artwork concept" className="h-48 w-full object-contain" />
-              {job.input.request.purpose === 'cover' ? (
-                <Button variant="secondary" disabled={disabled} onClick={() => selectArtwork(job.assetId!)}>Use as cover artwork</Button>
-              ) : null}
-            </>
-          )}
-        </article>
-      ))}</div>
-    </section>
   );
 }

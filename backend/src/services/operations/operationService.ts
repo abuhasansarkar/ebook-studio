@@ -39,15 +39,32 @@ export async function submitOperation(req: Request, res: Response, userId: strin
       res.status(existing.responseStatus).json({ ...body, ...(error ? { error: { ...error, requestId: String(req.id) } } : {}), operationId: existing.id, replayed: true });
       return;
     }
+    // If the earlier attempt is still actively submitting, wait briefly for it to finish
+    // rather than instantly throwing 409 to a replaying client.
+    let current = existing;
+    const waitStart = Date.now();
+    while (current.state === "submitting" && !current.responseBody && Date.now() - waitStart < 20_000) {
+      if (req.destroyed || res.writableEnded) return;
+      await new Promise(r => setTimeout(r, 1000));
+      const fresh = await prisma.operation.findUnique({ where: { id: existing.id } });
+      if (!fresh) break;
+      current = fresh;
+    }
+    if (current.responseBody && current.responseStatus) {
+      const body = current.responseBody as Record<string, unknown>;
+      const error = body.error as Record<string, unknown> | undefined;
+      res.status(current.responseStatus).json({ ...body, ...(error ? { error: { ...error, requestId: String(req.id) } } : {}), operationId: current.id, replayed: true });
+      return;
+    }
     // The earlier attempt either crashed or was abandoned mid-flight. It is
     // never re-run automatically, because it may have partly taken effect, but
     // the key is released: the caller is told to check, and their next attempt
     // is a new request rather than an endless wait on this one.
-    const abandoned = existing.state === "submitting" && Date.now() - existing.updatedAt.getTime() > STALE_SUBMISSION_MS;
-    if (existing.state === "needs_review" || abandoned) {
-      throw new AppError(409, "OPERATION_NEEDS_REVIEW", "Your earlier attempt didn't finish because of a server error. Check whether it took effect before trying again; the next attempt starts fresh.", { operationId: existing.id });
+    const abandoned = current.state === "submitting" && Date.now() - current.updatedAt.getTime() > STALE_SUBMISSION_MS;
+    if (current.state === "needs_review" || abandoned) {
+      throw new AppError(409, "OPERATION_NEEDS_REVIEW", "Your earlier attempt didn't finish because of a server error. Check whether it took effect before trying again; the next attempt starts fresh.", { operationId: current.id });
     }
-    throw new AppError(409, "OPERATION_PENDING", "The earlier request is still being checked. Retry with the same request key; do not start a duplicate.", { operationId: existing.id });
+    throw new AppError(409, "OPERATION_PENDING", "The earlier request is still being checked. Retry with the same request key; do not start a duplicate.", { operationId: current.id });
   }
   logger.info({ requestId: String(req.id), operationId: operation.id, kind }, "Operation request recorded");
   res.setHeader("X-Operation-Id", operation.id);

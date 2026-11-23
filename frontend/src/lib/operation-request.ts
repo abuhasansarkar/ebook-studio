@@ -17,14 +17,35 @@ export async function operationRequest<T>(path: string, body: unknown = {}) {
   fallback.set(slot, key);
   try { if (digest) sessionStorage.setItem(slot, key); } catch { /* The request still has an identity within this tab. */ }
   const clear = () => { fallback.delete(slot); try { if (digest) sessionStorage.removeItem(slot); } catch { /* No storage available. */ } };
-  try {
-    const result = await api.post<T>(path, body, { "Idempotency-Key": key });
-    clear();
-    return result;
-  } catch (error) {
-    // Retain the key when the outcome is uncertain. Explicit validation/permission/
-    // credit failures can be corrected and submitted as a new intent.
-    if (error instanceof ApiError && error.status >= 400 && error.status < 500 && error.code !== "OPERATION_PENDING") clear();
-    throw error;
+
+  const MAX_POLLS = 30; // up to ~60s if polling every 2s
+  let attempts = 0;
+
+  while (true) {
+    try {
+      const result = await api.post<T>(path, body, { "Idempotency-Key": key });
+      clear();
+      return result;
+    } catch (error) {
+      if (error instanceof ApiError) {
+        // If the operation is still in flight on the server, poll until completion.
+        if (error.code === "OPERATION_PENDING" && attempts < MAX_POLLS) {
+          attempts++;
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          continue;
+        }
+        // If a transient network disconnect or socket hang up happened, give it one retry to check if the server finished.
+        if (error.status === 0 && attempts === 0) {
+          attempts++;
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          continue;
+        }
+        // Explicit validation/permission/credit failures can be corrected and submitted as a new intent.
+        if (error.status >= 400 && error.status < 500 && error.code !== "OPERATION_PENDING") {
+          clear();
+        }
+      }
+      throw error;
+    }
   }
 }

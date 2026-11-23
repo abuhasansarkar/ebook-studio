@@ -27,8 +27,12 @@ coverRouter.put('/books/:bookId/cover', validateBody(z.object({ baseVersion: z.n
 coverRouter.get('/books/:bookId/cover/render', async (req, res) => {
   const version = z.coerce.number().int().positive().safeParse(req.query.version);
   if (!version.success) throw badRequest('Save the cover and select its version before downloading.');
-  const bytes = await coverService.render(userId(req), String(req.params.bookId), version.data);
-  res.set({ 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, no-store', 'Content-Disposition': `attachment; filename="cover-v${version.data}.jpg"` }).send(bytes);
+  const formatRaw = String(req.query.format || 'jpeg').toLowerCase();
+  const format = formatRaw === 'png' ? 'png' : formatRaw === 'pdf' ? 'pdf' : 'jpeg';
+  const bytes = await coverService.render(userId(req), String(req.params.bookId), version.data, format);
+  const mime = format === 'png' ? 'image/png' : format === 'pdf' ? 'application/pdf' : 'image/jpeg';
+  const ext = format === 'pdf' ? 'pdf' : format === 'png' ? 'png' : 'jpg';
+  res.set({ 'Content-Type': mime, 'Cache-Control': 'private, no-store', 'Content-Disposition': `attachment; filename="cover-v${version.data}.${ext}"` }).send(bytes);
 });
 coverRouter.get('/books/:bookId/cover/versions', async (req, res) => {
   res.json({ versions: await coverService.versions(userId(req), String(req.params.bookId)) });

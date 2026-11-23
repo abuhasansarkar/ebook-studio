@@ -31,6 +31,12 @@ const server = app.listen(env.PORT, () => {
   else if (!env.OPENAI_API_KEY) logger.warn("OPENAI_API_KEY is not set — AI features will return 503");
 });
 
+// Configure timeouts behind reverse proxy (e.g. Next.js rewrite proxy or Nginx)
+// to prevent premature connection resets and socket hang ups during long AI requests.
+server.keepAliveTimeout = 65_000;
+server.headersTimeout = 66_000;
+server.requestTimeout = 300_000;
+
 // The plan catalog is seeded on start. An existing plan is left alone, so a
 // price change is a deliberate edit rather than a side effect of a restart.
 billingService.seedPlans().catch((err) => {
