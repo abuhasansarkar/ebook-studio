@@ -10,7 +10,7 @@ import { TableKit } from "@tiptap/extension-table";
 import { CharacterCount, Placeholder } from "@tiptap/extensions";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Download, History, Save, Upload } from "lucide-react";
+import { Download, History, Image as ImageIcon, Save, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { getLanguage } from "@ebook/shared";
 import { Button } from "@/components/ui/button";
@@ -90,15 +90,27 @@ export function ChapterEditor({ ownerId, chapter, bookId, language, findingId }:
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="sticky top-14 z-10 flex flex-wrap items-center justify-between gap-2 border-b border-border bg-surface/95 px-4 py-2 backdrop-blur lg:top-0 sm:px-6">
         {editor ? <EditorToolbar editor={editor} /> : <span />}
-        <div className="flex items-center gap-4">
-          <Button variant="secondary" size="sm" disabled={!editor || !save.ready || save.drafts.length > 0 || historyOpen} onClick={() => setImagesOpen(true)}>Images</Button>
-          <Button variant="secondary" size="sm" disabled={!save.ready || save.drafts.length > 0 || save.state === 'saved' || save.state === 'saving' || save.state === 'conflict'} onClick={() => void save.retry()}><Save className="h-4 w-4" /> Save</Button>
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+          <Button variant="secondary" size="sm" disabled={!editor || !save.ready || save.drafts.length > 0 || historyOpen} onClick={() => setImagesOpen(true)} title="Insert Images">
+            <ImageIcon className="h-4 w-4" />
+            <span className="hidden sm:inline">Images</span>
+          </Button>
+          <Button variant="secondary" size="sm" disabled={!save.ready || save.drafts.length > 0 || save.state === 'saved' || save.state === 'saving' || save.state === 'conflict'} onClick={() => void save.retry()} title="Save chapter">
+            <Save className="h-4 w-4" />
+            <span className="hidden sm:inline">Save</span>
+          </Button>
           <Button variant="secondary" size="sm" disabled={!editor} onClick={() => {
             const url = URL.createObjectURL(new Blob([JSON.stringify({ title, contentJson: editor?.getJSON() }, null, 2)], { type: 'application/json' }));
             const link = document.createElement('a'); link.href = url; link.download = 'chapter-backup.json'; link.click();
             setTimeout(() => URL.revokeObjectURL(url), 1000);
-          }}><Download className="h-4 w-4" /> Backup</Button>
-          <Button variant="secondary" size="sm" disabled={!editor || !save.ready || save.drafts.length > 0 || historyOpen} onClick={() => restoreFileRef.current?.click()} title="Restore chapter from a JSON backup file"><Upload className="h-4 w-4" /> Restore</Button>
+          }} title="Download chapter backup">
+            <Download className="h-4 w-4" />
+            <span className="hidden sm:inline">Backup</span>
+          </Button>
+          <Button variant="secondary" size="sm" disabled={!editor || !save.ready || save.drafts.length > 0 || historyOpen} onClick={() => restoreFileRef.current?.click()} title="Restore chapter from a JSON backup file">
+            <Upload className="h-4 w-4" />
+            <span className="hidden sm:inline">Restore</span>
+          </Button>
           <input
             type="file"
             ref={restoreFileRef}
@@ -119,8 +131,11 @@ export function ChapterEditor({ ownerId, chapter, bookId, language, findingId }:
               }
             }}
           />
-          <Button variant="secondary" size="sm" disabled={!save.ready || save.drafts.length > 0 || save.state !== "saved" || !editor} onClick={() => setHistoryOpen(true)} title={save.state !== "saved" ? "Save your changes before opening history" : "View earlier drafts"}><History className="h-4 w-4" /> History</Button>
-          <span className="text-xs text-muted-foreground">{formatNumber(words ?? 0)} words</span>
+          <Button variant="secondary" size="sm" disabled={!save.ready || save.drafts.length > 0 || save.state !== "saved" || !editor} onClick={() => setHistoryOpen(true)} title={save.state !== "saved" ? "Save your changes before opening history" : "View earlier drafts"}>
+            <History className="h-4 w-4" />
+            <span className="hidden sm:inline">History</span>
+          </Button>
+          <span className="text-xs text-muted-foreground whitespace-nowrap">{formatNumber(words ?? 0)} words</span>
           <SaveIndicator state={save.state} lastSavedAt={save.lastSavedAt} error={save.errorMsg} onRetry={() => void save.retry()} />
         </div>
       </div>

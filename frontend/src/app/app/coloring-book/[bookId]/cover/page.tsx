@@ -22,7 +22,7 @@ import {
   useGenerateColoringCover,
 } from "@/lib/coloring-queries";
 import { useCredits } from "@/lib/queries";
-import { formatNumber } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
 
 export default function ColoringBookCoverPage({ params }: { params: Promise<{ bookId: string }> }) {
   const { bookId } = use(params);
@@ -35,6 +35,7 @@ export default function ColoringBookCoverPage({ params }: { params: Promise<{ bo
   const [titleOverride, setTitleOverride] = useState("");
   const [subtitleOverride, setSubtitleOverride] = useState("");
   const [authorOverride, setAuthorOverride] = useState("");
+  const [mobileView, setMobileView] = useState<"front" | "back" | "wrap">("front");
 
   if ((pendingBook || pendingCover) && !bookError && !coverError) {
     return <PageLoader label="Loading cover studio…" />;
@@ -121,11 +122,51 @@ export default function ColoringBookCoverPage({ params }: { params: Promise<{ bo
         </div>
       </div>
 
+      {/* Mobile View Switcher (<md) */}
+      <div className="flex md:hidden items-center justify-between gap-2 rounded-xl border border-border bg-surface p-1.5 text-xs font-medium">
+        <span className="text-muted-foreground px-2">Cover View:</span>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setMobileView("front")}
+            className={cn(
+              "rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors",
+              mobileView === "front" ? "bg-primary text-white" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            Front
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileView("back")}
+            className={cn(
+              "rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors",
+              mobileView === "back" ? "bg-primary text-white" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            Back
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileView("wrap")}
+            className={cn(
+              "rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors",
+              mobileView === "wrap" ? "bg-primary text-white" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            Wrap
+          </button>
+        </div>
+      </div>
+
       {/* Visual Wrap Cover Preview (Back - Spine - Front) */}
-      <Card className="p-6 bg-muted/20 overflow-x-auto">
-        <div className="min-w-[760px] flex items-stretch justify-center rounded-2xl border border-border bg-neutral-900 shadow-2xl p-4 text-white">
+      <Card className="p-4 sm:p-6 bg-muted/20 overflow-x-auto">
+        <div className={cn("flex items-stretch justify-center rounded-2xl border border-border bg-neutral-900 shadow-2xl p-3 sm:p-4 text-white", mobileView === "wrap" ? "min-w-[760px]" : "min-w-0 md:min-w-[760px] w-full")}>
           {/* Back Cover (Left) */}
-          <div className="flex-1 bg-gradient-to-br from-indigo-950 to-slate-900 p-6 rounded-l-xl flex flex-col justify-between border-r border-indigo-900/50">
+          <div className={cn(
+            "bg-gradient-to-br from-indigo-950 to-slate-900 p-6 rounded-2xl md:rounded-r-none md:rounded-l-xl flex-col justify-between border-r border-indigo-900/50",
+            mobileView === "front" ? "hidden md:flex flex-1" : "flex flex-1"
+          )}>
             <div>
               <div className="flex items-center justify-between">
                 <Badge tone="primary" className="text-[10px]">
@@ -172,7 +213,10 @@ export default function ColoringBookCoverPage({ params }: { params: Promise<{ bo
           </div>
 
           {/* Spine (Center) */}
-          <div className="w-12 bg-indigo-950 flex flex-col items-center justify-center border-x border-indigo-900/80 py-4 select-none">
+          <div className={cn(
+            "w-12 bg-indigo-950 flex-col items-center justify-center border-x border-indigo-900/80 py-4 select-none",
+            mobileView !== "wrap" ? "hidden md:flex" : "flex"
+          )}>
             {spine?.meetsKdpSpineTextThreshold ? (
               <span
                 className="rotate-90 text-[10px] font-bold text-indigo-200 whitespace-nowrap tracking-wider uppercase"
@@ -186,7 +230,10 @@ export default function ColoringBookCoverPage({ params }: { params: Promise<{ bo
           </div>
 
           {/* Front Cover (Right) */}
-          <div className="flex-1 bg-gradient-to-br from-indigo-900 via-indigo-950 to-slate-900 p-8 rounded-r-xl flex flex-col justify-between text-center relative overflow-hidden">
+          <div className={cn(
+            "bg-gradient-to-br from-indigo-900 via-indigo-950 to-slate-900 p-6 sm:p-8 rounded-2xl md:rounded-l-none md:rounded-r-xl flex-col justify-between text-center relative overflow-hidden",
+            mobileView === "back" ? "hidden md:flex flex-1" : "flex flex-1"
+          )}>
             {/* Background artwork if generated */}
             {artworkAsset && (
               <img

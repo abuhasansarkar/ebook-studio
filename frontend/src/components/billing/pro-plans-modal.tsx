@@ -75,9 +75,9 @@ export function ProPlansModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div
-        className="relative w-full max-w-4xl rounded-3xl border border-border bg-surface p-6 sm:p-8 shadow-2xl transition-all"
+        className="relative w-full max-w-4xl max-h-[92vh] overflow-y-auto rounded-2xl sm:rounded-3xl border border-border bg-surface p-5 sm:p-8 shadow-2xl transition-all"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Close button */}
@@ -149,7 +149,7 @@ export function ProPlansModal({
         )}
 
         {/* 3 Pro Plan Cards Grid */}
-        <div className="mt-6 grid gap-4 sm:grid-cols-3">
+        <div className="mt-6 grid gap-4 grid-cols-1 md:grid-cols-3">
           {proPlans.map((plan) => {
             const isPopular = plan.id.startsWith("author");
             const isYearly = plan.interval === "year" || plan.id.endsWith("-yearly");

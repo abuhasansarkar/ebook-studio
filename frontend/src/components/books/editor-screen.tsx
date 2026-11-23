@@ -137,7 +137,7 @@ export function EditorScreen({ params }: { params: Promise<{ bookId: string }> }
             </Link>
           </div>
         </div>
-        <nav className="flex gap-1 overflow-x-auto px-2 pb-3 lg:flex-col lg:overflow-visible" aria-label="Chapters">
+        <nav className="flex gap-1 overflow-x-auto px-2 pe-6 pb-3 lg:pe-2 lg:flex-col lg:overflow-visible" aria-label="Chapters">
           {chapters.data.map((c, index) => {
             const active = c.id === selectedId;
             const list = chapters.data!;

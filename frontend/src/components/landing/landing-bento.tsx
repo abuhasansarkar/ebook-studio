@@ -65,7 +65,7 @@ export function LandingBento() {
                 <div className="h-2.5 rounded-full bg-emerald-100 dark:bg-emerald-950 overflow-hidden relative">
                   <div className="h-full bg-emerald-500 rounded-full w-[88%] shimmer-mask" />
                 </div>
-                <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1">
+                <div className="flex flex-wrap items-center justify-between gap-1.5 text-[11px] text-muted-foreground pt-1">
                   <span>✓ Approved Outline</span>
                   <span>✓ Fact & Citation Check</span>
                   <span>✓ Tone Anchored</span>

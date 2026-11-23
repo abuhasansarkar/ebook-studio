@@ -85,7 +85,7 @@ export function ColoringHeader({ params }: { params: Promise<{ bookId: string }>
           </div>
         </div>
 
-        <nav className="-mb-px mt-5 flex space-x-1 overflow-x-auto" aria-label="Coloring studio workflow">
+        <nav className="-mb-px mt-5 flex space-x-1 overflow-x-auto pe-6 sm:pe-2" aria-label="Coloring studio workflow">
           {STAGES.map(({ href, label, icon: Icon, desc }) => {
             const active = pathname.endsWith(`/${href}`);
             return (

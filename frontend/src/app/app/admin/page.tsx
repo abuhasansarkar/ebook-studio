@@ -147,7 +147,7 @@ export default function AdminPage() {
         />
       ) : (
         <>
-          <div className="mb-6 flex flex-wrap gap-1.5">
+          <div className="mb-6 flex flex-wrap gap-1.5 sm:gap-2">
             {visiblePanels.map((item) => {
               const Icon = item.icon;
               const active = panel === item.id;
@@ -157,13 +157,13 @@ export default function AdminPage() {
                   type="button"
                   onClick={() => setPanel(item.id)}
                   aria-current={active ? "page" : undefined}
-                  className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
-                    active ? "bg-primary-soft text-primary-hover" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  className={`flex items-center gap-1.5 sm:gap-2 rounded-xl px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium transition-colors ${
+                    active ? "bg-primary-soft text-primary-hover font-semibold" : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   }`}
                   data-testid={`admin-panel-${item.id}`}
                 >
-                  <Icon className="h-4 w-4" />
-                  {item.label}
+                  <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+                  <span>{item.label}</span>
                 </button>
               );
             })}

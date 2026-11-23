@@ -48,12 +48,12 @@ export function Dialog({ open, onClose, title, description, children, className 
       ref={ref}
       onClose={onClose}
       onClick={(e) => e.target === ref.current && onClose()}
-      className={cn("m-auto w-[calc(100%-2rem)] max-w-lg font-sans rounded-2xl border border-border bg-surface p-0 text-foreground shadow-2xl backdrop:bg-black/40", className)}
+      className={cn("m-auto w-[calc(100%-1.5rem)] sm:w-[calc(100%-2rem)] max-w-lg max-h-[90vh] overflow-y-auto font-sans rounded-2xl border border-border bg-surface p-0 text-foreground shadow-2xl backdrop:bg-black/40", className)}
       aria-labelledby={titleId}
       aria-describedby={description ? descriptionId : undefined}
     >
       {open && (
-        <div className="p-6">
+        <div className="p-5 sm:p-6">
           <div className="mb-4 flex items-start justify-between gap-4">
             <div>
               <h2 id={titleId} className="text-lg font-semibold">{title}</h2>

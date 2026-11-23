@@ -69,17 +69,19 @@ export function BookHeader({ params }: { params: Promise<{ bookId: string }> }) 
         <Link href="/app/books" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-4 w-4" /> My eBooks
         </Link>
-        <div className="mt-2 flex flex-wrap items-center gap-3">
-          <h1 lang={lang?.code} dir={lang?.dir} className="min-w-0 truncate text-xl font-bold tracking-tight sm:text-2xl">
-            {book?.title ?? "Loading…"}
-          </h1>
-          {status && <Badge tone={status.tone}>{status.label}</Badge>}
-          {lang && <Badge>{lang.nativeName}</Badge>}
-          <Button variant="ghost" size="sm" className="ms-auto text-muted-foreground hover:text-danger" onClick={() => setConfirmDelete(true)} disabled={!book}>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2.5 min-w-0">
+            <h1 lang={lang?.code} dir={lang?.dir} className="min-w-0 truncate text-xl font-bold tracking-tight sm:text-2xl">
+              {book?.title ?? "Loading…"}
+            </h1>
+            {status && <Badge tone={status.tone}>{status.label}</Badge>}
+            {lang && <Badge>{lang.nativeName}</Badge>}
+          </div>
+          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-danger" onClick={() => setConfirmDelete(true)} disabled={!book}>
             <Trash2 className="h-3.5 w-3.5" /> Delete
           </Button>
         </div>
-        <nav className="-mb-px mt-4 flex items-end gap-0 overflow-x-auto" aria-label="Book steps">
+        <nav className="-mb-px mt-4 flex items-end gap-0 overflow-x-auto pe-6 sm:pe-2" aria-label="Book steps">
           {stages.map((stage, stageIndex) => (
             <div key={stage.label} role="group" aria-label={stage.label} className={cn("flex shrink-0 flex-col", stageIndex > 0 && "ms-2 border-s border-border ps-2")}>
               <span className="px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80" aria-hidden="true">

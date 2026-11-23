@@ -54,7 +54,7 @@ export function LandingDistribution() {
 
         {/* Central Radial / Ecosystem Visualization */}
         <div className="mt-16 max-w-4xl mx-auto">
-          <div className="relative rounded-3xl border border-border bg-surface p-8 sm:p-12 shadow-card overflow-hidden">
+          <div className="relative rounded-3xl border border-border bg-surface p-5 sm:p-8 md:p-12 shadow-card overflow-hidden">
             {/* Multi-layered Concentric Radial Rings with Animation */}
             <div
               className="pointer-events-none absolute left-1/2 top-1/2 -z-0 h-96 w-96 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#e8603c]/20 animate-orbit"

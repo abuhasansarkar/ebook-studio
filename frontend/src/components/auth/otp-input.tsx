@@ -14,7 +14,7 @@ export function OtpInput({ value, onChange, disabled }: { value: string; onChang
   };
 
   return (
-    <div className="flex justify-between gap-2" role="group" aria-label="6-digit verification code">
+    <div className="flex justify-between gap-1.5 sm:gap-2" role="group" aria-label="6-digit verification code">
       {digits.map((d, i) => (
         <input
           key={i}
@@ -28,7 +28,7 @@ export function OtpInput({ value, onChange, disabled }: { value: string; onChang
           // split here. A one-character limit would cut a 6-digit autofill to 1.
           autoComplete={i === 0 ? "one-time-code" : "off"}
           aria-label={`Digit ${i + 1}`}
-          className="h-14 w-full rounded-xl border border-border bg-surface text-center text-xl font-semibold focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+          className="h-11 sm:h-14 w-full rounded-lg sm:rounded-xl border border-border bg-surface text-center text-lg sm:text-xl font-semibold focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
           onChange={(e) => {
             const v = e.target.value.replace(/\D/g, "");
             if (!v) return setAt(i, "");

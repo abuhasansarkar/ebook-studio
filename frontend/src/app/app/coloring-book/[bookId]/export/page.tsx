@@ -102,10 +102,10 @@ export default function ColoringBookExportPage({ params }: { params: Promise<{ b
   return (
     <div className="space-y-8">
       {/* Preflight Compliance Banner */}
-      <Card className="p-6 sm:p-8 bg-surface">
+      <Card className="p-5 sm:p-8 bg-surface">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-6 border-b border-border">
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="font-bold text-lg">Amazon KDP Preflight Compliance</span>
               <Badge tone="success" className="gap-1">
                 <CheckCircle2 className="h-3 w-3" /> Ready for Print
@@ -116,16 +116,16 @@ export default function ColoringBookExportPage({ params }: { params: Promise<{ b
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <a href={`/api/v1/coloring/books/${bookId}/export/metadata`} download={`KDP_METADATA_${bookId}.md`}>
-              <Button variant="secondary" size="lg" className="gap-2 shadow-sm">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <a href={`/api/v1/coloring/books/${bookId}/export/metadata`} download={`KDP_METADATA_${bookId}.md`} className="w-full sm:w-auto">
+              <Button variant="secondary" size="lg" className="w-full sm:w-auto gap-2 shadow-sm">
                 <FileText className="h-4 w-4" /> Download Metadata (.md)
               </Button>
             </a>
 
             {downloadUrl ? (
-              <a href={downloadUrl} download>
-                <Button size="lg" className="gap-2 shadow-md bg-emerald-600 hover:bg-emerald-500">
+              <a href={downloadUrl} download className="w-full sm:w-auto">
+                <Button size="lg" className="w-full sm:w-auto gap-2 shadow-md bg-emerald-600 hover:bg-emerald-500">
                   <Download className="h-4 w-4" /> Download KDP PDF
                 </Button>
               </a>
@@ -134,7 +134,7 @@ export default function ColoringBookExportPage({ params }: { params: Promise<{ b
                 size="lg"
                 onClick={handleCompilePdf}
                 loading={compilePdf.isPending}
-                className={cn("gap-2 shadow-md", !hasExportEntitlement && "bg-[#e8603c] hover:bg-[#d4512e] text-white")}
+                className={cn("w-full sm:w-auto gap-2 shadow-md", !hasExportEntitlement && "bg-[#e8603c] hover:bg-[#d4512e] text-white")}
               >
                 {!hasExportEntitlement ? (
                   <>

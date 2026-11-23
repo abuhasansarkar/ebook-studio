@@ -128,7 +128,7 @@ export function LandingHero() {
         <div className="mx-auto mt-10 max-w-2xl">
           <div className="rounded-2xl border-2 border-[#e8603c]/25 bg-surface p-2.5 shadow-xl shadow-[#e8603c]/5 backdrop-blur-sm transition-all duration-300 focus-within:border-[#e8603c] focus-within:ring-4 focus-within:ring-[#e8603c]/15 sm:p-3.5">
             {/* Mode Switcher Pills */}
-            <div className="flex items-center gap-1.5 pb-2.5 border-b border-border/60">
+            <div className="flex flex-wrap items-center gap-1.5 pb-2.5 border-b border-border/60">
               <button
                 type="button"
                 onClick={() => setMode("ebook")}

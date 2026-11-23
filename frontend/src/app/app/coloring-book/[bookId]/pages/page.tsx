@@ -174,8 +174,8 @@ export default function ColoringBookPagesPage({ params }: { params: Promise<{ bo
           ))}
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="text-right text-xs">
+        <div className="flex flex-wrap items-center justify-between sm:justify-end gap-3 w-full sm:w-auto">
+          <div className="text-left sm:text-right text-xs">
             <span className="text-muted-foreground">Credits: </span>
             <span className="font-bold text-foreground">
               {credits.data ? formatNumber(credits.data.wallet.balance) : "—"}
@@ -187,7 +187,7 @@ export default function ColoringBookPagesPage({ params }: { params: Promise<{ bo
               onClick={handleGenerateBatch}
               loading={generateBatch.isPending}
               size="sm"
-              className="gap-1.5 shadow-md"
+              className="gap-1.5 shadow-md w-full sm:w-auto"
             >
               <Zap className="h-4 w-4" /> Generate All Remaining ({batchCredits} cr)
             </Button>
@@ -410,7 +410,7 @@ export default function ColoringBookPagesPage({ params }: { params: Promise<{ bo
           onClick={() => setPreviewPage(null)}
         >
           <div
-            className="relative max-h-[90vh] max-w-[85vw] rounded-2xl bg-white p-4 shadow-2xl"
+            className="relative max-h-[92vh] w-full max-w-[95vw] sm:max-w-2xl md:max-w-3xl rounded-2xl bg-white p-3 sm:p-5 shadow-2xl overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between pb-3 text-black border-b border-neutral-200">

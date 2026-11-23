@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Badge, Card, ErrorState, PageLoader } from "@/components/ui/misc";
 import { errorMessage } from "@/lib/api";
 import { useColoringBook } from "@/lib/coloring-queries";
+import { cn } from "@/lib/utils";
 
 export default function ColoringBookPreviewPage({ params }: { params: Promise<{ bookId: string }> }) {
   const { bookId } = use(params);
@@ -23,6 +24,7 @@ export default function ColoringBookPreviewPage({ params }: { params: Promise<{ 
 
   // Spread index: 0 is Title/Blank spread, 1 is Page 1 illustration + Blank back, etc.
   const [spreadIndex, setSpreadIndex] = useState(0);
+  const [mobilePageView, setMobilePageView] = useState<"right" | "left" | "spread">("right");
 
   if (isPending && !error) {
     return <PageLoader label="Loading book preview…" />;
@@ -61,11 +63,11 @@ export default function ColoringBookPreviewPage({ params }: { params: Promise<{ 
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <Button variant="secondary" size="sm" onClick={prevSpread} disabled={spreadIndex === 0} className="gap-1">
-            <ChevronLeft className="h-4 w-4" /> Previous Spread
+        <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2 w-full sm:w-auto">
+          <Button variant="secondary" size="sm" onClick={prevSpread} disabled={spreadIndex === 0} className="gap-1 flex-1 sm:flex-initial">
+            <ChevronLeft className="h-4 w-4" /> <span className="hidden xs:inline">Previous</span>
           </Button>
-          <span className="text-xs font-semibold font-mono text-muted-foreground">
+          <span className="text-xs font-semibold font-mono text-muted-foreground whitespace-nowrap px-1">
             Spread {spreadIndex + 1} of {totalSpreads}
           </span>
           <Button
@@ -73,18 +75,61 @@ export default function ColoringBookPreviewPage({ params }: { params: Promise<{ 
             size="sm"
             onClick={nextSpread}
             disabled={spreadIndex === totalSpreads - 1}
-            className="gap-1"
+            className="gap-1 flex-1 sm:flex-initial"
           >
-            Next Spread <ChevronRight className="h-4 w-4" />
+            <span className="hidden xs:inline">Next</span> <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
       </div>
 
+      {/* Mobile Page View Switcher (<sm) */}
+      <div className="flex sm:hidden items-center justify-between gap-2 rounded-xl border border-border bg-surface p-1.5 text-xs font-medium">
+        <span className="text-muted-foreground px-2">Page View:</span>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setMobilePageView("left")}
+            className={cn(
+              "rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors",
+              mobilePageView === "left" ? "bg-primary text-white" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            Left Page
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobilePageView("right")}
+            className={cn(
+              "rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors",
+              mobilePageView === "right" ? "bg-primary text-white" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            Right (Art)
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobilePageView("spread")}
+            className={cn(
+              "rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors",
+              mobilePageView === "spread" ? "bg-primary text-white" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            Spread
+          </button>
+        </div>
+      </div>
+
       {/* Two-Page Spread Display */}
-      <div className="mx-auto max-w-5xl rounded-3xl border border-border bg-neutral-900 p-6 sm:p-8 shadow-2xl">
-        <div className="grid grid-cols-2 gap-2 sm:gap-4 aspect-[4/3] w-full">
+      <div className="mx-auto max-w-5xl rounded-3xl border border-border bg-neutral-900 p-4 sm:p-6 md:p-8 shadow-2xl">
+        <div className={cn(
+          "w-full",
+          mobilePageView === "spread" ? "grid grid-cols-2 gap-2 sm:gap-4 aspect-[4/3]" : "grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 min-h-[420px] sm:aspect-[4/3]"
+        )}>
           {/* LEFT PAGE */}
-          <div className="relative rounded-l-2xl border-r border-neutral-300 bg-white p-6 sm:p-8 flex flex-col justify-between shadow-md overflow-hidden text-neutral-800">
+          <div className={cn(
+            "relative rounded-2xl sm:rounded-r-none sm:rounded-l-2xl border-r border-neutral-300 bg-white p-6 sm:p-8 flex-col justify-between shadow-md overflow-hidden text-neutral-800",
+            mobilePageView === "right" ? "hidden sm:flex" : "flex"
+          )}>
             {spreadIndex === 0 ? (
               // Title Page
               <div className="flex flex-col justify-between h-full text-center">
@@ -112,7 +157,10 @@ export default function ColoringBookPreviewPage({ params }: { params: Promise<{ 
           </div>
 
           {/* RIGHT PAGE */}
-          <div className="relative rounded-r-2xl border-l border-neutral-300 bg-white p-6 sm:p-8 flex flex-col justify-between shadow-md overflow-hidden text-neutral-800">
+          <div className={cn(
+            "relative rounded-2xl sm:rounded-l-none sm:rounded-r-2xl border-l border-neutral-300 bg-white p-6 sm:p-8 flex-col justify-between shadow-md overflow-hidden text-neutral-800",
+            mobilePageView === "left" ? "hidden sm:flex" : "flex"
+          )}>
             {spreadIndex === 0 ? (
               // Blank back of title page
               <div className="flex items-center justify-center h-full text-neutral-300 select-none">

@@ -187,7 +187,7 @@ function TestimonialCard({ item }: { item: TestimonialItem }) {
         {/* Minimal Analytics Graph (matches user's screenshot) */}
         {item.hasChart && (
           <div className="mt-3.5 rounded-2xl border border-border/70 bg-muted/20 p-3.5 transition-all">
-            <div className="grid grid-cols-4 gap-2 text-center pb-2.5 border-b border-border/60">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center pb-2.5 border-b border-border/60">
               <div>
                 <span className="block text-[10px] text-muted-foreground">Visits</span>
                 <span className="text-xs font-black text-foreground">527</span>

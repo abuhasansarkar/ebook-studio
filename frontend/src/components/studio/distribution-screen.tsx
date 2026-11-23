@@ -552,7 +552,7 @@ function PublishingStatusRow({
           {current?.updatedAt && <span className="text-xs text-muted-foreground">updated {timeAgo(current.updatedAt)}</span>}
         </div>
       </div>
-      <div className="grid gap-3 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+      <div className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-[minmax(0,12rem)_minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-end">
         <Field label="Status" htmlFor={`${id}-state`}>
           <Select
             id={`${id}-state`}
@@ -590,7 +590,7 @@ function PublishingStatusRow({
         </Field>
         <Button
           size="sm"
-          className="h-9"
+          className="h-9 w-full xl:w-auto"
           disabled={!dirty}
           loading={saving}
           onClick={() =>
