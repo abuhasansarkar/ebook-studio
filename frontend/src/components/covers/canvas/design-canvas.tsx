@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useRef, useState, useCallback, useEffect, memo } from 'react';
+import { ZoomIn, ZoomOut, Maximize2, Maximize, Minimize } from 'lucide-react';
 import type {
   CoverDesign,
   DesignLayer,
@@ -37,6 +38,11 @@ interface DesignCanvasProps {
   onSendToBack?: (id: string) => void;
   onUndo: () => void;
   onRedo: () => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
+  onZoomIn?: () => void;
+  onZoomOut?: () => void;
+  onZoomFit?: () => void;
 }
 
 export const DesignCanvas = memo(function DesignCanvas({
@@ -60,6 +66,11 @@ export const DesignCanvas = memo(function DesignCanvas({
   onSendToBack,
   onUndo,
   onRedo,
+  isFullscreen,
+  onToggleFullscreen,
+  onZoomIn,
+  onZoomOut,
+  onZoomFit,
 }: DesignCanvasProps) {
   const canvasWidth = design.canvas?.width || 1600;
   const canvasHeight = design.canvas?.height || 2560;
@@ -562,6 +573,60 @@ export const DesignCanvas = memo(function DesignCanvas({
             onSendToBack={onSendToBack && selectedLayers[0] ? () => onSendToBack(selectedLayers[0].id) : undefined}
           />
         </div>
+      </div>
+
+      {/* Floating Canvas Viewport Dock */}
+      <div className="absolute bottom-4 right-4 z-40 flex items-center gap-1 bg-surface/90 backdrop-blur-md px-2 py-1.5 rounded-xl border border-border/80 shadow-lg select-none">
+        {onZoomOut && (
+          <button
+            type="button"
+            onClick={onZoomOut}
+            className="p-1 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            title="Zoom Out"
+          >
+            <ZoomOut className="h-3.5 w-3.5" />
+          </button>
+        )}
+        <span className="text-xs font-mono px-1.5 text-foreground font-semibold">
+          {Math.round(zoom * 100)}%
+        </span>
+        {onZoomIn && (
+          <button
+            type="button"
+            onClick={onZoomIn}
+            className="p-1 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            title="Zoom In"
+          >
+            <ZoomIn className="h-3.5 w-3.5" />
+          </button>
+        )}
+        {onZoomFit && (
+          <button
+            type="button"
+            onClick={onZoomFit}
+            className="p-1 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer ml-0.5"
+            title="Fit Canvas to Screen"
+          >
+            <Maximize2 className="h-3.5 w-3.5" />
+          </button>
+        )}
+        {onToggleFullscreen && (
+          <>
+            <div className="h-3.5 w-px bg-border/80 mx-1" />
+            <button
+              type="button"
+              onClick={onToggleFullscreen}
+              className={`p-1 rounded-lg transition-colors cursor-pointer ${
+                isFullscreen
+                  ? 'bg-primary text-white shadow-xs'
+                  : 'hover:bg-muted text-muted-foreground hover:text-foreground'
+              }`}
+              title={isFullscreen ? 'Exit Full Screen (Esc)' : 'Full Screen Canvas (F)'}
+            >
+              {isFullscreen ? <Minimize className="h-3.5 w-3.5" /> : <Maximize className="h-3.5 w-3.5" />}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

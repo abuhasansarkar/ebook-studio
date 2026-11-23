@@ -9,6 +9,8 @@ import {
   ZoomIn,
   ZoomOut,
   Maximize2,
+  Maximize,
+  Minimize,
   Grid3X3,
   Ruler,
   ShieldCheck,
@@ -32,6 +34,8 @@ interface EditorHeaderProps {
   showRulers: boolean;
   showGuides: boolean;
   showSafeMargin: boolean;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
   onUndo: () => void;
   onRedo: () => void;
   onZoomIn: () => void;
@@ -58,6 +62,8 @@ export const EditorHeader = memo(function EditorHeader({
   showRulers,
   showGuides,
   showSafeMargin,
+  isFullscreen,
+  onToggleFullscreen,
   onUndo,
   onRedo,
   onZoomIn,
@@ -184,6 +190,24 @@ export const EditorHeader = memo(function EditorHeader({
         >
           <ShieldCheck className="h-3.5 w-3.5" />
         </button>
+
+        {onToggleFullscreen && (
+          <>
+            <div className="h-3 w-px bg-border/60 mx-1" />
+            <button
+              type="button"
+              onClick={onToggleFullscreen}
+              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                isFullscreen
+                  ? 'bg-primary text-white shadow-xs'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              }`}
+              title={isFullscreen ? 'Exit Full Screen (Esc)' : 'Full Screen Canvas (F)'}
+            >
+              {isFullscreen ? <Minimize className="h-3.5 w-3.5" /> : <Maximize className="h-3.5 w-3.5" />}
+            </button>
+          </>
+        )}
       </div>
 
       {/* Right: Actions */}

@@ -14,6 +14,8 @@ import {
   LogOut,
   Menu,
   Palette,
+  PanelLeftClose,
+  PanelLeftOpen,
   PenLine,
   PlusCircle,
   Settings,
@@ -42,7 +44,13 @@ const NAV = [
   { href: "/app/settings", label: "Settings", icon: Settings },
 ];
 
-function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+function NavLinks({
+  isCollapsed = false,
+  onNavigate,
+}: {
+  isCollapsed?: boolean;
+  onNavigate?: () => void;
+}) {
   const pathname = usePathname();
   // The operations console only appears for accounts that hold an operator
   // role. The API checks the permission on every route regardless, so this is
@@ -67,13 +75,24 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
             href={href}
             onClick={onNavigate}
             aria-current={active ? "page" : undefined}
+            title={isCollapsed ? label : undefined}
             className={cn(
-              "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
-              active ? "bg-primary-soft text-primary-hover" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              "group relative flex items-center rounded-xl text-sm font-medium transition-all duration-150",
+              isCollapsed
+                ? "justify-center p-2.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                : "gap-3 px-3 py-2.5 text-muted-foreground hover:bg-muted hover:text-foreground",
+              active && "bg-primary-soft text-primary-hover font-semibold",
             )}
           >
-            <Icon className="h-4.5 w-4.5" />
-            {label}
+            <Icon className="h-4.5 w-4.5 shrink-0" />
+            {!isCollapsed && <span className="truncate">{label}</span>}
+
+            {/* Hover Tooltip when sidebar is collapsed */}
+            {isCollapsed && (
+              <span className="pointer-events-none absolute left-full ml-2.5 z-50 hidden rounded-md bg-neutral-900 dark:bg-neutral-800 px-2.5 py-1 text-xs font-medium text-white shadow-lg group-hover:block whitespace-nowrap animate-in fade-in zoom-in-95 duration-150">
+                {label}
+              </span>
+            )}
           </Link>
         );
       })}
@@ -81,22 +100,68 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-function SidebarFooter() {
+function SidebarFooter({ isCollapsed = false }: { isCollapsed?: boolean }) {
   const router = useRouter();
   const { data: session } = useSession();
   const credits = useCredits();
   const mounted = useMounted();
   const initial = mounted && session?.user.name ? session.user.name[0]?.toUpperCase() : "?";
 
+  if (isCollapsed) {
+    return (
+      <div className="space-y-2.5 pt-2 border-t border-border/50" suppressHydrationWarning>
+        {/* Compact credits badge */}
+        <Link
+          href="/app/credits"
+          title={`Credits: ${credits.data ? formatNumber(credits.data.wallet.balance) : "—"}`}
+          className="group relative flex flex-col items-center justify-center rounded-xl border border-border bg-background p-2 text-center hover:bg-muted transition-colors shadow-2xs"
+          suppressHydrationWarning
+        >
+          <Coins className="h-4 w-4 text-primary shrink-0" />
+          <span className="mt-1 text-[10px] font-bold font-mono">
+            {credits.data ? formatNumber(credits.data.wallet.balance) : "—"}
+          </span>
+          <span className="pointer-events-none absolute left-full ml-2.5 z-50 hidden rounded-md bg-neutral-900 dark:bg-neutral-800 px-2.5 py-1 text-xs font-medium text-white shadow-lg group-hover:block whitespace-nowrap">
+            Credits: {credits.data ? formatNumber(credits.data.wallet.balance) : "—"}
+          </span>
+        </Link>
+
+        {/* User avatar initial & logout */}
+        <div className="flex flex-col items-center gap-1.5" suppressHydrationWarning>
+          <div
+            title={mounted ? `${session?.user.name || ""} (${session?.user.email || ""})` : "Account"}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-white shadow-2xs"
+            suppressHydrationWarning
+          >
+            {initial}
+          </div>
+          <button
+            type="button"
+            aria-label="Log out"
+            title="Log out"
+            data-editor-navigation
+            className="cursor-pointer rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            onClick={async () => {
+              await signOut();
+              router.replace("/login");
+            }}
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-3" suppressHydrationWarning>
-      <Link href="/app/credits" className="block rounded-xl border border-border bg-background p-3 hover:bg-muted" suppressHydrationWarning>
+    <div className="space-y-3 pt-2 border-t border-border/50" suppressHydrationWarning>
+      <Link href="/app/credits" className="block rounded-xl border border-border bg-background p-3 hover:bg-muted transition-colors" suppressHydrationWarning>
         <p className="text-xs text-muted-foreground">Credits</p>
         <p className="mt-0.5 text-lg font-bold">{credits.data ? formatNumber(credits.data.wallet.balance) : "—"}</p>
         {credits.data && credits.data.wallet.reserved > 0 && <p className="text-xs text-muted-foreground">{credits.data.wallet.reserved} reserved for running jobs</p>}
       </Link>
       <div className="flex items-center gap-3 px-1" suppressHydrationWarning>
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-white" suppressHydrationWarning>
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-white shadow-2xs" suppressHydrationWarning>
           {initial}
         </div>
         <div className="min-w-0 flex-1" suppressHydrationWarning>
@@ -109,7 +174,7 @@ function SidebarFooter() {
           title="Log out"
           // Lets the editor's unsaved-changes guard stop a logout like any other way out.
           data-editor-navigation
-          className="cursor-pointer rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
+          className="cursor-pointer rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
           onClick={async () => {
             await signOut();
             router.replace("/login");
@@ -127,6 +192,27 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { data: session, isPending } = useSession();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
+  // Restore collapsed state from localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("ebookstudio_sidebar_collapsed");
+      if (stored !== null) {
+        setIsCollapsed(stored === "true");
+      }
+    } catch {}
+  }, []);
+
+  const toggleCollapse = () => {
+    setIsCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("ebookstudio_sidebar_collapsed", String(next));
+      } catch {}
+      return next;
+    });
+  };
 
   // Client-side guard (the proxy only checks cookie presence; the API enforces auth).
   useEffect(() => {
@@ -140,21 +226,58 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen" suppressHydrationWarning>
-      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col justify-between border-e border-border bg-surface p-4 lg:flex" suppressHydrationWarning>
-        <div suppressHydrationWarning>
-          <Logo href="/app/dashboard" className="mb-8 px-2 pt-1" />
-          <NavLinks />
+      {/* Desktop Collapsible Sidebar */}
+      <aside
+        className={cn(
+          "sticky top-0 hidden h-screen shrink-0 flex-col justify-between border-e border-border bg-surface transition-all duration-300 ease-in-out lg:flex",
+          isCollapsed ? "w-20 p-2.5" : "w-64 p-4",
+        )}
+        suppressHydrationWarning
+      >
+        <div className="flex flex-col min-h-0 flex-1" suppressHydrationWarning>
+          {/* Header with Logo and Collapse / Open toggle button */}
+          <div
+            className={cn(
+              "mb-6 flex items-center pt-1 transition-all",
+              isCollapsed ? "flex-col gap-3 items-center px-0.5" : "justify-between px-2",
+            )}
+            suppressHydrationWarning
+          >
+            <Logo href="/app/dashboard" iconOnly={isCollapsed} />
+            <button
+              type="button"
+              aria-label={isCollapsed ? "Open sidebar" : "Collapse sidebar"}
+              title={isCollapsed ? "Open sidebar (expand)" : "Collapse sidebar"}
+              className="cursor-pointer rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              onClick={toggleCollapse}
+            >
+              {isCollapsed ? (
+                <PanelLeftOpen className="h-4.5 w-4.5 text-primary" />
+              ) : (
+                <PanelLeftClose className="h-4.5 w-4.5" />
+              )}
+            </button>
+          </div>
+
+          {/* Scrollable Navigation Links */}
+          <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-none">
+            <NavLinks isCollapsed={isCollapsed} />
+          </div>
         </div>
-        <SidebarFooter />
+
+        {/* Footer */}
+        <SidebarFooter isCollapsed={isCollapsed} />
       </aside>
 
-      {/* Mobile */}
+      {/* Mobile Bar */}
       <div className="fixed inset-x-0 top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-surface px-4 lg:hidden" suppressHydrationWarning>
         <Logo href="/app/dashboard" />
         <button type="button" aria-label="Open menu" className="cursor-pointer rounded-lg p-2 hover:bg-muted" onClick={() => setMobileOpen(true)}>
           <Menu className="h-5 w-5" />
         </button>
       </div>
+
+      {/* Mobile Drawer */}
       {mobileOpen && (
         <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" aria-label="Menu" suppressHydrationWarning>
           <div className="absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
@@ -173,6 +296,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       )}
 
+      {/* Main Content Area */}
       <main className="min-w-0 flex-1 pt-14 lg:pt-0" suppressHydrationWarning>{children}</main>
     </div>
   );

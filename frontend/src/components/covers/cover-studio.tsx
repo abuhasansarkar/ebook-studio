@@ -127,6 +127,10 @@ function CoverWorkspace({
   const [ready, setReady] = useState(false);
   const [recovery, setRecovery] = useState<SavedCover | null>(null);
 
+  // Full Screen State & Ref
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const workspaceRef = useRef<HTMLDivElement>(null);
+
   // Modals state
   const [exportOpen, setExportOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
@@ -141,7 +145,62 @@ function CoverWorkspace({
     return JSON.stringify(editor.design) !== JSON.stringify(saved.data);
   }, [editor.design, saved.data]);
 
+  // Load Google Fonts on client
+  useEffect(() => {
+    const linkId = 'google-cover-fonts-link';
+    if (!document.getElementById(linkId)) {
+      const link = document.createElement('link');
+      link.id = linkId;
+      link.rel = 'stylesheet';
+      link.href =
+        'https://fonts.googleapis.com/css2?family=Cinzel:wght@400..900&family=Lora:ital,wght@0,400..700;1,400..700&family=Merriweather:ital,wght@0,300..900;1,300..900&family=Montserrat:ital,wght@0,100..900;1,100..900&family=Oswald:wght@200..700&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Roboto:ital,wght@0,100..900;1,100..900&display=swap';
+      document.head.appendChild(link);
+    }
+  }, []);
+
   const draftKey = `ebook-cover-canva:${ownerId}:${bookId}`;
+
+  // Toggle Canvas Fullscreen Mode
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      workspaceRef.current?.requestFullscreen?.().catch(() => {});
+      setIsFullscreen(true);
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      }
+      setIsFullscreen(false);
+    }
+  }, []);
+
+  // Keyboard shortcut (F / Esc) & Fullscreen Change Listener
+  useEffect(() => {
+    const handleFsChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || (e.target as HTMLElement)?.isContentEditable) {
+        return;
+      }
+      if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        toggleFullscreen();
+      } else if (e.key === 'Escape' && isFullscreen) {
+        setIsFullscreen(false);
+        if (document.fullscreenElement && document.exitFullscreen) {
+          document.exitFullscreen().catch(() => {});
+        }
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFsChange);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFsChange);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isFullscreen, toggleFullscreen]);
 
   const forgetDraft = useCallback(() => {
     try {
@@ -323,14 +382,14 @@ function CoverWorkspace({
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-64px)] w-full overflow-hidden bg-background select-none">
+    <div
+      ref={workspaceRef}
+      className={`flex flex-col ${
+        isFullscreen ? 'fixed inset-0 z-50 h-screen w-screen bg-background' : 'h-[calc(100vh-64px)] w-full'
+      } overflow-hidden bg-background select-none`}
+    >
       {/* Dynamic Font Styles */}
       <style>{COVER_FONTS.map(font => `@font-face{font-family:${font};src:url('/api/v1/cover-fonts/${font}') format('truetype');font-weight:100 900;font-display:block}`).join('\n')}</style>
-      {/* Google Web Fonts for Book Covers */}
-      <link
-        rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400..900&family=Lora:ital,wght@0,400..700;1,400..700&family=Merriweather:ital,wght@0,300..900;1,300..900&family=Montserrat:ital,wght@0,100..900;1,100..900&family=Oswald:wght@200..700&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Roboto:ital,wght@0,100..900;1,100..900&display=swap"
-      />
 
       {/* Editor Top Bar */}
       <EditorHeader
@@ -345,6 +404,8 @@ function CoverWorkspace({
         showRulers={editor.showRulers}
         showGuides={editor.showGuides}
         showSafeMargin={editor.showSafeMargin}
+        isFullscreen={isFullscreen}
+        onToggleFullscreen={toggleFullscreen}
         onUndo={editor.undo}
         onRedo={editor.redo}
         onZoomIn={editor.zoomIn}
@@ -520,6 +581,11 @@ function CoverWorkspace({
             showGuides={editor.showGuides}
             showSafeMargin={editor.showSafeMargin}
             snapToGrid={editor.snapToGrid}
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={toggleFullscreen}
+            onZoomIn={editor.zoomIn}
+            onZoomOut={editor.zoomOut}
+            onZoomFit={() => editor.setZoom(0.38)}
             onSelectLayer={editor.selectLayer}
             onDeselectAll={editor.deselectAll}
             onSelectAll={editor.selectAll}
