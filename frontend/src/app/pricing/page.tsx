@@ -3,6 +3,7 @@ import Link from "next/link";
 import { CheckCircle2, CreditCard, ShieldCheck, Sparkles } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { PricingClient, type PlanRow } from "./pricing-client";
+import { Logo } from "@/components/app/logo";
 
 export const metadata: Metadata = {
   title: "Pricing",
@@ -45,7 +46,7 @@ export default async function PricingPage() {
     <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-30 border-b border-border/70 bg-background/85 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
-          <span className="text-sm font-semibold">eBookStudio</span>
+          <Logo href="/" />
           <nav className="flex items-center gap-4 text-sm" aria-label="Main">
             <Link href="/#features" className="hidden text-muted-foreground hover:text-foreground sm:inline">Features</Link>
             <Link href="/login" className="text-muted-foreground hover:text-foreground">Log in</Link>
