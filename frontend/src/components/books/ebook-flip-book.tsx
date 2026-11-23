@@ -4,6 +4,7 @@ import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef,
 import { BookOpen, ChevronLeft, ChevronRight, Feather, Volume2, VolumeX, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BookDetail, ChapterFull, ChapterMeta } from "@/lib/types";
+import type { RenderedPageInfo } from "@/lib/pdf-service";
 
 export interface FlipBookHandle {
   flipNext: () => void;
@@ -12,13 +13,14 @@ export interface FlipBookHandle {
   getCurrentSpread: () => number;
 }
 
-interface EBookFlipBookProps {
+export interface EBookFlipBookProps {
   book: BookDetail;
   chapters: ChapterMeta[];
   currentSpread: number;
   onSpreadChange: (spread: number) => void;
   chapterDetails?: Record<string, ChapterFull>;
   paperTone?: "cream" | "white" | "sepia";
+  pdfPages?: RenderedPageInfo[];
 }
 
 // Realistic zero-dependency synthetic paper rustle sound via Web Audio API
@@ -81,7 +83,7 @@ function extractText(node: any): string {
 /**
  * Render individual page content (Left or Right) matching the physical book layout
  */
-function PageSurface({
+export function PageSurface({
   side,
   book,
   chapters,
@@ -89,6 +91,7 @@ function PageSurface({
   totalSpreads,
   chapterDetails,
   paperTone = "cream",
+  pdfPages,
   onJumpToSpread,
 }: {
   side: "left" | "right";
@@ -98,8 +101,73 @@ function PageSurface({
   totalSpreads: number;
   chapterDetails?: Record<string, ChapterFull>;
   paperTone?: "cream" | "white" | "sepia";
+  pdfPages?: RenderedPageInfo[];
   onJumpToSpread?: (spread: number) => void;
 }) {
+  // If real PDF pages are provided, render the exact PDF print page with authentic book trim
+  if (pdfPages && pdfPages.length > 0) {
+    const pageIndex = side === "left" ? spreadIndex * 2 : spreadIndex * 2 + 1;
+    const pdfPage = pdfPages[pageIndex];
+
+    if (side === "left") {
+      return (
+        <div
+          className={cn(
+            "relative h-full w-full flex items-center justify-center select-none overflow-hidden rounded-l-2xl border-y border-l border-neutral-300/80 border-r-[6px] border-[#161617] shadow-xs bg-[#fdfcf7]",
+            paperTone === "sepia" && "bg-[#fbf4e8]",
+            paperTone === "white" && "bg-white",
+          )}
+        >
+          {/* Spine Depth Shadow on Right edge */}
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-10 sm:w-16 bg-gradient-to-l from-black/25 via-black/5 to-transparent z-10" />
+
+          {pdfPage ? (
+            <div className="relative flex w-full h-full items-center justify-center overflow-hidden">
+              <img
+                src={pdfPage.dataUrl}
+                alt={`Page ${pdfPage.pageNumber}`}
+                className="h-full w-full object-contain filter drop-shadow-sm select-none"
+                loading="eager"
+              />
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full text-center p-4">
+              <span className="text-xs font-mono text-neutral-400 uppercase tracking-widest">[ Blank Endleaf ]</span>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // RIGHT SIDE
+    return (
+      <div
+        className={cn(
+          "relative h-full w-full flex items-center justify-center select-none overflow-hidden rounded-r-2xl border-y border-r border-neutral-300/80 border-l-[6px] border-[#161617] shadow-xs bg-[#fdfcf7]",
+          paperTone === "sepia" && "bg-[#fbf4e8]",
+          paperTone === "white" && "bg-white",
+        )}
+      >
+        {/* Spine Depth Shadow on Left edge */}
+        <div className="pointer-events-none absolute inset-y-0 left-0 w-10 sm:w-16 bg-gradient-to-r from-black/25 via-black/5 to-transparent z-10" />
+
+        {pdfPage ? (
+          <div className="relative flex w-full h-full items-center justify-center overflow-hidden">
+            <img
+              src={pdfPage.dataUrl}
+              alt={`Page ${pdfPage.pageNumber}`}
+              className="h-full w-full object-contain filter drop-shadow-sm select-none"
+              loading="eager"
+            />
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full text-center p-4">
+            <span className="text-xs font-mono text-neutral-400 uppercase tracking-widest">[ Blank Endleaf ]</span>
+          </div>
+        )}
+      </div>
+    );
+  }
   const isTitleSpread = spreadIndex === 0;
   const isMatterSpread = spreadIndex === 1;
   const isBackMatterSpread = spreadIndex === totalSpreads - 1;
@@ -496,19 +564,25 @@ function PageSurface({
 }
 
 export const EBookFlipBook = forwardRef<FlipBookHandle, EBookFlipBookProps>(
-  ({ book, chapters, currentSpread, onSpreadChange, chapterDetails, paperTone = "cream" }, ref) => {
-    // Total spreads:
-    // Spread 0: Cover / Half-Title + Title Page
-    // Spread 1: Matter / Legal + Table of Contents
-    // Spread 2 .. (1 + chapters.length): Chapter spreads
-    // Spread (2 + chapters.length): Back Matter & Colophon
-    const totalSpreads = Math.max(3, chapters.length + 3);
+  ({ book, chapters, currentSpread, onSpreadChange, chapterDetails, paperTone = "cream", pdfPages }, ref) => {
+    // Total spreads: If real PDF pages are available, use Math.ceil(pdfPages.length / 2)
+    const totalSpreads = pdfPages && pdfPages.length > 0
+      ? Math.ceil(pdfPages.length / 2)
+      : Math.max(3, chapters.length + 3);
     const [soundEnabled, setSoundEnabled] = useState(true);
 
     // 3D Flip animation state
     const [isFlipping, setIsFlipping] = useState(false);
     const [flipDirection, setFlipDirection] = useState<"next" | "prev">("next");
     const [targetSpread, setTargetSpread] = useState(currentSpread);
+    const [displayedSpread, setDisplayedSpread] = useState(currentSpread);
+
+    // Keep displayedSpread in sync when currentSpread changes externally and not flipping
+    useEffect(() => {
+      if (!isFlipping) {
+        setDisplayedSpread(currentSpread);
+      }
+    }, [currentSpread, isFlipping]);
 
     // Touch swipe handling
     const touchStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -542,6 +616,7 @@ export const EBookFlipBook = forwardRef<FlipBookHandle, EBookFlipBookProps>(
 
         // Transition duration matches 800ms
         setTimeout(() => {
+          setDisplayedSpread(nextIdx);
           onSpreadChange(nextIdx);
           setIsFlipping(false);
         }, 800);
@@ -636,15 +711,16 @@ export const EBookFlipBook = forwardRef<FlipBookHandle, EBookFlipBookProps>(
                 side="left"
                 book={book}
                 chapters={chapters}
-                spreadIndex={isFlipping && flipDirection === "prev" ? targetSpread : currentSpread}
+                spreadIndex={isFlipping && flipDirection === "prev" ? targetSpread : displayedSpread}
                 totalSpreads={totalSpreads}
                 chapterDetails={chapterDetails}
                 paperTone={paperTone}
+                pdfPages={pdfPages}
                 onJumpToSpread={(s) => triggerFlip("next", s)}
               />
 
               {/* Hover Page Corner Peel Cue on Left Bottom */}
-              {!isFlipping && currentSpread > 0 && (
+              {!isFlipping && displayedSpread > 0 && (
                 <div className="pointer-events-none absolute bottom-0 left-0 h-10 w-10 overflow-hidden opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                   <div className="absolute -bottom-5 -left-5 h-10 w-10 bg-white rotate-45 shadow-md border-t border-r border-neutral-300" />
                   <span className="absolute bottom-1 left-1.5 text-[9px] font-bold text-neutral-500">←</span>
@@ -662,10 +738,11 @@ export const EBookFlipBook = forwardRef<FlipBookHandle, EBookFlipBookProps>(
                 side="right"
                 book={book}
                 chapters={chapters}
-                spreadIndex={isFlipping && flipDirection === "next" ? targetSpread : currentSpread}
+                spreadIndex={isFlipping && flipDirection === "next" ? targetSpread : displayedSpread}
                 totalSpreads={totalSpreads}
                 chapterDetails={chapterDetails}
                 paperTone={paperTone}
+                pdfPages={pdfPages}
                 onJumpToSpread={(s) => triggerFlip("next", s)}
               />
 
@@ -678,7 +755,7 @@ export const EBookFlipBook = forwardRef<FlipBookHandle, EBookFlipBookProps>(
               )}
 
               {/* Hover Page Corner Peel Cue on Right Bottom */}
-              {!isFlipping && currentSpread < totalSpreads - 1 && (
+              {!isFlipping && displayedSpread < totalSpreads - 1 && (
                 <div className="pointer-events-none absolute bottom-0 right-0 h-10 w-10 overflow-hidden opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                   <div className="absolute -bottom-5 -right-5 h-10 w-10 bg-white rotate-45 shadow-md border-t border-l border-neutral-300" />
                   <span className="absolute bottom-1 right-1.5 text-[9px] font-bold text-neutral-500">→</span>
@@ -714,10 +791,11 @@ export const EBookFlipBook = forwardRef<FlipBookHandle, EBookFlipBookProps>(
                     side={flipDirection === "next" ? "right" : "left"}
                     book={book}
                     chapters={chapters}
-                    spreadIndex={currentSpread}
+                    spreadIndex={displayedSpread}
                     totalSpreads={totalSpreads}
                     chapterDetails={chapterDetails}
                     paperTone={paperTone}
+                    pdfPages={pdfPages}
                     onJumpToSpread={(s) => triggerFlip("next", s)}
                   />
                   {/* Dynamic Shading on Front Face */}
@@ -747,6 +825,7 @@ export const EBookFlipBook = forwardRef<FlipBookHandle, EBookFlipBookProps>(
                     totalSpreads={totalSpreads}
                     chapterDetails={chapterDetails}
                     paperTone={paperTone}
+                    pdfPages={pdfPages}
                     onJumpToSpread={(s) => triggerFlip("next", s)}
                   />
                   {/* Dynamic Shading on Back Face as it lands */}
