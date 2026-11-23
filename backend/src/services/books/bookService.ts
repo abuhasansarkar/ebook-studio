@@ -53,6 +53,7 @@ export const bookService = {
       take: Math.min(opts.take ?? 100, 200),
       include: {
         _count: { select: { chapters: true } },
+        brief: { select: { data: true } },
         coverDesigns: { orderBy: { version: "desc" }, take: 1, select: { version: true, data: true } },
         coloringPages: { where: { status: "completed", assetId: { not: null } }, select: { assetId: true }, take: 1 },
       },
@@ -63,16 +64,26 @@ export const bookService = {
       _sum: { wordCount: true },
     });
     const words = new Map(wordSums.map((w) => [w.bookId, w._sum.wordCount ?? 0]));
-    return books.map(({ _count, coverDesigns, coloringPages, ...b }) => {
+    return books.map(({ _count, brief, coverDesigns, coloringPages, ...b }) => {
+      const briefData = brief?.data as { authorName?: string; topic?: string } | undefined;
       const latestCover = coverDesigns?.[0];
-      const coverData = latestCover?.data as { artworkId?: string | null } | undefined;
+      const coverData = latestCover?.data as { artworkId?: string | null; author?: { text?: string } } | undefined;
       const coverArtworkId = coverData?.artworkId ?? coloringPages?.[0]?.assetId ?? null;
+      const wordCount = words.get(b.id) ?? 0;
+      const isColoring = b.bookType === 'coloring_book';
+      const pageCount = isColoring ? (_count.chapters || 24) : Math.max(1, Math.ceil(wordCount / 250));
+      const author = briefData?.authorName || coverData?.author?.text || null;
       return {
         ...b,
+        author,
+        authorName: author,
+        topic: briefData?.topic || null,
         chapterCount: _count.chapters,
-        wordCount: words.get(b.id) ?? 0,
+        wordCount,
+        pageCount,
         coverArtworkId,
         coverVersion: latestCover?.version ?? null,
+        coverDesign: latestCover ? { version: latestCover.version, data: latestCover.data } : null,
       };
     });
   },

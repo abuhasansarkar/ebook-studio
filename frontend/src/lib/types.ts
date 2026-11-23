@@ -1,4 +1,4 @@
-import type { BookBrief, BookStatus, ChapterStatus, ExportFormat, ExportValidation, JobStatus, Outline } from "@ebook/shared";
+import type { BookBrief, BookStatus, ChapterStatus, ExportFormat, ExportValidation, JobStatus, Outline, CoverDesign } from "@ebook/shared";
 
 export type { ExportFormat };
 
@@ -13,8 +13,13 @@ export interface BookSummary {
   status: BookStatus;
   chapterCount: number;
   wordCount: number;
+  pageCount?: number | null;
+  author?: string | null;
+  authorName?: string | null;
+  topic?: string | null;
   coverArtworkId?: string | null;
   coverVersion?: number | null;
+  coverDesign?: { version: number; data: CoverDesign } | null;
   createdAt: string;
   updatedAt: string;
 }

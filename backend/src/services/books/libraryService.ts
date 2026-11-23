@@ -21,7 +21,12 @@ export const libraryService = {
       ...(query.language ? { language: query.language } : {}), ...(query.bookType ? { bookType: query.bookType } : {}), ...(query.status ? { status: query.status } : {}),
     };
     if (query.cursor && !await prisma.book.findFirst({ where: { ...where, id: query.cursor } })) throw badRequest('This page changed. Refresh the library.');
-    const orderBy: Prisma.BookOrderByWithRelationInput[] = query.sort === 'title' ? [{ title: 'asc' }, { id: 'asc' }] : [{ createdAt: query.sort === 'oldest' ? 'asc' : 'desc' }, { id: query.sort === 'oldest' ? 'asc' : 'desc' }];
+    const orderBy: Prisma.BookOrderByWithRelationInput[] =
+      query.sort === 'title' ? [{ title: 'asc' }, { id: 'asc' }]
+      : query.sort === 'title_desc' ? [{ title: 'desc' }, { id: 'desc' }]
+      : query.sort === 'oldest' ? [{ createdAt: 'asc' }, { id: 'asc' }]
+      : query.sort === 'newest' ? [{ createdAt: 'desc' }, { id: 'desc' }]
+      : [{ updatedAt: 'desc' }, { id: 'desc' }];
     const rows = await prisma.book.findMany({
       where,
       orderBy,
@@ -29,6 +34,7 @@ export const libraryService = {
       ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
       include: {
         _count: { select: { chapters: true } },
+        brief: { select: { data: true } },
         coverDesigns: { orderBy: { version: 'desc' }, take: 1, select: { version: true, data: true } },
         coloringPages: { where: { status: 'completed', assetId: { not: null } }, select: { assetId: true }, take: 1 },
       },
@@ -36,16 +42,26 @@ export const libraryService = {
     const page = rows.slice(0, query.limit);
     const words = await prisma.chapter.groupBy({ by: ['bookId'], where: { bookId: { in: page.map(b => b.id) } }, _sum: { wordCount: true } });
     return {
-      books: page.map(({ _count, coverDesigns, coloringPages, ...b }) => {
+      books: page.map(({ _count, brief, coverDesigns, coloringPages, ...b }) => {
+        const briefData = brief?.data as { authorName?: string; topic?: string } | undefined;
         const latestCover = coverDesigns?.[0];
-        const coverData = latestCover?.data as { artworkId?: string | null } | undefined;
+        const coverData = latestCover?.data as { artworkId?: string | null; author?: { text?: string } } | undefined;
         const coverArtworkId = coverData?.artworkId ?? coloringPages?.[0]?.assetId ?? null;
+        const wordCount = words.find(w => w.bookId === b.id)?._sum.wordCount ?? 0;
+        const isColoring = b.bookType === 'coloring_book';
+        const pageCount = isColoring ? (_count.chapters || 24) : Math.max(1, Math.ceil(wordCount / 250));
+        const author = briefData?.authorName || coverData?.author?.text || null;
         return {
           ...b,
+          author,
+          authorName: author,
+          topic: briefData?.topic || null,
           chapterCount: _count.chapters,
-          wordCount: words.find(w => w.bookId === b.id)?._sum.wordCount ?? 0,
+          wordCount,
+          pageCount,
           coverArtworkId,
           coverVersion: latestCover?.version ?? null,
+          coverDesign: latestCover ? { version: latestCover.version, data: latestCover.data } : null,
         };
       }),
       nextCursor: rows.length > query.limit ? page.at(-1)!.id : null,
@@ -72,13 +88,29 @@ export const libraryService = {
       await tx.project.update({ where: { id: projectId }, data: { deletedAt: new Date() } });
     });
   },
-  async organize(userId: string, bookId: string, input: { projectId?: string | null; archived?: boolean }) {
+  async organize(userId: string, bookId: string, input: { projectId?: string | null; archived?: boolean; title?: string; subtitle?: string }) {
     return prisma.$transaction(async tx => {
       // Project then book is also the order used when deleting a project.
       if (input.projectId) await lockProject(tx, userId, input.projectId, true);
       await lockBook(tx, bookId, userId);
       if (input.archived) await assertIdle(tx, bookId);
-      return tx.book.update({ where: { id: bookId }, data: { ...(input.projectId !== undefined ? { projectId: input.projectId } : {}), ...(input.archived !== undefined ? { archivedAt: input.archived ? new Date() : null } : {}) } });
+      const updated = await tx.book.update({
+        where: { id: bookId },
+        data: {
+          ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
+          ...(input.archived !== undefined ? { archivedAt: input.archived ? new Date() : null } : {}),
+          ...(input.title !== undefined ? { title: input.title } : {}),
+          ...(input.subtitle !== undefined ? { subtitle: input.subtitle } : {}),
+        },
+      });
+      if (input.title) {
+        const brief = await tx.bookBrief.findUnique({ where: { bookId } });
+        if (brief) {
+          const data = { ...(brief.data as Record<string, unknown>), title: input.title };
+          await tx.bookBrief.update({ where: { bookId }, data: { data } });
+        }
+      }
+      return updated;
     });
   },
   async duplicate(userId: string, bookId: string, includeManuscript: boolean) {

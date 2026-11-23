@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { coverDesignSchema, imageRequestSchema } from '@ebook/shared';
+import { coverDesignSchema, imageRequestSchema, aiCoverRequestSchema } from '@ebook/shared';
 import { env } from '../config/env.js';
 import { userId } from '../middleware/requireAuth.js';
 import { validateBody } from '../middleware/validate.js';
@@ -9,6 +9,7 @@ import { badRequest } from '../utils/errors.js';
 import { submitOperation } from '../services/operations/operationService.js';
 import { coverFont, coverService } from '../services/covers/coverService.js';
 import { imageGenerationService } from '../services/covers/imageGenerationService.js';
+import { aiCoverService } from '../services/covers/aiCoverService.js';
 export const coverRouter = Router();
 coverRouter.get('/cover-fonts/:font', async (req, res) => {
   res.set({ 'Content-Type': 'font/ttf', 'Cache-Control': 'private, max-age=86400' }).send(await coverFont(String(req.params.font)));
@@ -28,6 +29,23 @@ coverRouter.get('/books/:bookId/cover/render', async (req, res) => {
   if (!version.success) throw badRequest('Save the cover and select its version before downloading.');
   const bytes = await coverService.render(userId(req), String(req.params.bookId), version.data);
   res.set({ 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, no-store', 'Content-Disposition': `attachment; filename="cover-v${version.data}.jpg"` }).send(bytes);
+});
+coverRouter.get('/books/:bookId/cover/versions', async (req, res) => {
+  res.json({ versions: await coverService.versions(userId(req), String(req.params.bookId)) });
+});
+coverRouter.post('/books/:bookId/cover/restore', validateBody(z.object({ version: z.number().int().positive() })), async (req, res) => {
+  res.json({ cover: await coverService.restore(userId(req), String(req.params.bookId), req.body.version) });
+});
+coverRouter.post('/books/:bookId/cover/ai-generate', aiLimiter, validateBody(aiCoverRequestSchema), async (req, res) => {
+  const bookId = String(req.params.bookId);
+  await submitOperation(req, res, userId(req), 'cover_ai_generate', bookId, async () => {
+    const result = await aiCoverService.generate(userId(req), bookId, req.body);
+    return { status: 201, body: { cover: { version: result.version, data: result.data }, assetId: result.assetId, plan: result.plan } };
+  });
+});
+coverRouter.post('/books/:bookId/cover/ai-variations', aiLimiter, validateBody(aiCoverRequestSchema), async (req, res) => {
+  const bookId = String(req.params.bookId);
+  res.json(await aiCoverService.variations(userId(req), bookId, req.body));
 });
 coverRouter.post('/books/:bookId/images', aiLimiter, validateBody(imageRequestSchema), async (req, res) => {
   const bookId = String(req.params.bookId);

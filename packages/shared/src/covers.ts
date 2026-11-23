@@ -1,7 +1,14 @@
 import { z } from 'zod';
 export const COVER_FONTS = ['notosans', 'notosansbengali', 'notosansarabic', 'notosansdevanagari'] as const;
+export const COVER_STYLES = [
+  'editorial', 'watercolor', 'photographic', 'minimal',
+  'minimalist', 'modern', 'business', 'corporate', 'educational', 'academic',
+  'self_help', 'tech', 'finance', 'marketing', 'fiction', 'romance',
+  'mystery', 'thriller', 'fantasy', 'scifi', 'children', 'storybook',
+  'historical', 'biography', 'wellness', 'travel', 'cooking', 'inspirational', 'artistic',
+] as const;
 export const artDirectionSchema = z.object({
-  style: z.enum(['editorial', 'watercolor', 'photographic', 'minimal']).default('editorial'),
+  style: z.string().trim().max(100).default('editorial'),
   palette: z.string().trim().max(200).default(''),
   characters: z.string().trim().max(1000).default(''),
   direction: z.string().trim().max(1000).default(''),
@@ -12,6 +19,16 @@ export const imageRequestSchema = z.object({
   aspect: z.enum(['portrait', 'square', 'landscape']),
   expectedCredits: z.number().int().positive(),
 }).strict().refine(v => v.purpose !== 'cover' || v.aspect === 'portrait', 'Cover artwork must use portrait orientation');
+export const aiCoverRequestSchema = z.object({
+  style: z.string().trim().max(100).optional(),
+  colorMood: z.string().trim().max(200).optional(),
+  userPrompt: z.string().trim().max(1000).optional(),
+  title: z.string().trim().max(200).optional(),
+  subtitle: z.string().trim().max(300).optional(),
+  authorName: z.string().trim().max(120).optional(),
+  variations: z.boolean().default(false),
+});
+export type AiCoverRequest = z.infer<typeof aiCoverRequestSchema>;
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 export const coverTextSchema = z.object({
   text: z.string().max(300), font: z.enum(COVER_FONTS), color,

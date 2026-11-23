@@ -84,4 +84,38 @@ export const coverService = {
       } finally { await page.close(); }
     } finally { rendering--; }
   },
+  async versions(userId: string, bookId: string) {
+    await getOwnedBook(userId, bookId);
+    const rows = await prisma.coverDesign.findMany({
+      where: { bookId },
+      orderBy: { version: 'desc' },
+      select: { id: true, version: true, data: true, createdAt: true },
+    });
+    return rows.map(r => {
+      const d = r.data as { artworkId?: string | null; background?: string } | null;
+      return {
+        id: r.id,
+        version: r.version,
+        createdAt: r.createdAt,
+        artworkId: d?.artworkId ?? null,
+        background: d?.background ?? null,
+      };
+    });
+  },
+  async restore(userId: string, bookId: string, targetVersion: number) {
+    await getOwnedBook(userId, bookId);
+    const target = await prisma.coverDesign.findUnique({
+      where: { bookId_version: { bookId, version: targetVersion } },
+    });
+    if (!target) throw notFound('Cover version to restore');
+    const data = coverDesignSchema.parse(target.data);
+    return prisma.$transaction(async tx => {
+      await lockBook(tx, bookId, userId);
+      const latest = await tx.coverDesign.findFirst({ where: { bookId }, orderBy: { version: 'desc' } });
+      const nextVersion = (latest?.version ?? 0) + 1;
+      if (data.artworkId) await pinImages(tx, userId, bookId, artworkDocument(data.artworkId));
+      const saved = await tx.coverDesign.create({ data: { bookId, version: nextVersion, data } });
+      return { version: saved.version, data };
+    });
+  },
 };
