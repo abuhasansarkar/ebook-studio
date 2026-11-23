@@ -11,7 +11,7 @@ import {
   ChevronLeft,
 } from 'lucide-react';
 import type { EditorTab, TemplateDefinition } from '../types';
-import type { ShapeLayer, TextLayer } from '@ebook/shared';
+import type { ShapeLayer, TextLayer, CoverDesign } from '@ebook/shared';
 import { TemplatesTab } from './tabs/templates-tab';
 import { ElementsTab } from './tabs/elements-tab';
 import { TextTab } from './tabs/text-tab';
@@ -24,6 +24,7 @@ interface EditorSidebarProps {
   activeTab: EditorTab;
   onSelectTab: (tab: EditorTab) => void;
   bookId: string;
+  currentDesign?: CoverDesign;
   backgroundColor: string;
   shade: number;
   hasArtwork: boolean;
@@ -54,6 +55,7 @@ export const EditorSidebar = memo(function EditorSidebar({
   activeTab,
   onSelectTab,
   bookId,
+  currentDesign,
   backgroundColor,
   shade,
   hasArtwork,
@@ -102,7 +104,7 @@ export const EditorSidebar = memo(function EditorSidebar({
         <aside className="w-80 h-full border-r border-border/80 bg-surface/95 backdrop-blur-md flex flex-col relative z-20 shadow-xl overflow-hidden animate-in slide-in-from-left-4 duration-200">
           <div className="flex-1 overflow-y-auto">
             {activeTab === 'templates' && (
-              <TemplatesTab onApplyTemplate={onApplyTemplate} />
+              <TemplatesTab currentDesign={currentDesign} onApplyTemplate={onApplyTemplate} />
             )}
             {activeTab === 'elements' && (
               <ElementsTab onAddShape={onAddShape} onAddIcon={onAddIcon} />
@@ -132,6 +134,7 @@ export const EditorSidebar = memo(function EditorSidebar({
                 bookId={bookId}
                 onApplyCover={onApplyCover}
                 onSetArtwork={onSetArtwork}
+                onAddImageLayer={onAddImageLayer}
               />
             )}
           </div>

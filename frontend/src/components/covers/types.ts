@@ -89,11 +89,26 @@ export interface TemplateDefinition {
   id: string;
   title: string;
   genre: string;
-  category: 'business' | 'tech' | 'fiction' | 'fantasy' | 'scifi' | 'mystery' | 'romance' | 'wellness' | 'children' | 'minimalist';
+  category:
+    | 'business'
+    | 'tech'
+    | 'fiction'
+    | 'fantasy'
+    | 'scifi'
+    | 'mystery'
+    | 'romance'
+    | 'wellness'
+    | 'children'
+    | 'minimalist'
+    | 'self_help'
+    | 'finance'
+    | 'custom';
   description: string;
   background: string;
   shade: number;
   thumbnailGradient: string;
   artworkPlaceholder?: string;
   layers: DesignLayer[];
+  isCustom?: boolean;
+  createdAt?: string;
 }

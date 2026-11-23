@@ -465,6 +465,7 @@ function CoverWorkspace({
           activeTab={editor.activeTab}
           onSelectTab={editor.setActiveTab}
           bookId={bookId}
+          currentDesign={editor.design}
           backgroundColor={editor.design.background}
           shade={editor.design.shade}
           hasArtwork={!!editor.design.artworkId}
