@@ -190,7 +190,7 @@ try {
 
   // The credits and the entitlements appear on the billing page.
   await page.goto(`${BASE}/app/credits/billing`, { waitUntil: "networkidle0" });
-  await waitText(page, "Your subscription");
+  await waitText(page, "Current plan & subscription");
   // The plan's paid capabilities are listed separately from the capabilities
   // the product publishes as free, which every author has.
   await waitText(page, "What your plan unlocks");
@@ -226,7 +226,7 @@ try {
   await confirm!.click();
   await waitText(page, "Subscription cancelled", 30_000);
   await page.reload({ waitUntil: "networkidle0" });
-  await waitText(page, "stay active until", 30_000);
+  await waitText(page, "active until", 30_000);
   await waitText(page, "What your plan unlocks", 30_000);
   await shot(page, "cancelled");
   log("the subscription was cancelled after confirmation and keeps its capabilities until the paid period ends");

@@ -354,6 +354,22 @@ export function ListingStudio({ bookId }: { bookId: string }) {
     [destinations.data, destination],
   );
 
+  if (!bookId) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Listing copy"
+          description="Prepare the text your store's listing form asks for, and see what you would keep at your price."
+        />
+        <EmptyState
+          icon={<CircleAlert className="h-6 w-6" aria-hidden />}
+          title="No book selected"
+          description="Open the listing studio from a book's page to draft and edit store listings."
+        />
+      </div>
+    );
+  }
+
   if ((destinations.isPending || listings.isPending) && !destinations.isError && !listings.isError) return <PageLoader label="Loading the listing studio…" />;
   if (destinations.isError) {
     return <ErrorState message={errorMessage(destinations.error)} onRetry={() => void destinations.refetch()} />;

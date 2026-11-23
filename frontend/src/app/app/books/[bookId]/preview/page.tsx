@@ -198,12 +198,10 @@ export default function EBookPreviewPage({ params }: { params: Promise<{ bookId:
     if (hasAutoLoadedRef.current || !book) return;
     hasAutoLoadedRef.current = true;
 
-    if (readyPdfExport) {
-      void handleRenderPdf(readyPdfExport.id, true);
-    } else {
-      // Auto-render print sample PDF
-      void handleRenderPdf(undefined, true);
-    }
+    const exportId = readyPdfExport?.id;
+    queueMicrotask(() => {
+      void handleRenderPdf(exportId, true);
+    });
   }, [book, readyPdfExport?.id]);
 
   const handlePrev = () => {

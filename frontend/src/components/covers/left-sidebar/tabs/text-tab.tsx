@@ -135,7 +135,7 @@ export function TextTab({ onAddText }: TextTabProps) {
                 onAddText({
                   text: pairing.sample,
                   font: pairing.headlineFont,
-                  weight: pairing.headlineWeight as any,
+                  weight: pairing.headlineWeight as TextLayer['weight'],
                   size: 0.065,
                   name: `${pairing.title} Text`,
                 })

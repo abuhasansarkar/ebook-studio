@@ -435,11 +435,11 @@ export const ContextualToolbar = memo(function ContextualToolbar({
         <span className="text-muted-foreground font-medium">Dimension:</span>
         <select
           value={design.canvas?.preset || 'kindle'}
-          onChange={(e) => onSetDimensionsPreset(e.target.value as any)}
+          onChange={(e) => onSetDimensionsPreset(e.target.value as CanvasSettings['preset'])}
           className="h-7 rounded-md border border-border bg-surface px-2 text-xs font-medium focus:outline-hidden"
         >
           <option value="kindle">Kindle / eBook (1600 × 2560)</option>
-          <option value="paperback_6x9">Paperback 6" × 9" (1800 × 2700)</option>
+          <option value="paperback_6x9">Paperback 6&quot; × 9&quot; (1800 × 2700)</option>
           <option value="square">Square / Audio (2400 × 2400)</option>
         </select>
       </div>

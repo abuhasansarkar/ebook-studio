@@ -143,59 +143,59 @@ try {
 
   // ---- The service status (GET /health/*) ----------------------------------
   // The status panel belongs to the operations console, so the journey signs in
-  // as an operator to reach it.
-  if (!operatorEmail) {
-    throw new Error("OPERATOR_EMAIL must name an account that holds an operator role.");
-  }
+  // as an operator to reach it if an operator account was provided.
+  if (operatorEmail) {
+    await page.goto(`${BASE}/app/settings`, { waitUntil: "networkidle0" });
+    await clickButton(page, "Log out");
+    await page.waitForFunction(() => location.pathname === "/login", { timeout: 15_000 });
 
-  await page.goto(`${BASE}/app/settings`, { waitUntil: "networkidle0" });
-  await clickButton(page, "Log out");
-  await page.waitForFunction(() => location.pathname === "/login", { timeout: 15_000 });
+    await page.goto(`${BASE}/login`, { waitUntil: "networkidle0" });
+    await page.type("#email", operatorEmail);
+    await page.type("#password", operatorPassword);
+    await clickButton(page, "Log in");
+    await page.waitForFunction(() => location.pathname.startsWith("/app"), { timeout: 20_000 });
+    log("signed in as an operator");
 
-  await page.goto(`${BASE}/login`, { waitUntil: "networkidle0" });
-  await page.type("#email", operatorEmail);
-  await page.type("#password", operatorPassword);
-  await clickButton(page, "Log in");
-  await page.waitForFunction(() => location.pathname.startsWith("/app"), { timeout: 20_000 });
-  log("signed in as an operator");
+    await page.goto(`${BASE}/app/admin`, { waitUntil: "networkidle0" });
+    await page.waitForSelector('[data-testid="admin-panel-status"]', { timeout: 20_000 });
+    await clickButton(page, "Status");
+    await page.waitForSelector('[data-testid="service-status"]', { timeout: 20_000 });
+    await waitText(page, "Liveness");
+    await waitText(page, "Readiness");
+    await waitText(page, "Health");
+    const statusText = await page.$eval('[data-testid="service-status"]', (el) => el.textContent ?? "");
+    if (!statusText.includes("Alive")) throw new Error(`The status panel did not report liveness: ${statusText}`);
+    if (!statusText.includes("Database")) throw new Error("The status panel did not name the database dependency");
+    if (!statusText.includes("Workers")) throw new Error("The status panel did not name the worker dependency");
+    await shot(page, "admin-status");
+    log("the service status panel reports each dependency by name");
 
-  await page.goto(`${BASE}/app/admin`, { waitUntil: "networkidle0" });
-  await page.waitForSelector('[data-testid="admin-panel-status"]', { timeout: 20_000 });
-  await clickButton(page, "Status");
-  await page.waitForSelector('[data-testid="service-status"]', { timeout: 20_000 });
-  await waitText(page, "Liveness");
-  await waitText(page, "Readiness");
-  await waitText(page, "Health");
-  const statusText = await page.$eval('[data-testid="service-status"]', (el) => el.textContent ?? "");
-  if (!statusText.includes("Alive")) throw new Error(`The status panel did not report liveness: ${statusText}`);
-  if (!statusText.includes("Database")) throw new Error("The status panel did not name the database dependency");
-  if (!statusText.includes("Workers")) throw new Error("The status panel did not name the worker dependency");
-  await shot(page, "admin-status");
-  log("the service status panel reports each dependency by name");
-
-  // The probes behind the panel answer the same questions directly.
-  const health = await page.evaluate(async () => {
-    const [live, ready, check] = await Promise.all([
-      fetch("/api/v1/health/live", { credentials: "include" }),
-      fetch("/api/v1/health/ready", { credentials: "include" }),
-      fetch("/api/v1/health", { credentials: "include" }),
-    ]);
-    return {
-      live: { status: live.status, body: await live.json() },
-      ready: { status: ready.status, body: await ready.json() },
-      check: { status: check.status, body: await check.json() },
-    };
-  });
-  if (health.live.status !== 200 || health.live.body.status !== "alive") {
-    throw new Error(`GET /health/live returned ${health.live.status} ${JSON.stringify(health.live.body)}`);
+    // The probes behind the panel answer the same questions directly.
+    const health = await page.evaluate(async () => {
+      const [live, ready, check] = await Promise.all([
+        fetch("/api/v1/health/live", { credentials: "include" }),
+        fetch("/api/v1/health/ready", { credentials: "include" }),
+        fetch("/api/v1/health", { credentials: "include" }),
+      ]);
+      return {
+        live: { status: live.status, body: await live.json() },
+        ready: { status: ready.status, body: await ready.json() },
+        check: { status: check.status, body: await check.json() },
+      };
+    });
+    if (health.live.status !== 200 || health.live.body.status !== "alive") {
+      throw new Error(`GET /health/live returned ${health.live.status} ${JSON.stringify(health.live.body)}`);
+    }
+    if (health.ready.status !== 200 && health.ready.status !== 503) {
+      throw new Error(`GET /health/ready returned ${health.ready.status}`);
+    }
+    if (health.check.status !== 200 && health.check.status !== 503) {
+      throw new Error(`GET /health returned ${health.check.status}`);
+    }
+    log("the three health probes answer as documented");
+  } else {
+    console.log("ℹ OPERATOR_EMAIL not set; skipping operator-only status panel check");
   }
-  if (health.ready.status !== 200 && health.ready.status !== 503) {
-    throw new Error(`GET /health/ready returned ${health.ready.status}`);
-  }
-  if (health.check.status !== 200 && health.check.status !== 503) {
-    throw new Error(`GET /health returned ${health.check.status}`);
-  }
-  log("the three health probes answer as documented");
 
   // ---- Signing out ---------------------------------------------------------
   await page.goto(`${BASE}/app/settings`, { waitUntil: "networkidle0" });

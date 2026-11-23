@@ -21,7 +21,7 @@ const execFileAsync = promisify(execFile);
 const BASE = process.env.BASE_URL ?? "http://localhost:3100";
 const MAILPIT = process.env.MAILPIT_URL ?? "http://localhost:8025";
 const SHOTS = process.env.SHOTS_DIR ?? path.join(tmpdir(), "ebook-e2e-brief-roles");
-const DATABASE = process.env.E2E_DATABASE ?? "ebook_studio_test";
+const DATABASE = process.env.E2E_DATABASE ?? "ebook_studio";
 const PG_CONTAINER = process.env.PG_CONTAINER ?? "ebook-studio-postgres-1";
 // When the journey points at a database by URL, that URL names the database the
 // journey actually uses. The container path below has to use the same name, or

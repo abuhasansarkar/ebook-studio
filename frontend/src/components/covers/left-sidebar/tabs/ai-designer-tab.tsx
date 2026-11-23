@@ -88,7 +88,7 @@ export function AiDesignerTab({
   const [style, setStyle] = useState('modern');
   const [userPrompt, setUserPrompt] = useState('');
   const [busyCover, setBusyCover] = useState(false);
-  const [variations, setVariations] = useState<{ id: string; styleName: string; plan: any }[] | null>(null);
+  const [variations, setVariations] = useState<{ id: string; styleName: string; plan: { visualConcept?: string; [key: string]: unknown } }[] | null>(null);
 
   // Artwork Scene Generator State
   const [artworkPrompt, setArtworkPrompt] = useState('');
@@ -141,7 +141,7 @@ export function AiDesignerTab({
   const handleExploreVariations = async () => {
     setBusyCover(true);
     try {
-      const res = await api.post<{ variations: { id: string; styleName: string; plan: any }[] }>(
+      const res = await api.post<{ variations: { id: string; styleName: string; plan: { visualConcept?: string; [key: string]: unknown } }[] }>(
         `/books/${bookId}/cover/ai-variations`,
         {
           style,

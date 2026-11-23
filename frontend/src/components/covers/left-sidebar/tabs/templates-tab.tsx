@@ -35,25 +35,20 @@ const LOCAL_STORAGE_KEY = 'ebook_custom_cover_templates_v1';
 export function TemplatesTab({ currentDesign, onApplyTemplate }: TemplatesTabProps) {
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [customTemplates, setCustomTemplates] = useState<TemplateDefinition[]>([]);
-  const [showSaveModal, setShowSaveModal] = useState(false);
-  const [newTemplateTitle, setNewTemplateTitle] = useState('');
-  const [newTemplateGenre, setNewTemplateGenre] = useState('Custom Style');
-
-  // Load custom templates from localStorage
-  useEffect(() => {
+  const [customTemplates, setCustomTemplates] = useState<TemplateDefinition[]>(() => {
+    if (typeof window === 'undefined') return [];
     try {
       const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as TemplateDefinition[];
-        if (Array.isArray(parsed)) {
-          setCustomTemplates(parsed);
-        }
+        if (Array.isArray(parsed)) return parsed;
       }
-    } catch {
-      // ignore parsing errors
-    }
-  }, []);
+    } catch {}
+    return [];
+  });
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [newTemplateTitle, setNewTemplateTitle] = useState('');
+  const [newTemplateGenre, setNewTemplateGenre] = useState('Custom Style');
 
   const saveCustomTemplate = () => {
     if (!currentDesign) {

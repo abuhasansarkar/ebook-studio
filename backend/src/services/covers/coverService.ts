@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,9 +12,21 @@ import { assetService, pinImages } from '../assets/assetService.js';
 import { getBrowser } from '../exports/pdfRenderer.js';
 import { escapeHtml } from '../exports/tiptapToHtml.js';
 
-const FONT_BASE_DIR = process.env.FONT_DIR
-  ? path.resolve(process.env.FONT_DIR)
-  : fileURLToPath(new URL('../../../assets/fonts', import.meta.url));
+function resolveCoverFontDir(): string {
+  if (process.env.FONT_DIR) return path.resolve(process.env.FONT_DIR);
+  const candidates = [
+    fileURLToPath(new URL('../../../assets/fonts', import.meta.url)),
+    fileURLToPath(new URL('../assets/fonts', import.meta.url)),
+    path.resolve(process.cwd(), 'assets/fonts'),
+    path.resolve(process.cwd(), 'backend/assets/fonts'),
+  ];
+  for (const dir of candidates) {
+    if (existsSync(path.join(dir, 'manifest.json'))) return dir;
+  }
+  return candidates[0];
+}
+
+const FONT_BASE_DIR = resolveCoverFontDir();
 
 const fontCache = new Map<string, Promise<Buffer>>();
 export function coverFont(name: string) {
@@ -37,7 +50,8 @@ export async function coverHtml(data: CoverDesign, artwork?: string) {
       .map(async name => `@font-face{font-family:${name};src:url(data:font/ttf;base64,${(await coverFont(name)).toString('base64')}) format('truetype');font-weight:100 900;font-display:block}`)
   );
 
-  const googleFontsLink = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cinzel:wght@400..900&family=Dancing+Script:wght@400..700&family=Merriweather:ital,wght@0,300..900;1,300..900&family=Montserrat:ital,wght@0,100..900;1,100..900&family=Oswald:wght@200..700&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Poppins:ital,wght@0,100..900;1,100..900&family=Roboto:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">`;
+  const hasGoogleFonts = fontNames.some(name => customFonts.includes(name));
+  const googleFontsLink = hasGoogleFonts ? `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cinzel:wght@400..900&family=Dancing+Script:wght@400..700&family=Merriweather:ital,wght@0,300..900;1,300..900&family=Montserrat:ital,wght@0,100..900;1,100..900&family=Oswald:wght@200..700&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Poppins:ital,wght@0,100..900;1,100..900&family=Roboto:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">` : '';
 
   let renderedLayers = '';
 

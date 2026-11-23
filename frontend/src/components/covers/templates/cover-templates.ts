@@ -1533,7 +1533,7 @@ export function applyTemplateToDesign(
   bookTitle?: string,
   bookAuthor?: string
 ): CoverDesign {
-  const newLayers = template.layers.map((layer: any) => {
+  const newLayers = template.layers.map((layer) => {
     const copy = {
       ...layer,
       id: `${layer.id}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,

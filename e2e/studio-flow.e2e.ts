@@ -32,7 +32,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
  * with is the same file the journey reads, so the two cannot drift apart.
  */
 function envFileValue(key: string): string | undefined {
-  const file = path.resolve(HERE, "..", ".env.e2e");
+  const file = path.resolve(HERE, "..", process.env.ENV_FILE ?? ".env");
   try {
     for (const line of readFileSync(file, "utf8").split(/\r?\n/)) {
       const match = new RegExp(`^\\s*${key}\\s*=\\s*(.*)$`).exec(line);

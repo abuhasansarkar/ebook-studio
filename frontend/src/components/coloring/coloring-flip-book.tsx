@@ -34,7 +34,7 @@ interface ColoringFlipBookProps {
 // Realistic zero-dependency synthetic paper rustle sound
 function playPaperTurnSound() {
   try {
-    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    const AudioCtx = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AudioCtx) return;
     const ctx = new AudioCtx();
     const bufferSize = Math.floor(ctx.sampleRate * 0.15); // 150ms

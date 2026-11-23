@@ -124,6 +124,13 @@ try {
   await page.select("#language", "en");
   await clickButton(page, "Continue");
   await page.waitForSelector("#chapterCount");
+  await page.evaluate(() => {
+    const input = document.querySelector("#chapterCount") as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+    setter?.call(input, "5");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
   await clickButton(page, "Create outline");
   await page.waitForFunction(() => location.pathname.endsWith("/outline"), { timeout: 20_000 });
   await page.waitForSelector("#book-title", { timeout: 30_000 });
@@ -197,6 +204,7 @@ try {
     const res = await fetch(`/api/v1/books/${id}/chapters`, { credentials: "include" });
     return ((await res.json()).chapters as unknown[]).length;
   }, bookId);
+  log(`chapters before import: ${chaptersBefore}`);
   await clickButton(page, "Review import preview");
   await waitText(page, "Preview · version 1");
   await page.waitForSelector("[data-preview]");
@@ -207,7 +215,13 @@ try {
 
   // Confirm the import.
   await clickButton(page, "Confirm import into manuscript");
-  await page.waitForSelector('[data-applied="true"]', { timeout: 30_000 });
+  try {
+    await page.waitForSelector('[data-applied="true"]', { timeout: 10_000 });
+  } catch (err) {
+    const dangerAlert = await page.$eval('[data-tone="danger"], [role="alert"]', (el) => el.textContent).catch(() => "none");
+    console.error("CONFIRM IMPORT FAILED, alert text:", dangerAlert);
+    throw err;
+  }
   await waitText(page, "Imported 3 chapters into your manuscript.");
   await waitText(page, "Supports");
   await shot(page, "research-applied");

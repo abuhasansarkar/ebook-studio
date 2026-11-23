@@ -298,7 +298,7 @@ function CoverWorkspace({
       toast.success(`Cover saved successfully as Version ${result.cover.version}!`);
       void qc.invalidateQueries({ queryKey: ['cover', ownerId, bookId] });
       void qc.invalidateQueries({ queryKey: ['books'] });
-    } catch (e: any) {
+    } catch (e) {
       setError(errorMessage(e));
       if (typeof e === 'object' && e && 'status' in e && e.status === 409) {
         setConflict(true);
@@ -753,7 +753,7 @@ function AiCoverDesignerModal({
   const [style, setStyle] = useState('modern');
   const [userPrompt, setUserPrompt] = useState('');
   const [busy, setBusy] = useState(false);
-  const [variations, setVariations] = useState<{ id: string; styleName: string; plan: any }[] | null>(null);
+  const [variations, setVariations] = useState<{ id: string; styleName: string; plan: { visualConcept?: string; [key: string]: unknown } }[] | null>(null);
 
   const handleGenerate = async (selectedStyle = style) => {
     setBusy(true);
@@ -774,7 +774,7 @@ function AiCoverDesignerModal({
   const handleExploreVariations = async () => {
     setBusy(true);
     try {
-      const res = await api.post<{ variations: { id: string; styleName: string; plan: any }[] }>(`/books/${bookId}/cover/ai-variations`, {
+      const res = await api.post<{ variations: { id: string; styleName: string; plan: { visualConcept?: string; [key: string]: unknown } }[] }>(`/books/${bookId}/cover/ai-variations`, {
         style,
         userPrompt: userPrompt.trim() || undefined,
       });

@@ -1,3 +1,5 @@
+import type { PDFDocumentProxy } from "pdfjs-dist";
+
 /**
  * Client-side PDF loading and rendering service using PDF.js.
  * Dynamically imports pdfjs-dist in the browser to avoid SSR evaluation issues during Next.js builds.
@@ -53,7 +55,7 @@ export async function loadPdfDocument(source: ArrayBuffer | Uint8Array | string)
  * Render a single PDF page into a high-resolution data URL.
  */
 export async function renderPdfPage(
-  pdfDoc: any,
+  pdfDoc: PDFDocumentProxy,
   pageNumber: number,
   scale: number = 2.0,
 ): Promise<RenderedPageInfo> {
@@ -74,6 +76,7 @@ export async function renderPdfPage(
   const renderContext = {
     canvasContext: ctx,
     viewport: viewport,
+    canvas,
   };
 
   await page.render(renderContext).promise;
@@ -92,7 +95,7 @@ export async function renderPdfPage(
  * Render all pages of a PDF document with progress reporting.
  */
 export async function renderAllPdfPages(
-  pdfDoc: any,
+  pdfDoc: PDFDocumentProxy,
   scale: number = 1.8,
   onProgress?: (current: number, total: number) => void,
 ): Promise<RenderedPageInfo[]> {

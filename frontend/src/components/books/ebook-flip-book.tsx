@@ -26,7 +26,7 @@ export interface EBookFlipBookProps {
 // Realistic zero-dependency synthetic paper rustle sound via Web Audio API
 function playPaperTurnSound() {
   try {
-    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    const AudioCtx = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AudioCtx) return;
     const ctx = new AudioCtx();
     const bufferSize = Math.floor(ctx.sampleRate * 0.15); // 150ms
@@ -59,23 +59,25 @@ function playPaperTurnSound() {
 /**
  * Extracts plain-text paragraphs from a TipTap / ProseMirror document JSON
  */
-function extractParagraphs(node: any): string[] {
-  if (!node) return [];
-  if (node.type === "paragraph" || node.type === "heading") {
+function extractParagraphs(node: unknown): string[] {
+  if (!node || typeof node !== "object") return [];
+  const n = node as { type?: string; content?: unknown[] };
+  if (n.type === "paragraph" || n.type === "heading") {
     const text = extractText(node);
     return text.trim() ? [text.trim()] : [];
   }
-  if (Array.isArray(node.content)) {
-    return node.content.flatMap(extractParagraphs);
+  if (Array.isArray(n.content)) {
+    return n.content.flatMap(extractParagraphs);
   }
   return [];
 }
 
-function extractText(node: any): string {
-  if (!node) return "";
-  if (node.type === "text") return node.text || "";
-  if (Array.isArray(node.content)) {
-    return node.content.map(extractText).join("");
+function extractText(node: unknown): string {
+  if (!node || typeof node !== "object") return "";
+  const n = node as { type?: string; text?: string; content?: unknown[] };
+  if (n.type === "text") return n.text || "";
+  if (Array.isArray(n.content)) {
+    return n.content.map(extractText).join("");
   }
   return "";
 }
@@ -580,7 +582,9 @@ export const EBookFlipBook = forwardRef<FlipBookHandle, EBookFlipBookProps>(
     // Keep displayedSpread in sync when currentSpread changes externally and not flipping
     useEffect(() => {
       if (!isFlipping) {
-        setDisplayedSpread(currentSpread);
+        queueMicrotask(() => {
+          setDisplayedSpread((prev) => (prev !== currentSpread ? currentSpread : prev));
+        });
       }
     }, [currentSpread, isFlipping]);
 

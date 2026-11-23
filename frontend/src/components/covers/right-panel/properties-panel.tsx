@@ -80,7 +80,7 @@ export function PropertiesPanel({
             <label className="font-semibold text-foreground">Metadata Role</label>
             <select
               value={(layer as TextLayer).role || 'custom'}
-              onChange={(e) => onUpdateLayer(layer.id, { role: e.target.value as any })}
+              onChange={(e) => onUpdateLayer(layer.id, { role: e.target.value as TextLayer['role'] })}
               className="w-full h-8 rounded-lg border border-border bg-surface px-2 text-xs focus:outline-hidden"
             >
               <option value="title">Book Title</option>

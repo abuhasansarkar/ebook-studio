@@ -192,17 +192,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { data: session, isPending } = useSession();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(false);
-
-  // Restore collapsed state from localStorage
-  useEffect(() => {
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
     try {
-      const stored = localStorage.getItem("ebookstudio_sidebar_collapsed");
-      if (stored !== null) {
-        setIsCollapsed(stored === "true");
-      }
-    } catch {}
-  }, []);
+      return localStorage.getItem("ebookstudio_sidebar_collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
 
   const toggleCollapse = () => {
     setIsCollapsed((prev) => {
