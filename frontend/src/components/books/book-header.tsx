@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { use, useState } from "react";
 import { toast } from "sonner";
-import { ArrowLeft, Check, ClipboardCheck, FileDown, FileText, Image as ImageIcon, Library, ListTree, Megaphone, Package, Palette, PenLine, Receipt, Trash2, Wand2, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Check, ClipboardCheck, Eye, FileDown, FileText, Image as ImageIcon, Library, ListTree, Megaphone, Package, Palette, PenLine, Receipt, Trash2, Wand2, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { errorMessage } from "@/lib/api";
@@ -48,6 +48,7 @@ export function BookHeader({ params }: { params: Promise<{ bookId: string }> }) 
         { href: "quality", label: "Review", icon: ClipboardCheck, done: false, enabled: true },
         { href: "design", label: "Design", icon: Palette, done: false, enabled: true },
         { href: "cover", label: "Cover", icon: ImageIcon, done: false, enabled: true },
+        { href: "preview", label: "Preview", icon: Eye, done: false, enabled: true },
       ],
     },
     {

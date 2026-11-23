@@ -180,6 +180,21 @@ body {
   border-radius: 4px;
 }
 
+/* ---------- 3D Flipbook Customization ---------- */
+.stf__parent {
+  margin: 0 auto !important;
+}
+.stf__wrapper {
+  margin: 0 auto !important;
+}
+.stf__item {
+  background: transparent !important;
+}
+.stf__item > div {
+  width: 100% !important;
+  height: 100% !important;
+}
+
 /* ---------- Reduced motion ----------
    Honour the operating-system preference: animation and transition are the
    vestibular trigger, so they are shortened to nothing rather than merely

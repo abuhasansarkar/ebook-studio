@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Eye, Sparkles } from 'lucide-react';
 import { applyTemplate, type BookDesign } from '@ebook/shared';
 import { api, errorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -32,17 +33,27 @@ export function DesignPreview({ bookId, draft, valid, source, onResetSource }: {
   const canRender = valid || source.kind === 'version';
   return <section className="min-w-0 lg:sticky lg:top-4 lg:self-start" aria-label="Preview">
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <RadioGroup
-        label="Preview type"
-        value={mode}
-        onChange={setMode}
-        className="rounded-xl border border-border p-0.5"
-        itemClassName={(_option, selected) => cn('rounded-lg px-3 py-1.5 text-sm font-medium', selected ? 'bg-primary-soft text-primary-hover' : 'text-muted-foreground hover:text-foreground')}
-        options={[
-          { value: 'reader', label: 'Reader preview' },
-          { value: 'print', label: 'Print sample (PDF)' },
-        ]}
-      />
+      <div className="flex flex-wrap items-center gap-2">
+        <RadioGroup
+          label="Preview type"
+          value={mode}
+          onChange={setMode}
+          className="rounded-xl border border-border p-0.5"
+          itemClassName={(_option, selected) => cn('rounded-lg px-3 py-1.5 text-sm font-medium', selected ? 'bg-primary-soft text-primary-hover' : 'text-muted-foreground hover:text-foreground')}
+          options={[
+            { value: 'reader', label: 'Reader preview' },
+            { value: 'print', label: 'Print sample (PDF)' },
+          ]}
+        />
+        <Link
+          href={`/app/books/${bookId}/preview`}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-muted/50 px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted transition-colors shadow-2xs"
+          title="Open interactive 3D Physical Book Spread Preview"
+        >
+          <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+          <span>3D Flipbook ↗</span>
+        </Link>
+      </div>
       <p className="text-xs text-muted-foreground" aria-live="polite">Showing {sourceLabel(source)}{source.kind !== 'draft' && <Button size="sm" variant="link" className="ms-1 h-auto" onClick={onResetSource}>Back to current settings</Button>}</p>
     </div>
     {!canRender && <Alert tone="warning" className="mt-3">Fix the highlighted settings to refresh the preview.</Alert>}
