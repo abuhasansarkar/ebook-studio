@@ -111,6 +111,7 @@ function SidebarFooter({ isCollapsed = false }: { isCollapsed?: boolean }) {
     return (
       <div className="space-y-2.5 pt-2 border-t border-border/50" suppressHydrationWarning>
         {/* Compact credits badge */}
+
         <Link
           href="/app/credits"
           title={`Credits: ${credits.data ? formatNumber(credits.data.wallet.balance) : "—"}`}
@@ -206,7 +207,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       const next = !prev;
       try {
         localStorage.setItem("ebookstudio_sidebar_collapsed", String(next));
-      } catch {}
+      } catch { }
       return next;
     });
   };
