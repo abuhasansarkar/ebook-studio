@@ -5,8 +5,10 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import {
   BookOpen,
+  ChevronRight,
   Coins,
   CreditCard,
+  Crown,
   FolderKanban,
   Images,
   LayoutDashboard,
@@ -21,11 +23,12 @@ import {
   Settings,
   Shield,
   X,
+  Zap,
 } from "lucide-react";
 import { Logo } from "@/components/app/logo";
 import { PageLoader } from "@/components/ui/misc";
 import { signOut, useSession } from "@/lib/auth-client";
-import { useCredits } from "@/lib/queries";
+import { useBilling, useCredits } from "@/lib/queries";
 import { useAdminAuthority } from "@/lib/studio-queries";
 import { useMounted } from "@/lib/use-mounted";
 import { cn, formatNumber } from "@/lib/utils";
@@ -104,26 +107,31 @@ function SidebarFooter({ isCollapsed = false }: { isCollapsed?: boolean }) {
   const router = useRouter();
   const { data: session } = useSession();
   const credits = useCredits();
+  const billing = useBilling();
   const mounted = useMounted();
   const initial = mounted && session?.user.name ? session.user.name[0]?.toUpperCase() : "?";
+
+  const rawPlanName = billing.data?.currentPlan?.name ?? (billing.data?.subscription ? "Pro" : "Free");
+  const planName = rawPlanName.toLowerCase().includes("plan") ? rawPlanName : `${rawPlanName} Plan`;
+  const isPaid = Boolean(billing.data?.subscription || (billing.data?.currentPlan && billing.data.currentPlan.priceMinor > 0));
+  const creditsLabel = isPaid ? "credits" : "free credits";
 
   if (isCollapsed) {
     return (
       <div className="space-y-2.5 pt-2 border-t border-border/50" suppressHydrationWarning>
         {/* Compact credits badge */}
-
         <Link
           href="/app/credits"
-          title={`Credits: ${credits.data ? formatNumber(credits.data.wallet.balance) : "—"}`}
-          className="group relative flex flex-col items-center justify-center rounded-xl border border-border bg-background p-2 text-center hover:bg-muted transition-colors shadow-2xs"
+          title={`Credits: ${credits.data ? formatNumber(credits.data.wallet.balance) : "—"} (${planName})`}
+          className="group relative flex flex-col items-center justify-center rounded-xl bg-gradient-to-b from-[#ea532c] to-[#e44d24] p-2 text-center text-white hover:opacity-90 transition-opacity shadow-sm"
           suppressHydrationWarning
         >
-          <Coins className="h-4 w-4 text-primary shrink-0" />
+          <Zap className="h-4 w-4 fill-white text-white shrink-0" />
           <span className="mt-1 text-[10px] font-bold font-mono">
             {credits.data ? formatNumber(credits.data.wallet.balance) : "—"}
           </span>
           <span className="pointer-events-none absolute left-full ml-2.5 z-50 hidden rounded-md bg-neutral-900 dark:bg-neutral-800 px-2.5 py-1 text-xs font-medium text-white shadow-lg group-hover:block whitespace-nowrap">
-            Credits: {credits.data ? formatNumber(credits.data.wallet.balance) : "—"}
+            Credits: {credits.data ? formatNumber(credits.data.wallet.balance) : "—"} · {planName}
           </span>
         </Link>
 
@@ -156,11 +164,55 @@ function SidebarFooter({ isCollapsed = false }: { isCollapsed?: boolean }) {
 
   return (
     <div className="space-y-3 pt-2 border-t border-border/50" suppressHydrationWarning>
-      <Link href="/app/credits" className="block rounded-xl border border-border bg-background p-3 hover:bg-muted transition-colors" suppressHydrationWarning>
-        <p className="text-xs text-muted-foreground">Credits</p>
-        <p className="mt-0.5 text-lg font-bold">{credits.data ? formatNumber(credits.data.wallet.balance) : "—"}</p>
-        {credits.data && credits.data.wallet.reserved > 0 && <p className="text-xs text-muted-foreground">{credits.data.wallet.reserved} reserved for running jobs</p>}
-      </Link>
+      {/* Visual Credits Card (matches reference design) */}
+      <div className="overflow-hidden rounded-2xl bg-gradient-to-b from-[#ea532c] to-[#e44d24] text-white shadow-sm" suppressHydrationWarning>
+        {/* Top Header & Balance */}
+        <Link
+          href="/app/credits"
+          className="block p-3.5 pb-2.5 transition-opacity hover:opacity-95"
+          title="View credit transactions and history"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-extrabold tracking-wider text-white/90 uppercase">
+              CREDITS
+            </span>
+            <Zap className="h-4 w-4 fill-white text-white opacity-95 shrink-0" />
+          </div>
+          <div className="mt-1 flex items-baseline gap-1.5 flex-wrap">
+            <span className="text-3xl font-extrabold tracking-tight">
+              {credits.data ? formatNumber(credits.data.wallet.balance) : "—"}
+            </span>
+            <span className="text-sm font-semibold text-white/90">
+              {creditsLabel}
+            </span>
+          </div>
+          {credits.data && credits.data.wallet.reserved > 0 && (
+            <p className="mt-1 text-[11px] text-white/75 font-medium">
+              {credits.data.wallet.reserved} reserved for running jobs
+            </p>
+          )}
+        </Link>
+
+        {/* Bottom Shelf: Plan & Upgrade Action */}
+        <div className="flex items-center justify-between border-t border-white/10 bg-black/15 px-3 py-2.5">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/15 text-white shadow-2xs">
+              <Crown className="h-3.5 w-3.5" />
+            </div>
+            <span className="truncate text-xs font-bold text-white">
+              {planName}
+            </span>
+          </div>
+          <Link
+            href="/app/credits/billing"
+            className="flex shrink-0 items-center gap-0.5 rounded-xl bg-white/20 px-2.5 py-1 text-xs font-semibold text-white transition-all hover:bg-white/30 active:scale-95 shadow-2xs"
+          >
+            <span>Upgrade</span>
+            <ChevronRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+      </div>
+
       <div className="flex items-center gap-3 px-1" suppressHydrationWarning>
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-white shadow-2xs" suppressHydrationWarning>
           {initial}
