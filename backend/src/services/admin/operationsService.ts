@@ -309,6 +309,187 @@ export async function userList(options: { limit?: number; before?: Date; search?
 }
 
 /**
+ * Detailed single-user operational view for administrators.
+ * Returns comprehensive profile, wallet, transactions, subscriptions, payments,
+ * entitlements, books, background jobs, support requests, and audit history.
+ */
+export async function userDetail(userId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: {
+      wallet: true,
+      adminRoles: { orderBy: { grantedAt: "desc" } },
+      transactions: { orderBy: { createdAt: "desc" }, take: 25 },
+      subscriptions: {
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        include: { plan: { select: { id: true, name: true, recurring: true, priceMinor: true, currency: true } } },
+      },
+      payments: {
+        orderBy: { createdAt: "desc" },
+        take: 25,
+        include: { plan: { select: { id: true, name: true } } },
+      },
+      entitlements: true,
+      books: {
+        where: { deletedAt: null },
+        orderBy: { updatedAt: "desc" },
+        take: 25,
+        include: {
+          _count: { select: { chapters: true, exports: true, sources: true } },
+        },
+      },
+      jobs: {
+        orderBy: { createdAt: "desc" },
+        take: 25,
+        include: {
+          book: { select: { id: true, title: true } },
+        },
+      },
+      supportRequests: {
+        orderBy: { createdAt: "desc" },
+        take: 25,
+      },
+    },
+  });
+
+  if (!user) return null;
+
+  const auditEntries = await prisma.adminAuditEntry.findMany({
+    where: {
+      OR: [
+        { targetType: "user", targetId: user.id },
+        { actorId: user.id },
+      ],
+    },
+    orderBy: { createdAt: "desc" },
+    take: 25,
+    include: {
+      actor: { select: { id: true, email: true, name: true } },
+    },
+  });
+
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    emailVerified: user.emailVerified,
+    image: user.image,
+    createdAt: user.createdAt.toISOString(),
+    updatedAt: user.updatedAt.toISOString(),
+    wallet: user.wallet
+      ? {
+          balance: user.wallet.balance,
+          reserved: user.wallet.reserved,
+          updatedAt: user.wallet.updatedAt.toISOString(),
+        }
+      : { balance: 0, reserved: 0, updatedAt: user.createdAt.toISOString() },
+    roles: user.adminRoles.map((r) => ({
+      id: r.id,
+      role: r.role,
+      reason: r.reason,
+      grantedAt: r.grantedAt.toISOString(),
+      grantedBy: r.grantedBy,
+      revokedAt: r.revokedAt ? r.revokedAt.toISOString() : null,
+      revokedBy: r.revokedBy,
+      revokeReason: r.revokeReason,
+      isActive: !r.revokedAt,
+    })),
+    transactions: user.transactions.map((t) => ({
+      id: t.id,
+      amount: t.amount,
+      balanceAfter: t.balanceAfter,
+      type: t.type,
+      reference: t.reference,
+      description: t.description,
+      createdAt: t.createdAt.toISOString(),
+    })),
+    subscriptions: user.subscriptions.map((s) => ({
+      id: s.id,
+      planId: s.planId,
+      planName: s.plan.name,
+      planRecurring: s.plan.recurring,
+      status: s.status,
+      currentPeriodEnd: s.currentPeriodEnd ? s.currentPeriodEnd.toISOString() : null,
+      canceledAt: s.canceledAt ? s.canceledAt.toISOString() : null,
+      createdAt: s.createdAt.toISOString(),
+    })),
+    payments: user.payments.map((p) => ({
+      id: p.id,
+      amountMinor: p.amountMinor,
+      currency: p.currency,
+      status: p.status,
+      credits: p.credits,
+      planName: p.plan?.name ?? null,
+      provider: p.provider,
+      createdAt: p.createdAt.toISOString(),
+      settledAt: p.settledEventAt ? p.settledEventAt.toISOString() : null,
+      refundedAt: p.refundedEventAt ? p.refundedEventAt.toISOString() : null,
+    })),
+    entitlements: user.entitlements.map((e) => ({
+      key: e.key,
+      value: e.value,
+      source: e.source,
+      sourceId: e.sourceId,
+      expiresAt: e.expiresAt ? e.expiresAt.toISOString() : null,
+      createdAt: e.createdAt.toISOString(),
+    })),
+    books: user.books.map((b) => ({
+      id: b.id,
+      title: b.title,
+      subtitle: b.subtitle,
+      language: b.language,
+      bookType: b.bookType,
+      status: b.status,
+      chapterCount: b._count.chapters,
+      exportCount: b._count.exports,
+      sourceCount: b._count.sources,
+      createdAt: b.createdAt.toISOString(),
+      updatedAt: b.updatedAt.toISOString(),
+    })),
+    jobs: user.jobs.map((j) => ({
+      id: j.id,
+      type: j.type,
+      status: j.status,
+      progress: j.progress,
+      total: j.total,
+      model: j.model,
+      bookId: j.bookId,
+      bookTitle: j.book?.title ?? "Unknown book",
+      creditsReserved: j.creditsReserved,
+      creditsCharged: j.creditsCharged,
+      error: j.error,
+      createdAt: j.createdAt.toISOString(),
+      updatedAt: j.updatedAt.toISOString(),
+    })),
+    supportRequests: user.supportRequests.map((s) => ({
+      id: s.id,
+      correlationId: s.correlationId,
+      category: s.category,
+      subject: s.subject,
+      message: s.message,
+      status: s.status,
+      response: s.response,
+      respondedAt: s.respondedAt ? s.respondedAt.toISOString() : null,
+      createdAt: s.createdAt.toISOString(),
+    })),
+    auditEntries: auditEntries.map((a) => ({
+      id: a.id,
+      action: a.action,
+      targetType: a.targetType,
+      targetId: a.targetId,
+      reason: a.reason,
+      outcome: a.outcome,
+      actorId: a.actorId,
+      actorEmail: a.actor?.email ?? null,
+      actorName: a.actor?.name ?? null,
+      actorRole: a.actorRole,
+      createdAt: a.createdAt.toISOString(),
+    })),
+  };
+}
+
+/**
  * The payments an operator can look at.
  *
  * The customer's email is included because a finance agent has to know whose

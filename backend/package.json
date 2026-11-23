@@ -17,6 +17,7 @@
     "db:studio": "prisma studio",
     "postinstall": "prisma generate",
     "generation:audit": "tsx --env-file=../.env scripts/audit-generation.ts",
+    "admin:grant": "tsx --env-file=../.env scripts/grant-admin.ts",
     "email:status": "tsx --env-file=../.env scripts/email-status.ts",
     "email:check": "tsx --env-file=../.env scripts/check-smtp.ts",
     "fonts:fetch": "node scripts/fetch-fonts.mjs",

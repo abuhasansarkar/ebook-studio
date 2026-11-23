@@ -6,17 +6,30 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useState } from "react";
+import { isDisposableEmail, DISPOSABLE_EMAIL_ERROR_MESSAGE } from "@ebook/shared";
 import { AuthHeader, GoogleButton, safeNext } from "@/components/auth/auth-ui";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/form";
 import { Alert } from "@/components/ui/misc";
 import { authClient } from "@/lib/auth-client";
 
-const schema = z.object({
-  name: z.string().trim().min(2, "Please enter your name").max(80),
-  email: z.string().trim().email("Enter a valid email address"),
-  password: z.string().min(8, "Use at least 8 characters").max(128),
-});
+const schema = z
+  .object({
+    name: z.string().trim().min(2, "Please enter your name").max(80),
+    email: z
+      .string()
+      .trim()
+      .email("Enter a valid email address")
+      .refine((email) => !isDisposableEmail(email), {
+        message: DISPOSABLE_EMAIL_ERROR_MESSAGE,
+      }),
+    password: z.string().min(8, "Use at least 8 characters").max(128),
+    confirmPassword: z.string().min(1, "Please re-type your password"),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "The passwords do not match",
+    path: ["confirmPassword"],
+  });
 type Values = z.infer<typeof schema>;
 
 export function SignupForm() {
@@ -49,6 +62,9 @@ export function SignupForm() {
         </Field>
         <Field label="Password" htmlFor="password" error={formState.errors.password?.message} hint="At least 8 characters">
           <Input id="password" type="password" autoComplete="new-password" aria-invalid={!!formState.errors.password} {...register("password")} />
+        </Field>
+        <Field label="Re-type password" htmlFor="confirmPassword" error={formState.errors.confirmPassword?.message}>
+          <Input id="confirmPassword" type="password" autoComplete="new-password" aria-invalid={!!formState.errors.confirmPassword} {...register("confirmPassword")} />
         </Field>
         <Button type="submit" className="w-full" size="lg" loading={formState.isSubmitting}>
           Create account

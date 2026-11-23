@@ -7,10 +7,12 @@ import {
   Bell,
   BookOpen,
   Coins,
+  Eye,
   FileClock,
   HeartPulse,
   LifeBuoy,
   ScrollText,
+  Search,
   ShieldAlert,
   Trash2,
   Users,
@@ -22,6 +24,7 @@ import { Alert, Badge, Card, EmptyState, ErrorState, PageLoader } from "@/compon
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
+import { UserDetailModal } from "@/components/admin/user-detail-modal";
 import { errorMessage } from "@/lib/api";
 import { useMounted } from "@/lib/use-mounted";
 import {
@@ -92,9 +95,8 @@ function Stat({ label, value, tone }: { label: string; value: string | number; t
     <Card className="p-4">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p
-        className={`mt-1 text-2xl font-bold ${
-          tone === "danger" ? "text-danger" : tone === "warning" ? "text-warning" : tone === "success" ? "text-success" : ""
-        }`}
+        className={`mt-1 text-2xl font-bold ${tone === "danger" ? "text-danger" : tone === "warning" ? "text-warning" : tone === "success" ? "text-success" : ""
+          }`}
         data-testid="admin-stat-value"
       >
         {value}
@@ -157,9 +159,8 @@ export default function AdminPage() {
                   type="button"
                   onClick={() => setPanel(item.id)}
                   aria-current={active ? "page" : undefined}
-                  className={`flex items-center gap-1.5 sm:gap-2 rounded-xl px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium transition-colors ${
-                    active ? "bg-primary-soft text-primary-hover font-semibold" : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                  }`}
+                  className={`flex items-center gap-1.5 sm:gap-2 rounded-xl px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium transition-colors ${active ? "bg-primary-soft text-primary-hover font-semibold" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
                   data-testid={`admin-panel-${item.id}`}
                 >
                   <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
@@ -246,10 +247,12 @@ function StatusPanel() {
   );
 }
 
-/** The customer list, with credit adjustments. */
+/** The customer list, with single user full modal view and credit adjustments. */
 function UsersPanel() {
-  const users = useOpsUsers(undefined);
+  const [search, setSearch] = useState("");
+  const users = useOpsUsers(search.trim() ? search.trim() : undefined);
   const adjust = useCreditAdjustment();
+  const [detailUserId, setDetailUserId] = useState<string | null>(null);
   const [target, setTarget] = useState<{ id: string; name: string } | null>(null);
   const [credits, setCredits] = useState("100");
   const [reason, setReason] = useState("");
@@ -261,35 +264,90 @@ function UsersPanel() {
   return (
     <div className="space-y-4">
       {problem && <Alert tone="danger">{problem}</Alert>}
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            type="search"
+            placeholder="Search customers by name or email…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9 bg-background"
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Showing {(users.data ?? []).length} customer{(users.data ?? []).length === 1 ? "" : "s"}
+        </p>
+      </div>
+
       <Card className="divide-y divide-border">
         {(users.data ?? []).map((user) => (
-          <div key={user.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{user.name}</p>
+          <div
+            key={user.id}
+            className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 hover:bg-muted/30 transition-colors"
+          >
+            <div
+              className="min-w-0 cursor-pointer group"
+              onClick={() => setDetailUserId(user.id)}
+            >
+              <div className="flex items-center gap-2">
+                <p className="truncate text-sm font-semibold group-hover:text-primary-hover transition-colors">
+                  {user.name || "Unnamed user"}
+                </p>
+                {user.roles.map((r) => (
+                  <Badge key={r} tone="primary">
+                    {r}
+                  </Badge>
+                ))}
+              </div>
               <p className="truncate text-xs text-muted-foreground">{user.email}</p>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {user.bookCount} book{user.bookCount === 1 ? "" : "s"} · {formatNumber(user.creditBalance)} credits
-                {user.roles.length > 0 && ` · ${user.roles.join(", ")}`}
               </p>
             </div>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                setTarget({ id: user.id, name: user.name });
-                setProblem(null);
-              }}
-              data-testid="adjust-credits"
-            >
-              <Coins className="h-4 w-4" />
-              Adjust credits
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setDetailUserId(user.id)}
+                data-testid={`view-user-${user.id}`}
+              >
+                <Eye className="h-4 w-4" />
+                View full data
+              </Button>
+              <Button
+                variant="soft"
+                size="sm"
+                onClick={() => {
+                  setTarget({ id: user.id, name: user.name });
+                  setProblem(null);
+                }}
+                data-testid="adjust-credits"
+              >
+                <Coins className="h-4 w-4" />
+                Adjust credits
+              </Button>
+            </div>
           </div>
         ))}
         {(users.data ?? []).length === 0 && (
-          <p className="px-5 py-6 text-center text-sm text-muted-foreground">No customers yet.</p>
+          <p className="px-5 py-6 text-center text-sm text-muted-foreground">
+            {search ? `No customers matched "${search}".` : "No customers yet."}
+          </p>
         )}
       </Card>
+
+      {/* User Single View Full Modal */}
+      <UserDetailModal
+        userId={detailUserId}
+        onClose={() => setDetailUserId(null)}
+        onAdjustCredits={(u) => {
+          setTarget(u);
+          setProblem(null);
+          setDetailUserId(null);
+        }}
+      />
 
       {target && (
         <Card className="p-5">

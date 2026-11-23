@@ -26,6 +26,7 @@ import type {
   OpsJob,
   OpsPayment,
   OpsUser,
+  OpsUserDetail,
   OperationsDashboard,
   PublishingStatus,
   RestoreRehearsal,
@@ -45,6 +46,7 @@ export const studioQk = {
   authority: ["admin-me"] as const,
   opsDashboard: ["admin-dashboard"] as const,
   opsUsers: (search?: string) => ["admin-users", search ?? ""] as const,
+  opsUserDetail: (userId: string | null) => ["admin-user-detail", userId ?? ""] as const,
   opsBooks: ["admin-books"] as const,
   opsJobs: ["admin-jobs"] as const,
   opsPayments: ["admin-payments"] as const,
@@ -103,6 +105,18 @@ export function useOpsUsers(search: string | undefined, enabled = true) {
         .get<{ users: OpsUser[] }>(`/admin/users${search ? `?search=${encodeURIComponent(search)}` : ""}`)
         .then((r) => r.users),
     enabled,
+    retry: false,
+  });
+}
+
+export function useOpsUserDetail(userId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: studioQk.opsUserDetail(userId),
+    queryFn: () =>
+      api
+        .get<{ user: OpsUserDetail }>(`/admin/users/${userId}`)
+        .then((r) => r.user),
+    enabled: Boolean(userId) && enabled,
     retry: false,
   });
 }

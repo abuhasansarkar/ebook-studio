@@ -33,6 +33,7 @@ import {
   replySupportRequest,
   resolveIncident,
   supportList,
+  userDetail,
   userList,
 } from "../services/admin/operationsService.js";
 import { billingService } from "../services/billing/billingService.js";
@@ -99,6 +100,16 @@ adminRouter.get("/admin/users", async (req, res) => {
       search: req.query.search ? String(req.query.search) : undefined,
     }),
   });
+});
+
+adminRouter.get("/admin/users/:userId", async (req, res) => {
+  await withPermission(req, "ops.read");
+  const detail = await userDetail(req.params.userId);
+  if (!detail) {
+    res.status(404).json({ error: { message: "User not found" } });
+    return;
+  }
+  res.json({ user: detail });
 });
 
 adminRouter.get("/admin/books", async (req, res) => {

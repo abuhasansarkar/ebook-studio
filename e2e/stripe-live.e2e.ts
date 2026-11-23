@@ -193,6 +193,7 @@ try {
   await page.type("#name", "Stripe Tester");
   await page.type("#email", email);
   await page.type("#password", "password123");
+  await page.type("#confirmPassword", "password123");
   await Promise.all([
     page.waitForFunction(() => location.pathname === "/verify-email", { timeout: 20_000 }),
     page.evaluate(() => {

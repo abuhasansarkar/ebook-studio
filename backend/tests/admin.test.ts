@@ -463,6 +463,31 @@ describe("S13 administration", () => {
       expect(customerRow.roles).toEqual([]);
     });
 
+    it("returns comprehensive single user details for operators and denies unauthorized requests", async () => {
+      // 1. Operator fetching valid customer detail
+      const res = await support.agent.get(`/api/v1/admin/users/${customer.user.id}`);
+      expect(res.status).toBe(200);
+      expect(res.body.user).toBeDefined();
+      expect(res.body.user.id).toBe(customer.user.id);
+      expect(res.body.user.email).toBe(customer.email);
+      expect(res.body.user.wallet).toBeDefined();
+      expect(Array.isArray(res.body.user.roles)).toBe(true);
+      expect(Array.isArray(res.body.user.books)).toBe(true);
+      expect(Array.isArray(res.body.user.transactions)).toBe(true);
+      expect(Array.isArray(res.body.user.jobs)).toBe(true);
+      expect(Array.isArray(res.body.user.payments)).toBe(true);
+      expect(Array.isArray(res.body.user.supportRequests)).toBe(true);
+      expect(Array.isArray(res.body.user.auditEntries)).toBe(true);
+
+      // 2. 404 for unknown user
+      const notFoundRes = await support.agent.get("/api/v1/admin/users/unknown-user-id-999");
+      expect(notFoundRes.status).toBe(404);
+
+      // 3. 403 for unauthorized non-operator customer
+      const deniedRes = await customer.agent.get(`/api/v1/admin/users/${customer.user.id}`);
+      expect(deniedRes.status).toBe(403);
+    });
+
     it("lists books with their owner and counts", async () => {
       const res = await support.agent.get("/api/v1/admin/books");
       expect(res.status).toBe(200);

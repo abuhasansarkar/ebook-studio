@@ -40,6 +40,30 @@ describe("OTP authentication journeys (captured mail; no real SMTP)", () => {
     await post("/email-otp/verify-email", { email, otp: code }).expect(400);
   });
 
+  it("rejects registrations and OTP requests using disposable email addresses", async () => {
+    // 1. Sign-up with disposable email is rejected with HTTP 400
+    const disposableSignup = await post("/sign-up/email", {
+      email: "throwaway-bot@mailinator.com",
+      password: "password123",
+      name: "Bot User",
+    });
+    expect(disposableSignup.status).toBe(400);
+
+    // Verify user was NOT created in database
+    const userInDb = await prisma.user.findUnique({
+      where: { email: "throwaway-bot@mailinator.com" },
+    });
+    expect(userInDb).toBeNull();
+
+    // 2. Requesting an OTP for a disposable email does not send mail (neutral auth response)
+    sendMail.mockClear();
+    await post("/email-otp/send-verification-otp", {
+      email: "spammer@10minutemail.com",
+      type: "email-verification",
+    });
+    expect(sendMail).not.toHaveBeenCalled();
+  });
+
   it("sends reset codes, changes the password and rejects reset code reuse", async () => {
     const email = await signUp();
     await post("/email-otp/verify-email", { email, otp: latestCode("email-verification") }).expect(200);

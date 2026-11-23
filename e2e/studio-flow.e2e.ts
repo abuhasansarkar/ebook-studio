@@ -188,6 +188,7 @@ try {
   await page.type("#name", "S13-S16 Tester");
   await page.type("#email", email);
   await page.type("#password", "password123");
+  await page.type("#confirmPassword", "password123");
   await clickButton(page, "Create account");
   await page.waitForFunction(() => location.pathname === "/verify-email", { timeout: 20_000 });
   const otp = await getOtp(email);

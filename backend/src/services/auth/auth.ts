@@ -2,6 +2,7 @@ import { betterAuth } from "better-auth";
 import { APIError } from "better-auth/api";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { emailOTP } from "better-auth/plugins";
+import { isDisposableEmail, DISPOSABLE_EMAIL_ERROR_MESSAGE } from "@ebook/shared";
 import { env, isProd } from "../../config/env.js";
 import { prisma } from "../../database/prisma.js";
 import { sendOtpEmail } from "../email/mailer.js";
@@ -40,6 +41,9 @@ export const auth = betterAuth({
       sendVerificationOnSignUp: true,
       overrideDefaultEmailVerification: true,
       async sendVerificationOTP({ email, otp, type }) {
+        if (isDisposableEmail(email)) {
+          throw new APIError("BAD_REQUEST", { message: DISPOSABLE_EMAIL_ERROR_MESSAGE });
+        }
         // Persist the encrypted delivery before returning; eligible SMTP failures retry.
         // Better Auth keeps auth responses neutral, including unknown accounts.
         try {
@@ -54,6 +58,12 @@ export const auth = betterAuth({
   databaseHooks: {
     user: {
       create: {
+        before: async (user) => {
+          if (isDisposableEmail(user.email)) {
+            throw new APIError("BAD_REQUEST", { message: DISPOSABLE_EMAIL_ERROR_MESSAGE });
+          }
+          return { data: user };
+        },
         after: async (user) => {
           await creditService.grantSignupBonus(user.id);
         },

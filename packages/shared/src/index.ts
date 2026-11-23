@@ -17,3 +17,4 @@ export * from './distribution';
 export * from './marketing';
 export * from './listing';
 export * from './coloring';
+export * from './email-validation';

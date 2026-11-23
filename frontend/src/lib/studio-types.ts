@@ -109,6 +109,124 @@ export interface OpsUser {
   roles: AdminRole[];
 }
 
+/** Comprehensive single user data for administrator full modal view. */
+export interface OpsUserDetail {
+  id: string;
+  name: string;
+  email: string;
+  emailVerified: boolean;
+  image: string | null;
+  createdAt: string;
+  updatedAt: string;
+  wallet: {
+    balance: number;
+    reserved: number;
+    updatedAt: string;
+  };
+  roles: Array<{
+    id: string;
+    role: AdminRole;
+    reason: string;
+    grantedAt: string;
+    grantedBy: string | null;
+    revokedAt: string | null;
+    revokedBy: string | null;
+    revokeReason: string | null;
+    isActive: boolean;
+  }>;
+  transactions: Array<{
+    id: string;
+    amount: number;
+    balanceAfter: number;
+    type: string;
+    reference: string | null;
+    description: string | null;
+    createdAt: string;
+  }>;
+  subscriptions: Array<{
+    id: string;
+    planId: string;
+    planName: string;
+    planRecurring: boolean;
+    status: string;
+    currentPeriodEnd: string | null;
+    canceledAt: string | null;
+    createdAt: string;
+  }>;
+  payments: Array<{
+    id: string;
+    amountMinor: number;
+    currency: string;
+    status: string;
+    credits: number;
+    planName: string | null;
+    provider: string;
+    createdAt: string;
+    settledAt: string | null;
+    refundedAt: string | null;
+  }>;
+  entitlements: Array<{
+    key: string;
+    value: unknown;
+    source: string;
+    sourceId: string | null;
+    expiresAt: string | null;
+    createdAt: string;
+  }>;
+  books: Array<{
+    id: string;
+    title: string;
+    subtitle: string | null;
+    language: string;
+    bookType: string;
+    status: string;
+    chapterCount: number;
+    exportCount: number;
+    sourceCount: number;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  jobs: Array<{
+    id: string;
+    type: string;
+    status: string;
+    progress: number;
+    total: number;
+    model: string | null;
+    bookId: string | null;
+    bookTitle: string;
+    creditsReserved: number;
+    creditsCharged: number;
+    error: string | null;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  supportRequests: Array<{
+    id: string;
+    correlationId: string;
+    category: string;
+    subject: string;
+    message: string;
+    status: string;
+    response: string | null;
+    respondedAt: string | null;
+    createdAt: string;
+  }>;
+  auditEntries: Array<{
+    id: string;
+    action: string;
+    targetType: string;
+    targetId: string;
+    reason: string;
+    outcome: string;
+    actorId: string | null;
+    actorEmail: string | null;
+    actorName: string | null;
+    actorRole: string | null;
+    createdAt: string;
+  }>;
+}
+
 /** One row of the operational book list. */
 export interface OpsBook {
   id: string;
