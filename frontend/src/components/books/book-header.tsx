@@ -66,7 +66,7 @@ export function BookHeader({ params }: { params: Promise<{ bookId: string }> }) 
 
   return (
     <div className="border-b border-border bg-surface">
-      <div className="mx-auto max-w-6xl px-4 pt-5 sm:px-8">
+      <div className="mx-auto w-full px-4 pt-5 sm:px-8">
         <Link href="/app/books" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-4 w-4" /> My eBooks
         </Link>
