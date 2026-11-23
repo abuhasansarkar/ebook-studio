@@ -241,6 +241,22 @@ export function useCreditAdjustment() {
   });
 }
 
+/** Deletes a customer account and tombstones the email address. */
+export function useAdminDeleteUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { userId: string; reason?: string }) =>
+      api.delete<{ success: boolean; message: string; email: string }>(`/admin/users/${input.userId}`, {
+        reason: input.reason,
+      }),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: studioQk.opsUsers() });
+      void qc.invalidateQueries({ queryKey: studioQk.opsDashboard });
+      void qc.invalidateQueries({ queryKey: studioQk.audit() });
+    },
+  });
+}
+
 /** Answers a support request. */
 export function useSupportReply() {
   const qc = useQueryClient();

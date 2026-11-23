@@ -1,6 +1,6 @@
 import { prisma } from "../../database/prisma.js";
 import { logger } from "../../utils/logger.js";
-import { notFound } from "../../utils/errors.js";
+import { notFound, badRequest } from "../../utils/errors.js";
 import { recordAudit } from "./adminService.js";
 
 /**
@@ -555,6 +555,111 @@ export async function adjustCredits(input: {
   });
 
   return result;
+}
+
+/**
+ * Permanently deletes a user account and tombstones their email address
+ * to prevent re-registration and protect trial credits.
+ * Can be called by an administrator or as self-service by the account owner.
+ */
+export async function deleteUserAccount(options: {
+  userId: string;
+  actorId: string;
+  source: "self" | "admin";
+  reason?: string;
+  requestId?: string;
+  ipAddress?: string;
+}): Promise<{ success: boolean; email: string; userId: string }> {
+  const target = await prisma.user.findUnique({
+    where: { id: options.userId },
+    include: {
+      adminRoles: { where: { revokedAt: null } },
+    },
+  });
+  if (!target) throw notFound("User");
+
+  // Safety guard: Cannot delete the last active administrator
+  const isTargetAdmin = target.adminRoles.some((r) => r.role === "administrator");
+  if (isTargetAdmin) {
+    const adminCount = await prisma.adminRole.count({
+      where: { role: "administrator", revokedAt: null },
+    });
+    if (adminCount <= 1) {
+      throw badRequest(
+        "Cannot delete the only active administrator account. Transfer or grant the administrator role to another user first.",
+      );
+    }
+  }
+
+  const normalizedEmail = target.email.trim().toLowerCase();
+
+  // Execute in interactive transaction
+  await prisma.$transaction(async (tx) => {
+    // 1. Tombstone the email address so it cannot ever be used again
+    await tx.tombstonedEmail.upsert({
+      where: { email: normalizedEmail },
+      create: {
+        email: normalizedEmail,
+        reason: options.source === "self" ? "self_deleted" : "admin_deleted",
+        deletedBy: options.actorId,
+        note: options.reason || undefined,
+      },
+      update: {
+        reason: options.source === "self" ? "self_deleted" : "admin_deleted",
+        deletedBy: options.actorId,
+        note: options.reason || undefined,
+        deletedAt: new Date(),
+      },
+    });
+
+    // 2. Clean up any related records that might have restrictive foreign keys or references
+    await tx.qualityFinding.deleteMany({
+      where: { report: { job: { userId: target.id } } },
+    });
+    await tx.qualityReport.deleteMany({
+      where: { job: { userId: target.id } },
+    });
+
+    await tx.assetReference.deleteMany({
+      where: { asset: { userId: target.id } },
+    });
+    await tx.asset.deleteMany({
+      where: { userId: target.id },
+    });
+
+    // Invalidate sessions and accounts immediately
+    await tx.session.deleteMany({ where: { userId: target.id } });
+    await tx.account.deleteMany({ where: { userId: target.id } });
+
+    // 3. Delete user (cascades books, wallet, transactions, subscriptions, jobs, entitlements)
+    await tx.user.delete({ where: { id: target.id } });
+
+    // 4. Record privileged audit entry
+    await tx.adminAuditEntry.create({
+      data: {
+        actorId: options.source === "admin" ? options.actorId : null,
+        actorRole: options.source === "admin" ? "administrator" : "self",
+        action: options.source === "admin" ? "user.delete" : "user.self_delete",
+        targetType: "user",
+        targetId: target.id,
+        reason:
+          options.reason ||
+          (options.source === "self"
+            ? "Customer requested self-service account deletion"
+            : "Administrator deleted user account"),
+        outcome: "ok",
+        details: {
+          deletedEmail: normalizedEmail,
+          deletedName: target.name,
+          source: options.source,
+        },
+        requestId: options.requestId ?? null,
+        ipAddress: options.ipAddress ?? null,
+      },
+    });
+  });
+
+  return { success: true, email: normalizedEmail, userId: target.id };
 }
 
 /**

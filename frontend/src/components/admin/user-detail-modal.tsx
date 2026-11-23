@@ -14,13 +14,16 @@ import {
   LifeBuoy,
   ScrollText,
   ShieldAlert,
+  Trash2,
   User as UserIcon,
   XCircle,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Dialog } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Badge, Card, EmptyState, ErrorState, PageLoader } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
-import { useOpsUserDetail } from "@/lib/studio-queries";
+import { useAdminDeleteUser, useOpsUserDetail } from "@/lib/studio-queries";
 import { formatNumber, timeAgo } from "@/lib/utils";
 import { errorMessage } from "@/lib/api";
 import type { OpsUserDetail } from "@/lib/studio-types";
@@ -36,6 +39,9 @@ interface UserDetailModalProps {
 export function UserDetailModal({ userId, onClose, onAdjustCredits }: UserDetailModalProps) {
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [copied, setCopied] = useState(false);
+  const [confirmDeleteUser, setConfirmDeleteUser] = useState(false);
+  const [deleteReason, setDeleteReason] = useState("");
+  const deleteMutation = useAdminDeleteUser();
 
   const query = useOpsUserDetail(userId, Boolean(userId));
 
@@ -43,6 +49,18 @@ export function UserDetailModal({ userId, onClose, onAdjustCredits }: UserDetail
     void navigator.clipboard.writeText(id);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleDeleteUser = async () => {
+    if (!user) return;
+    try {
+      await deleteMutation.mutateAsync({ userId: user.id, reason: deleteReason || "Admin user deletion" });
+      toast.success(`User ${user.email} permanently deleted`);
+      setConfirmDeleteUser(false);
+      onClose();
+    } catch (err) {
+      toast.error(errorMessage(err));
+    }
   };
 
   const user = query.data;
@@ -116,17 +134,26 @@ export function UserDetailModal({ userId, onClose, onAdjustCredits }: UserDetail
               </div>
             </div>
 
-            {onAdjustCredits && (
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {onAdjustCredits && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => onAdjustCredits({ id: user.id, name: user.name })}
+                >
+                  <Coins className="h-4 w-4" />
+                  Adjust credits
+                </Button>
+              )}
               <Button
-                variant="secondary"
+                variant="danger"
                 size="sm"
-                onClick={() => onAdjustCredits({ id: user.id, name: user.name })}
-                className="shrink-0"
+                onClick={() => setConfirmDeleteUser(true)}
               >
-                <Coins className="h-4 w-4" />
-                Adjust credits
+                <Trash2 className="h-4 w-4" />
+                Delete user
               </Button>
-            )}
+            </div>
           </div>
 
           {/* Navigation Tabs */}
@@ -172,6 +199,38 @@ export function UserDetailModal({ userId, onClose, onAdjustCredits }: UserDetail
           </div>
         </div>
       )}
+      <ConfirmDialog
+        open={confirmDeleteUser}
+        onClose={() => {
+          setConfirmDeleteUser(false);
+          setDeleteReason("");
+        }}
+        onConfirm={handleDeleteUser}
+        title={`Delete customer ${user?.name || ""}?`}
+        description="This will permanently delete the customer account and tombstone their email address."
+        confirmLabel="Delete User"
+        tone="danger"
+        busy={deleteMutation.isPending}
+      >
+        <p className="font-semibold text-foreground">
+          Delete account for <span className="font-bold">{user?.email}</span>?
+        </p>
+        <ul className="mt-2 list-disc pl-4 space-y-1 text-xs text-muted-foreground">
+          <li>All user data, books, and generation jobs will be deleted.</li>
+          <li>The email address will be permanently tombstoned and cannot be reused.</li>
+          <li>Privileged actions will be logged in the immutable audit trail.</li>
+        </ul>
+        <div className="mt-3">
+          <label className="text-xs font-medium text-foreground block mb-1">Reason for deletion (audited):</label>
+          <input
+            type="text"
+            className="w-full rounded-xl border border-border bg-surface px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-danger/20"
+            placeholder="e.g. Terms violation, customer request, spam cleanup"
+            value={deleteReason}
+            onChange={(e) => setDeleteReason(e.target.value)}
+          />
+        </div>
+      </ConfirmDialog>
     </Dialog>
   );
 }

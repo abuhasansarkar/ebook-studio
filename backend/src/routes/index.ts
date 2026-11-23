@@ -40,6 +40,19 @@ apiRouter.get("/health/live", healthController.live);
 apiRouter.get("/health/ready", healthController.ready);
 apiRouter.get("/health", healthController.check);
 apiRouter.get("/config", accountController.publicConfig);
+apiRouter.get("/check-email", async (req, res) => {
+  const email = typeof req.query.email === "string" ? req.query.email.trim() : "";
+  if (!email) return res.json({ available: false, reason: "empty" });
+  const { isDisposableEmail, DISPOSABLE_EMAIL_ERROR_MESSAGE } = await import("@ebook/shared");
+  const { isTombstonedEmail, TOMBSTONED_EMAIL_ERROR_MESSAGE } = await import("../services/auth/auth.js");
+  if (isDisposableEmail(email)) {
+    return res.json({ available: false, disposable: true, message: DISPOSABLE_EMAIL_ERROR_MESSAGE });
+  }
+  if (await isTombstonedEmail(email)) {
+    return res.json({ available: false, tombstoned: true, message: TOMBSTONED_EMAIL_ERROR_MESSAGE });
+  }
+  return res.json({ available: true });
+});
 
 // ---- Everything below requires a verified session ----
 apiRouter.use(requireAuth);
@@ -66,6 +79,7 @@ apiRouter.get("/books/:bookId/operations", async (req, res) => {
 });
 
 apiRouter.get("/users/me", accountController.me);
+apiRouter.delete("/users/me", accountController.deleteMe);
 apiRouter.get("/users/me/dashboard", bookController.dashboard);
 apiRouter.get("/credits", accountController.credits);
 apiRouter.get("/credits/transactions", accountController.creditHistory);

@@ -8,6 +8,19 @@ import { prisma } from "../../database/prisma.js";
 import { sendOtpEmail } from "../email/mailer.js";
 import { creditService } from "../credits/creditService.js";
 
+export const TOMBSTONED_EMAIL_ERROR_MESSAGE =
+  "This email address was previously associated with a deleted account. Deleted accounts and their email addresses cannot be reused for new registrations.";
+
+export async function isTombstonedEmail(email: string): Promise<boolean> {
+  if (!email || typeof email !== "string") return false;
+  const normalized = email.trim().toLowerCase();
+  const existing = await prisma.tombstonedEmail.findUnique({
+    where: { email: normalized },
+    select: { id: true },
+  });
+  return Boolean(existing);
+}
+
 const googleEnabled = Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
 
 export const auth = betterAuth({
@@ -44,6 +57,9 @@ export const auth = betterAuth({
         if (isDisposableEmail(email)) {
           throw new APIError("BAD_REQUEST", { message: DISPOSABLE_EMAIL_ERROR_MESSAGE });
         }
+        if (await isTombstonedEmail(email)) {
+          throw new APIError("BAD_REQUEST", { message: TOMBSTONED_EMAIL_ERROR_MESSAGE });
+        }
         // Persist the encrypted delivery before returning; eligible SMTP failures retry.
         // Better Auth keeps auth responses neutral, including unknown accounts.
         try {
@@ -61,6 +77,9 @@ export const auth = betterAuth({
         before: async (user) => {
           if (isDisposableEmail(user.email)) {
             throw new APIError("BAD_REQUEST", { message: DISPOSABLE_EMAIL_ERROR_MESSAGE });
+          }
+          if (await isTombstonedEmail(user.email)) {
+            throw new APIError("BAD_REQUEST", { message: TOMBSTONED_EMAIL_ERROR_MESSAGE });
           }
           return { data: user };
         },

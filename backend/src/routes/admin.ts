@@ -35,6 +35,7 @@ import {
   supportList,
   userDetail,
   userList,
+  deleteUserAccount,
 } from "../services/admin/operationsService.js";
 import { billingService } from "../services/billing/billingService.js";
 import {
@@ -110,6 +111,21 @@ adminRouter.get("/admin/users/:userId", async (req, res) => {
     return;
   }
   res.json({ user: detail });
+});
+
+adminRouter.delete("/admin/users/:userId", async (req, res) => {
+  const actorId = await withPermission(req, "users.manage");
+  const targetUserId = String(req.params.userId);
+  const reason = typeof req.body?.reason === "string" ? req.body.reason : "Administrator deleted user account";
+  const result = await deleteUserAccount({
+    userId: targetUserId,
+    actorId,
+    source: "admin",
+    reason,
+    requestId: req.id ? String(req.id) : undefined,
+    ipAddress: req.ip,
+  });
+  res.json({ message: "User account deleted and email tombstoned", ...result });
 });
 
 adminRouter.get("/admin/books", async (req, res) => {

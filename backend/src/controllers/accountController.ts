@@ -60,4 +60,19 @@ export const accountController = {
     if (res2.count === 0) throw notFound("Project");
     res.status(204).end();
   },
+
+  async deleteMe(req: Request, res: Response) {
+    const uid = userId(req);
+    const { deleteUserAccount } = await import("../services/admin/operationsService.js");
+    const result = await deleteUserAccount({
+      userId: uid,
+      actorId: uid,
+      source: "self",
+      reason: typeof req.body?.reason === "string" ? req.body.reason : "Self-service account deletion",
+      requestId: req.id ? String(req.id) : undefined,
+      ipAddress: req.ip,
+    });
+    res.clearCookie("better-auth.session_token");
+    res.json({ success: true, message: "Your account has been permanently deleted.", email: result.email });
+  },
 };

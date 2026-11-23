@@ -29,6 +29,7 @@ import { errorMessage } from "@/lib/api";
 import { useMounted } from "@/lib/use-mounted";
 import {
   useAdminAuthority,
+  useAdminDeleteUser,
   useAlertDeliveries,
   useAuditTrail,
   useBackups,
@@ -252,8 +253,11 @@ function UsersPanel() {
   const [search, setSearch] = useState("");
   const users = useOpsUsers(search.trim() ? search.trim() : undefined);
   const adjust = useCreditAdjustment();
+  const deleteMutation = useAdminDeleteUser();
   const [detailUserId, setDetailUserId] = useState<string | null>(null);
   const [target, setTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; email: string; name: string } | null>(null);
+  const [deleteReason, setDeleteReason] = useState("");
   const [credits, setCredits] = useState("100");
   const [reason, setReason] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
@@ -328,6 +332,19 @@ function UsersPanel() {
                 <Coins className="h-4 w-4" />
                 Adjust credits
               </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-danger hover:bg-danger/10 hover:text-danger"
+                onClick={() => {
+                  setDeleteTarget({ id: user.id, email: user.email, name: user.name });
+                  setDeleteReason("");
+                }}
+                data-testid={`delete-user-${user.id}`}
+                title="Delete customer"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
             </div>
           </div>
         ))}
@@ -348,6 +365,41 @@ function UsersPanel() {
           setDetailUserId(null);
         }}
       />
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onClose={() => setDeleteTarget(null)}
+        title={`Permanently delete ${deleteTarget?.email ?? "user"}?`}
+        description="This will purge all books, assets, sessions, and records for this customer. Their email address will be permanently tombstoned and cannot be used to register again."
+        confirmLabel="Delete customer"
+        tone="danger"
+        busy={deleteMutation.isPending}
+        onConfirm={async () => {
+          if (!deleteTarget) return;
+          try {
+            await deleteMutation.mutateAsync({
+              userId: deleteTarget.id,
+              reason: deleteReason.trim() || "Admin deletion from user list",
+            });
+            setDeleteTarget(null);
+            setDeleteReason("");
+          } catch (err) {
+            setProblem(errorMessage(err));
+          }
+        }}
+      >
+        <div className="space-y-3">
+          <Field label="Reason for deletion (recorded in audit trail)" htmlFor="delete-user-reason">
+            <Input
+              id="delete-user-reason"
+              placeholder="e.g., Requested by customer / duplicate / terms violation"
+              value={deleteReason}
+              onChange={(e) => setDeleteReason(e.target.value)}
+              className="bg-background"
+            />
+          </Field>
+        </div>
+      </ConfirmDialog>
 
       {target && (
         <Card className="p-5">

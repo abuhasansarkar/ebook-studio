@@ -3,12 +3,14 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { BadgeCheck, ShieldCheck, UserRound } from "lucide-react";
+import { AlertTriangle, BadgeCheck, ShieldCheck, UserRound } from "lucide-react";
 import { PageHeader } from "@/components/app/app-shell";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Field, Input } from "@/components/ui/form";
 import { Alert, Card, DetailList, DetailRow, Section } from "@/components/ui/misc";
 import { authClient, signOut, useSession } from "@/lib/auth-client";
+import { api } from "@/lib/api";
 import { useAccount } from "@/lib/queries";
 
 /**
@@ -45,6 +47,25 @@ export default function SettingsPage() {
   const trimmed = name.trim();
   const unchanged = trimmed === (session?.user.name ?? "");
   const tooShort = trimmed.length > 0 && trimmed.length < 2;
+
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteConfirmationText, setDeleteConfirmationText] = useState("");
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmationText !== "DELETE") return;
+    setDeleting(true);
+    try {
+      await api.delete("/users/me");
+      await signOut();
+      toast.success("Account permanently deleted");
+      router.replace("/signup");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Could not delete account";
+      toast.error(msg);
+      setDeleting(false);
+    }
+  };
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-8">
@@ -110,7 +131,66 @@ export default function SettingsPage() {
             </Button>
           </Card>
         </Section>
+
+        <Section title="Danger Zone" description="Irreversible actions regarding your account.">
+          <Card className="border-danger/30 p-6 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="min-w-0">
+                <h3 className="font-semibold text-danger flex items-center gap-2">
+                  <AlertTriangle className="h-4.5 w-4.5 shrink-0" />
+                  Delete account
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Permanently delete your profile, books, generations, and assets.
+                  <strong className="text-foreground"> Once deleted, this email cannot be reused.</strong>
+                </p>
+              </div>
+              <Button
+                variant="danger"
+                onClick={() => setConfirmDelete(true)}
+                data-testid="delete-account-button"
+              >
+                Delete account
+              </Button>
+            </div>
+          </Card>
+        </Section>
       </div>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        onClose={() => {
+          setConfirmDelete(false);
+          setDeleteConfirmationText("");
+        }}
+        onConfirm={handleDeleteAccount}
+        title="Delete account permanently"
+        description="This action cannot be undone."
+        confirmLabel="Delete my account"
+        tone="danger"
+        busy={deleting}
+        confirmDisabled={deleteConfirmationText !== "DELETE"}
+      >
+        <p className="font-semibold text-foreground">Are you sure you want to delete your account?</p>
+        <ul className="mt-2 list-disc pl-4 space-y-1 text-xs text-muted-foreground">
+          <li>All your books, chapters, and assets will be permanently deleted.</li>
+          <li>Remaining wallet credits will be forfeited.</li>
+          <li>
+            <strong className="text-danger">Your email ({session?.user.email}) will be permanently tombstoned</strong> and cannot be used to register a new account.
+          </li>
+        </ul>
+        <div className="mt-3">
+          <p className="text-xs font-medium text-foreground mb-1">
+            Type <span className="font-mono font-bold text-danger">DELETE</span> to confirm:
+          </p>
+          <Input
+            value={deleteConfirmationText}
+            onChange={(e) => setDeleteConfirmationText(e.target.value)}
+            placeholder="DELETE"
+            className="h-9 text-xs"
+          />
+        </div>
+      </ConfirmDialog>
     </div>
   );
 }
