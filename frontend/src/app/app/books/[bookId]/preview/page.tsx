@@ -158,10 +158,13 @@ export default function EBookPreviewPage({ params }: { params: Promise<{ bookId:
         partial = sample.partial;
       }
 
-      // Create downloadable blob
+      // Create downloadable blob and revoke any previous object URL
       const blob = new Blob([buffer], { type: "application/pdf" });
       const objectUrl = URL.createObjectURL(blob);
-      setPdfBlobUrl(objectUrl);
+      setPdfBlobUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return objectUrl;
+      });
 
       // Load document with PDF.js in the browser
       const pdfDoc = await loadPdfDocument(buffer);
@@ -193,16 +196,23 @@ export default function EBookPreviewPage({ params }: { params: Promise<{ bookId:
     }
   };
 
-  // Automatically load or render PDF on page mount
+  // Revoke object URL on unmount
   useEffect(() => {
-    if (hasAutoLoadedRef.current || !book) return;
+    return () => {
+      if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
+    };
+  }, [pdfBlobUrl]);
+
+  // Automatically load or render PDF on page mount once exportsQuery has settled
+  useEffect(() => {
+    if (hasAutoLoadedRef.current || !book || exportsQuery.isPending) return;
     hasAutoLoadedRef.current = true;
 
     const exportId = readyPdfExport?.id;
     queueMicrotask(() => {
       void handleRenderPdf(exportId, true);
     });
-  }, [book, readyPdfExport?.id]);
+  }, [book, exportsQuery.isPending, readyPdfExport?.id]);
 
   const handlePrev = () => {
     if (viewMode === "single") {

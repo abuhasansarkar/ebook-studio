@@ -70,7 +70,7 @@ function printCss(doc: BookDocument, bodyFamily: string) {
   .title-page,.copyright,.dedication{height:${(pageHeight - 0.05).toFixed(2)}in}
   .chapter-opening{padding-top:${Math.min(1.2, pageHeight * 0.12).toFixed(2)}in}
   img{max-height:${Math.max(1.5, pageHeight - 1.2).toFixed(2)}in}
-  tr,figure,pre{break-inside:avoid}
+  tr,figure,pre,.card-example,.card-mistake,.summary-banner,.quote-hero,.card-tip,.editorial-card,.cta-block{break-inside:avoid}
   h1,h2,h3,h4,.chapter-label{break-after:avoid}
   .table-wrap{overflow:visible}
   table{table-layout:fixed}
@@ -95,6 +95,7 @@ function readerCss(doc: BookDocument) {
 
 export function renderBookHtml(doc: BookDocument, options: RenderOptions): string {
   const { typography: t, elements: e, matter } = doc.design.data;
+  const isEditorial = doc.design.data.template?.id === "editorial";
   const includeMatter = options.includeMatter !== false;
   const includeToc = options.includeToc !== false;
   const lang = doc.book.language;
@@ -112,7 +113,7 @@ export function renderBookHtml(doc: BookDocument, options: RenderOptions): strin
     includeMatter && matter.dedication.enabled ? `<section class="front dedication" aria-label="Dedication">${paragraphs(matter.dedication.text)}</section>` : "",
     includeMatter && includeToc && matter.contents.enabled && contents.length ? `<nav class="front toc" aria-labelledby="toc-title"><h2 id="toc-title">${text(matter.contents.title)}</h2><ol>${contents.map((c, i) => `<li><a href="#${c.id}">${i < doc.chapters.length ? `<span class="toc-num">${i + 1}</span>` : ""}<span>${text(c.title)}</span></a></li>`).join("")}</ol></nav>` : "",
   ].join("");
-  const label = (n: number) => e.chapterLabel === "number" ? `<p class="chapter-label">${n}</p>` : e.chapterLabel === "word" ? `<p class="chapter-label">${text(chapterWord(lang, n))}</p>` : "";
+  const label = (n: number) => e.chapterLabel === "number" ? `<p class="chapter-label">${isEditorial && n < 10 ? `0${n}` : n}</p>` : e.chapterLabel === "word" ? `<p class="chapter-label">${text(chapterWord(lang, n))}</p>` : "";
   const chapters = doc.chapters.map((c, i) => `<section class="chapter" id="chapter-${i + 1}"><header class="chapter-opening">${label(i + 1)}<h1>${text(c.title)}</h1>${e.chapterOrnament === "rule" ? '<div class="ornament" aria-hidden="true"></div>' : ""}</header><div class="chapter-body">${tiptapToHtml(c.content as PMNode, options.images)}</div></section>`).join("");
   const back = [
     includeMatter && matter.aboutAuthor.enabled ? `<section class="back about" id="about-author"><h1>${text(matter.aboutAuthor.title)}</h1>${paragraphs(matter.aboutAuthor.text)}</section>` : "",
@@ -131,8 +132,8 @@ export function renderBookHtml(doc: BookDocument, options: RenderOptions): strin
 <style>
 ${fontFaces([stacks.body, stacks.heading, stacks.mono], options)}
 *{box-sizing:border-box}
-html{background:#fff;-webkit-text-size-adjust:100%}
-body{margin:0;font-family:${body};font-synthesis:style;color:#1d1a17;line-height:${lineHeight};text-align:start;font-kerning:normal;orphans:2;widows:2;${t.hyphenate ? "hyphens:auto;" : ""}}
+html{background:${isEditorial ? "#faf6f2" : "#fff"};-webkit-text-size-adjust:100%}
+body{margin:0;font-family:${body};font-synthesis:style;color:${isEditorial ? "#2b2523" : "#1d1a17"};line-height:${lineHeight};text-align:start;font-kerning:normal;orphans:2;widows:2;${t.hyphenate ? "hyphens:auto;" : ""}}
 :lang(zh),:lang(ja){line-break:strict;word-break:normal;overflow-wrap:anywhere}
 :lang(ko){word-break:keep-all;overflow-wrap:anywhere}
 h1,h2,h3,h4,.book-title,.chapter-label,.toc h2{font-family:${heading};line-height:1.25;hyphens:manual}
@@ -148,10 +149,10 @@ h1,h2,h3,h4,.book-title,.chapter-label,.toc h2{font-family:${heading};line-heigh
 .toc li{margin:0 0 .55em}
 .toc a{color:inherit;text-decoration:none;display:flex;gap:.8em}
 .toc-num{color:${e.accent};font-weight:700;min-width:1.5em}
-.chapter-label{color:${e.accent};font-weight:700;font-size:1.05em;margin:0 0 .4em}
+.chapter-label{color:${e.accent};font-weight:700;font-size:${isEditorial ? "3.2em" : "1.05em"};line-height:1;margin:0 0 .3em}
 .chapter-body,.back{text-align:${t.align === "justify" ? "justify" : "start"};text-align-last:start}
 h1{font-size:${headingSize[0]}em;margin:0 0 1em}
-.ornament{width:2.5em;height:2px;background:${e.accent};margin:-.4em 0 1.6em}
+.ornament{width:${isEditorial ? "60px" : "2.5em"};height:${isEditorial ? "3px" : "2px"};background:${e.accent};margin:${isEditorial ? ".4em 0 1.5em" : "-.4em 0 1.6em"}}
 h2{font-size:${headingSize[1]}em;margin:1.5em 0 .5em}
 h3{font-size:${headingSize[2]}em;margin:1.2em 0 .4em}
 h4{font-size:1em;margin:1em 0 .3em}
@@ -174,6 +175,41 @@ figure{margin:1.2em 0;text-align:center}
 img{max-width:${e.imageWidth === "medium" ? "70%" : "100%"}}
 figcaption{font-size:.82em;color:#666;margin-top:.4em;text-align:${e.captionAlign === "center" ? "center" : "start"}}
 a{color:#a7432a}
+
+/* Editorial Magazine & Creator Components */
+.card-example{background:${e.accent};color:#ffffff;border-radius:14px;padding:1.4em 1.6em;margin:1.2em 0;box-shadow:0 4px 14px rgba(186,107,74,0.15);break-inside:avoid}
+.card-example h2,.card-example h3,.card-example h4,.card-example p,.card-example li{color:#ffffff!important}
+.card-example .card-title{font-family:${heading};font-size:1.4em;margin:0 0 .6em;letter-spacing:.02em}
+
+.card-mistake{background:#fbf3ed;border:1px solid #f2e3d8;border-radius:12px;padding:1.2em 1.4em 1.2em 2.8em;margin:.9em 0;position:relative;break-inside:avoid}
+.card-mistake .badge-mistake{color:#e57373;font-size:1.6em;font-weight:700;position:absolute;top:.4em;left:.55em;line-height:1}
+.card-mistake .mistake-title{font-size:1.05em;font-weight:700;margin:0 0 .4em;color:#332a27}
+
+.summary-banner{background:${e.accent};color:#ffffff;border-radius:12px;padding:1.2em 1.6em;margin:1.5em 0;break-inside:avoid}
+.summary-banner h3,.summary-banner p,.summary-banner li{color:#ffffff!important}
+.summary-banner .summary-title{font-family:${heading};font-size:1.3em;margin:0 0 .5em}
+.summary-banner ul{list-style:none;padding-inline-start:0}
+.summary-banner li{position:relative;padding-inline-start:1.6em;margin-bottom:.4em}
+.summary-banner li::before{content:"✔";position:absolute;left:0;color:#ffffff;font-weight:bold}
+
+.quote-hero{position:relative;padding:1.4em 2em;margin:1.5em 0;text-align:center;break-inside:avoid}
+.quote-hero .quote-glyph{font-size:4.5em;font-family:${heading};color:${e.accent};opacity:.25;display:block;line-height:.5;margin-bottom:.2em}
+.quote-hero blockquote{border:0!important;font-family:${heading};font-size:1.25em;font-style:italic;color:#3a2e2b;margin:0;padding:0;line-height:1.5}
+
+.card-tip{background:#ffffff;border-inline-start:4px solid #f59e0b;border-radius:8px;padding:1em 1.4em;margin:1em 0;box-shadow:0 2px 8px rgba(0,0,0,0.04);break-inside:avoid}
+.card-tip .tip-glyph{margin-inline-end:.4em}
+
+.editorial-card{background:#ffffff;border:1px solid #ede5de;border-radius:12px;padding:1.2em;margin:.8em 0;box-shadow:0 2px 8px rgba(43,37,35,0.04);break-inside:avoid}
+
+.split-columns{display:grid;grid-template-columns:1.15fr .85fr;gap:1.5em;margin:1.2em 0;align-items:start}
+.editorial-grid{display:grid;gap:1em;margin:1.2em 0}
+.editorial-grid.grid-2,.bento-grid,.matrix-2x2{display:grid;grid-template-columns:1fr 1fr;gap:1em;margin:1.2em 0}
+.editorial-grid.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1em;margin:1.2em 0}
+
+.cta-block{background:#fbf3ed;border:1px solid #f2e3d8;border-radius:14px;padding:2em;text-align:center;margin:2em 0;break-inside:avoid}
+.cta-button{display:inline-block;background:${e.accent};color:#ffffff!important;font-family:${heading};font-weight:700;font-size:.95em;padding:.85em 2.2em;border-radius:8px;text-decoration:none;letter-spacing:.05em;text-transform:uppercase;margin-top:1em;box-shadow:0 4px 10px rgba(186,107,74,0.25)}
+.card-dashed{border:2px dashed #d6a894;border-radius:12px;padding:1.2em;background:#ffffff;break-inside:avoid}
+
 ${options.mode === "print" ? printCss(doc, body) : readerCss(doc)}
 </style>
 </head>

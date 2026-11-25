@@ -38,27 +38,9 @@ export const accountController = {
     res.json(await creditService.pageTransactions(uid, 50, cursor));
   },
 
-  async listProjects(req: Request, res: Response) {
-    const projects = await prisma.project.findMany({
-      where: { userId: userId(req), deletedAt: null },
-      orderBy: { updatedAt: "desc" },
-      include: { _count: { select: { books: { where: { deletedAt: null } } } } },
-    });
-    res.json({ projects });
-  },
-
   async createProject(req: Request, res: Response) {
     const project = await prisma.project.create({ data: { userId: userId(req), ...req.body } });
     res.status(201).json({ project });
-  },
-
-  async deleteProject(req: Request, res: Response) {
-    const res2 = await prisma.project.updateMany({
-      where: { id: String(req.params.projectId), userId: userId(req), deletedAt: null },
-      data: { deletedAt: new Date() },
-    });
-    if (res2.count === 0) throw notFound("Project");
-    res.status(204).end();
   },
 
   async deleteMe(req: Request, res: Response) {
@@ -72,7 +54,8 @@ export const accountController = {
       requestId: req.id ? String(req.id) : undefined,
       ipAddress: req.ip,
     });
-    res.clearCookie("better-auth.session_token");
+    res.clearCookie("better-auth.session_token", { path: "/" });
+    res.clearCookie("__Secure-better-auth.session_token", { path: "/", secure: true, httpOnly: true, sameSite: "lax" });
     res.json({ success: true, message: "Your account has been permanently deleted.", email: result.email });
   },
 };

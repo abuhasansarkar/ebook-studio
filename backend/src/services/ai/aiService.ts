@@ -80,8 +80,28 @@ const mock = {
   },
   section(i: SectionPromptInput): string {
     const para = `This section explains "${i.sectionTopic}" as part of ${i.chapter.title}. It gives the reader practical guidance, a concrete example, and a clear next action.`;
-    const lines = [`## ${i.sectionTopic}`, "", para, "", para, "", "- First practical step", "- Second practical step", "- Third practical step"];
-    if (i.sectionIndex === i.sectionCount - 1) lines.push("", "### Key takeaways", "", "- Takeaway one", "- Takeaway two", "- Takeaway three");
+    const isLeadMagnet = i.brief.bookType === "lead_magnet";
+    const lines = [`## ${i.sectionTopic}`, "", para];
+    if (isLeadMagnet) {
+      lines.push(
+        "",
+        `> [!EXAMPLE] Exemple concret\n> Imagine that you are applying ${i.sectionTopic} in real life. You take action, test the result, and see immediate progress.`,
+        "",
+        `> [!MISTAKE] Common Trap\n> Waiting too long to start or thinking you need perfect conditions before taking the first step.`,
+        "",
+        "👉 Key action step for this section",
+        "👉 Simple daily routine to keep momentum"
+      );
+    } else {
+      lines.push("", para, "", "- First practical step", "- Second practical step", "- Third practical step");
+    }
+    if (i.sectionIndex === i.sectionCount - 1) {
+      if (isLeadMagnet) {
+        lines.push("", "> [!SUMMARY]\n> - Use what you already have\n> - Build 3-4 initial test projects\n> - Reach out with confidence");
+      } else {
+        lines.push("", "### Key takeaways", "", "- Takeaway one", "- Takeaway two", "- Takeaway three");
+      }
+    }
     return lines.join("\n");
   },
   assist(action: AssistAction, text: string): string {

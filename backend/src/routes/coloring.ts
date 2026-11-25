@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { z } from "zod";
 import {
   coloringBookBriefSchema,
   coloringCoverGenerateSchema,
@@ -47,7 +48,37 @@ coloringRouter.get("/coloring/books/:bookId", async (req, res) => {
   res.json(details);
 });
 
-coloringRouter.patch("/coloring/books/:bookId/plan", async (req, res) => {
+const coloringPlanUpdateSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200).optional(),
+    subtitle: z.string().trim().max(300).optional(),
+    approved: z.boolean().optional(),
+  })
+  .strict();
+
+const coloringPageCreateSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200),
+    prompt: z.string().trim().min(1).max(2000),
+    description: z.string().trim().max(1000).optional(),
+  })
+  .strict();
+
+const coloringGenerateSchema = z
+  .object({
+    promptOverride: z.string().trim().min(1).max(2000).optional(),
+  })
+  .optional()
+  .default({});
+
+const coloringGenerateBatchSchema = z
+  .object({
+    pageIds: z.array(z.string().trim().min(1).max(100)).max(100).optional(),
+  })
+  .optional()
+  .default({});
+
+coloringRouter.patch("/coloring/books/:bookId/plan", validateBody(coloringPlanUpdateSchema), async (req, res) => {
   const result = await coloringPlanService.updatePlan(userId(req), String(req.params.bookId), req.body);
   res.json(result);
 });
@@ -80,7 +111,7 @@ coloringRouter.post(
   },
 );
 
-coloringRouter.post("/coloring/books/:bookId/pages", async (req, res) => {
+coloringRouter.post("/coloring/books/:bookId/pages", validateBody(coloringPageCreateSchema), async (req, res) => {
   const page = await coloringPlanService.addPage(userId(req), String(req.params.bookId), req.body);
   res.status(201).json({ page });
 });
@@ -95,7 +126,7 @@ coloringRouter.delete("/coloring/books/:bookId/pages/:pageId", async (req, res) 
 });
 
 // ---- 3. Independent & Batch Page Generation & Auto-Clean ----
-coloringRouter.post("/coloring/books/:bookId/pages/:pageId/generate", aiLimiter, async (req, res) => {
+coloringRouter.post("/coloring/books/:bookId/pages/:pageId/generate", aiLimiter, validateBody(coloringGenerateSchema), async (req, res) => {
   const updatedPage = await coloringGenerationService.generatePage(
     userId(req),
     String(req.params.bookId),
@@ -114,7 +145,7 @@ coloringRouter.post("/coloring/books/:bookId/pages/:pageId/clean", async (req, r
   res.json({ page: updatedPage });
 });
 
-coloringRouter.post("/coloring/books/:bookId/generate-batch", aiLimiter, async (req, res) => {
+coloringRouter.post("/coloring/books/:bookId/generate-batch", aiLimiter, validateBody(coloringGenerateBatchSchema), async (req, res) => {
   const results = await coloringGenerationService.generateBatch(
     userId(req),
     String(req.params.bookId),
@@ -190,8 +221,9 @@ ${pkg.amazonDescriptionHtml}
 ## Step-by-Step Upload Instructions
 ${pkg.kdpUploadChecklist.join("\n")}
 `;
+  const safeBookId = String(req.params.bookId).replace(/[^A-Za-z0-9_-]/g, "") || "book";
   res.setHeader("Content-Type", "text/markdown; charset=utf-8");
-  res.setHeader("Content-Disposition", `attachment; filename="KDP_METADATA_${req.params.bookId}.md"`);
+  res.setHeader("Content-Disposition", `attachment; filename="KDP_METADATA_${safeBookId}.md"`);
   res.send(md);
 });
 

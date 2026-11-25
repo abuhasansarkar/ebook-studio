@@ -11,11 +11,6 @@ import { AppError, conflict } from "../utils/errors.js";
 const param = (req: Request, name: string) => String(req.params[name]);
 
 export const bookController = {
-  async list(req: Request, res: Response) {
-    const search = typeof req.query.search === "string" ? req.query.search.trim().slice(0, 100) : undefined;
-    res.json({ books: await bookService.list(userId(req), { search }) });
-  },
-
   /** Creates the book and immediately queues outline generation. */
   async create(req: Request, res: Response) {
     const uid = userId(req);

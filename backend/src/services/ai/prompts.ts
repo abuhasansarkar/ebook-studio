@@ -81,9 +81,21 @@ export function sectionPrompt(i: SectionPromptInput) {
   // Keep the in-chapter context bounded: last ~6000 characters are enough for continuity.
   const soFar = i.writtenSoFar ? i.writtenSoFar.slice(-6000) : "(nothing yet — this is the first section of the chapter)";
 
+  const isLeadMagnet = i.brief.bookType === "lead_magnet";
   const format = isFiction
     ? "Write narrative prose only. No headings, no bullet lists. Use scene breaks (a line with ***) only if needed."
-    : `Format as Markdown. Start with a level-2 heading (## ...) naming this section in the book's language. Use ### for sub-points if helpful. Use bullet lists, numbered steps, short tables, or a brief checklist where they genuinely help. Do not add a chapter title (it is added separately).`;
+    : isLeadMagnet
+    ? `Format as Markdown with modern creator editorial components:
+- Start with a level-2 heading (## ...) in the book's language.
+- Keep paragraphs punchy and conversational (2-3 sentences per paragraph).
+- Use callouts with GitHub-style alerts:
+  * '> [!EXAMPLE] Concrete Example' for a relatable scenario or case study (renders as a high-contrast terracotta card).
+  * '> [!MISTAKE] Common Pitfall' for mistakes to avoid (renders as a card with an X mark).
+  * '> [!SUMMARY]' for quick action steps or takeaways (renders as a summary banner).
+  * '> [!QUOTE]' for an inspiring or memorable quote.
+- Use visual bullet points with emojis (👉, 💡, ✔) for readability.
+- Do not add a chapter title (it is added separately).`
+    : `Format as Markdown. Start with a level-2 heading (## ...) naming this section in the book's language. Use ### for sub-points if helpful. Use bullet lists, numbered steps, short tables, or a brief checklist where they genuinely help. Callouts like '> [!EXAMPLE]' or '> [!TIP]' may be used for highlights. Do not add a chapter title (it is added separately).`;
 
   return {
     system: `You are an expert author writing a high-quality ${BOOK_TYPE_LABELS[i.brief.bookType].toLowerCase()} for publication.

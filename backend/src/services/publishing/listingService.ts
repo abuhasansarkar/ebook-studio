@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
   LISTING_PROFILES,
@@ -277,7 +278,7 @@ export async function prepareListing(
   }
   const chapterVersions = await readChapterVersions(bookId);
 
-  const reference = `listing:${userId}:${bookId}:${input.destination}:${Date.now()}`;
+  const reference = `listing:${userId}:${bookId}:${input.destination}:${randomUUID()}`;
   await creditService.reserve(userId, LISTING_COST, reference);
 
   let drafted: Record<string, string>;

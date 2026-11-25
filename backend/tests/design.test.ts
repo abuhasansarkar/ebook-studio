@@ -139,7 +139,7 @@ describe('reader and print previews', () => {
     expect(caps.languages.find((l: { code: string }) => l.code === 'bn')).toMatchObject({ script: 'bengali', level: 'full' });
     expect(caps.fonts.every((f: { license: string }) => f.license === 'OFL-1.1')).toBe(true);
     const templates = (await a.agent.get('/api/v1/design/templates').expect(200)).body.templates;
-    expect(templates.map((t: { id: string }) => t.id)).toEqual(['standard', 'classic', 'modern', 'workbook']);
+    expect(templates.map((t: { id: string }) => t.id)).toEqual(['standard', 'classic', 'modern', 'workbook', 'editorial']);
   });
 });
 

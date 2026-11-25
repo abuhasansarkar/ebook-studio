@@ -153,7 +153,7 @@ export const matterSchema = z.object({
   }
 });
 
-export const TEMPLATE_IDS = ['standard', 'classic', 'modern', 'workbook'] as const;
+export const TEMPLATE_IDS = ['standard', 'classic', 'modern', 'workbook', 'editorial'] as const;
 export type TemplateId = typeof TEMPLATE_IDS[number];
 export const bookDesignSchema = z.object({
   schema: z.literal(1),
@@ -214,6 +214,16 @@ export const TEMPLATES: readonly DesignTemplate[] = [
       print: { trim: '8.5x11', fontSizePt: 11, margins: { top: .75, bottom: .8, inside: .85, outside: .65 }, mirrored: true, header: 'title', pageNumbers: 'bottom-outside' },
     },
   },
+  {
+    id: 'editorial', version: 1, name: 'Editorial Magazine', intendedUse: 'Creator lead-magnets, lifestyle guides, workbooks and digital magazines',
+    description: 'Modern editorial aesthetic: warm terracotta accents, high-contrast serif headings, clean sans-serif body, bento cards and concrete example callouts.', applies: ['digital', 'print'],
+    settings: {
+      typography: { body: 'sans', headings: 'serif', lineHeight: 1.65, paragraph: 'spaced', align: 'start', headingScale: 'dramatic', hyphenate: false },
+      elements: { accent: '#ba6b4a', chapterLabel: 'number', chapterOrnament: 'rule', tableStyle: 'lines', imageWidth: 'full', captionAlign: 'start' },
+      digital: { fontScale: 1.05, lineWidth: 'standard' },
+      print: { trim: '8.5x11', fontSizePt: 11, margins: { top: .7, bottom: .7, inside: .7, outside: .7 }, mirrored: false, header: 'none', pageNumbers: 'bottom-center' },
+    },
+  },
 ];
 export function findTemplate(id: string, version?: number) {
   return TEMPLATES.find(t => t.id === id && (version === undefined || t.version === version));
@@ -239,7 +249,7 @@ export function applyTemplate(design: BookDesign, template: DesignTemplate): Boo
   return bookDesignSchema.parse({ ...design, ...structuredClone(template.settings), template: { id: template.id, version: template.version } });
 }
 /** Safe defaults for books without a saved design; matches the layout exports used before S08. */
-export function defaultBookDesign(language: string, authorName = '', year = new Date().getUTCFullYear()): BookDesign {
+export function defaultBookDesign(language: string, authorName = '', year = new Date().getUTCFullYear(), templateId: TemplateId = 'standard'): BookDesign {
   const holder = authorName.trim();
   const copyright = language === 'en' ? `© ${year}${holder ? ` ${holder}` : ''}. All rights reserved. No part of this publication may be reproduced without permission, except for brief quotations in reviews.` : `© ${year}${holder ? ` ${holder}` : ''}`;
   const base = {
@@ -250,7 +260,8 @@ export function defaultBookDesign(language: string, authorName = '', year = new 
       aboutAuthor: { enabled: false, title: 'About the author', text: '' }, references: { enabled: false, title: 'References', text: '' },
     },
   };
-  return applyTemplate({ ...base, ...TEMPLATES[0].settings } as BookDesign, TEMPLATES[0]);
+  const chosenTemplate = findTemplate(templateId) ?? TEMPLATES[0];
+  return applyTemplate({ ...base, ...chosenTemplate.settings } as BookDesign, chosenTemplate);
 }
 
 const SETTING_LABELS: Record<string, string> = {

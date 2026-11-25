@@ -73,43 +73,47 @@ export async function coverHtml(data: CoverDesign, artwork?: string) {
         else if (textLayer.effect === 'outline') effectCss = `text-shadow:-2px -2px 0 ${textLayer.effectColor || '#000'}, 2px -2px 0 ${textLayer.effectColor || '#000'}, -2px 2px 0 ${textLayer.effectColor || '#000'}, 2px 2px 0 ${textLayer.effectColor || '#000'};`;
         else if (textLayer.effect === 'pill') effectCss = `background:${textLayer.effectColor || 'rgba(0,0,0,0.6)'};border-radius:9999px;padding:4px 16px;`;
 
-        const style = `${baseStyle}font-family:'${textLayer.font}', sans-serif;font-size:${textLayer.size * COVER_WIDTH}px;font-weight:${textLayer.weight};color:${textLayer.color};text-align:${textLayer.align};direction:${textLayer.direction};line-height:${textLayer.lineHeight};letter-spacing:${textLayer.letterSpacing}px;font-style:${textLayer.italic ? 'italic' : 'normal'};text-decoration:${[textLayer.underline && 'underline', textLayer.strike && 'line-through'].filter(Boolean).join(' ') || 'none'};text-transform:${textLayer.uppercase ? 'uppercase' : 'none'};white-space:pre-wrap;overflow-wrap:anywhere;display:flex;align-items:center;justify-content:${textLayer.align === 'center' ? 'center' : textLayer.align === 'right' ? 'flex-end' : 'flex-start'};${effectCss}`;
-        return `<div data-layer="${l.id}" style="${style}">${escapeHtml(textLayer.text)}</div>`;
+        const safeCss = (v: string) => v.replace(/[;"<>\\{}]/g, '');
+        const style = `${baseStyle}font-family:'${safeCss(textLayer.font)}', sans-serif;font-size:${textLayer.size * COVER_WIDTH}px;font-weight:${textLayer.weight};color:${safeCss(textLayer.color)};text-align:${textLayer.align};direction:${textLayer.direction};line-height:${textLayer.lineHeight};letter-spacing:${textLayer.letterSpacing}px;font-style:${textLayer.italic ? 'italic' : 'normal'};text-decoration:${[textLayer.underline && 'underline', textLayer.strike && 'line-through'].filter(Boolean).join(' ') || 'none'};text-transform:${textLayer.uppercase ? 'uppercase' : 'none'};white-space:pre-wrap;overflow-wrap:anywhere;display:flex;align-items:center;justify-content:${textLayer.align === 'center' ? 'center' : textLayer.align === 'right' ? 'flex-end' : 'flex-start'};${effectCss}`;
+        return `<div data-layer="${escapeHtml(l.id)}" style="${style}">${escapeHtml(textLayer.text)}</div>`;
       }
 
       if (l.type === 'shape') {
         const shape = l;
+        const fill = escapeHtml(shape.fill);
+        const stroke = escapeHtml(shape.stroke);
         let innerHtml = '';
         if (shape.shapeType === 'circle') {
-          innerHtml = `<div style="width:100%;height:100%;background:${shape.fill};border:${shape.strokeWidth}px solid ${shape.stroke};border-radius:50%;"></div>`;
+          innerHtml = `<div style="width:100%;height:100%;background:${fill};border:${shape.strokeWidth}px solid ${stroke};border-radius:50%;"></div>`;
         } else if (shape.shapeType === 'rounded_rect' || shape.shapeType === 'rectangle') {
-          innerHtml = `<div style="width:100%;height:100%;background:${shape.fill};border:${shape.strokeWidth}px solid ${shape.stroke};border-radius:${shape.borderRadius}px;"></div>`;
+          innerHtml = `<div style="width:100%;height:100%;background:${fill};border:${shape.strokeWidth}px solid ${stroke};border-radius:${shape.borderRadius}px;"></div>`;
         } else if (shape.shapeType === 'pill') {
-          innerHtml = `<div style="width:100%;height:100%;background:${shape.fill};border:${shape.strokeWidth}px solid ${shape.stroke};border-radius:9999px;"></div>`;
+          innerHtml = `<div style="width:100%;height:100%;background:${fill};border:${shape.strokeWidth}px solid ${stroke};border-radius:9999px;"></div>`;
         } else if (shape.shapeType === 'divider') {
-          innerHtml = `<div style="width:100%;height:100%;background:${shape.fill};border-radius:2px;"></div>`;
+          innerHtml = `<div style="width:100%;height:100%;background:${fill};border-radius:2px;"></div>`;
         } else if (shape.shapeType === 'triangle') {
-          innerHtml = `<svg viewBox="0 0 100 100" style="width:100%;height:100%"><polygon points="50,5 95,95 5,95" fill="${shape.fill}" stroke="${shape.stroke}" stroke-width="${shape.strokeWidth}"/></svg>`;
+          innerHtml = `<svg viewBox="0 0 100 100" style="width:100%;height:100%"><polygon points="50,5 95,95 5,95" fill="${fill}" stroke="${stroke}" stroke-width="${shape.strokeWidth}"/></svg>`;
         } else if (shape.shapeType === 'star') {
-          innerHtml = `<svg viewBox="0 0 100 100" style="width:100%;height:100%"><polygon points="50,5 63,38 98,38 69,59 80,95 50,73 20,95 31,59 2,38 37,38" fill="${shape.fill}" stroke="${shape.stroke}" stroke-width="${shape.strokeWidth}"/></svg>`;
+          innerHtml = `<svg viewBox="0 0 100 100" style="width:100%;height:100%"><polygon points="50,5 63,38 98,38 69,59 80,95 50,73 20,95 31,59 2,38 37,38" fill="${fill}" stroke="${stroke}" stroke-width="${shape.strokeWidth}"/></svg>`;
         } else if (shape.shapeType === 'diamond') {
-          innerHtml = `<svg viewBox="0 0 100 100" style="width:100%;height:100%"><polygon points="50,5 95,50 50,95 5,50" fill="${shape.fill}" stroke="${shape.stroke}" stroke-width="${shape.strokeWidth}"/></svg>`;
+          innerHtml = `<svg viewBox="0 0 100 100" style="width:100%;height:100%"><polygon points="50,5 95,50 50,95 5,50" fill="${fill}" stroke="${stroke}" stroke-width="${shape.strokeWidth}"/></svg>`;
         } else {
-          innerHtml = `<div style="width:100%;height:100%;background:${shape.fill};border:${shape.strokeWidth}px solid ${shape.stroke};border-radius:${shape.borderRadius}px;"></div>`;
+          innerHtml = `<div style="width:100%;height:100%;background:${fill};border:${shape.strokeWidth}px solid ${stroke};border-radius:${shape.borderRadius}px;"></div>`;
         }
-        return `<div data-layer="${l.id}" style="${baseStyle}">${innerHtml}</div>`;
+        return `<div data-layer="${escapeHtml(l.id)}" style="${baseStyle}">${innerHtml}</div>`;
       }
 
       if (l.type === 'icon') {
         const icon = l;
-        const iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="${icon.color}" stroke-width="${icon.strokeWidth}" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>`;
-        return `<div data-layer="${l.id}" style="${baseStyle}">${iconSvg}</div>`;
+        const iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="${escapeHtml(icon.color)}" stroke-width="${icon.strokeWidth}" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>`;
+        return `<div data-layer="${escapeHtml(l.id)}" style="${baseStyle}">${iconSvg}</div>`;
       }
 
       if (l.type === 'image') {
         const img = l;
         const transformWithFlip = `${transform}${img.flipX ? ' scaleX(-1)' : ''}${img.flipY ? ' scaleY(-1)' : ''}`;
-        return `<div data-layer="${l.id}" style="${baseStyle}transform:${transformWithFlip};border-radius:${img.borderRadius}px;overflow:hidden;"><img src="${img.url || ''}" alt="" style="width:100%;height:100%;object-fit:${img.fit};"></div>`;
+        const safeUrl = img.url && /^(data:image\/|https?:\/\/|\/)/.test(img.url) ? escapeHtml(img.url) : '';
+        return `<div data-layer="${escapeHtml(l.id)}" style="${baseStyle}transform:${transformWithFlip};border-radius:${img.borderRadius}px;overflow:hidden;"><img src="${safeUrl}" alt="" style="width:100%;height:100%;object-fit:${escapeHtml(img.fit)};"></div>`;
       }
 
       return '';
@@ -122,14 +126,19 @@ export async function coverHtml(data: CoverDesign, artwork?: string) {
     }).join('');
   }
 
-  return `<!doctype html><html><head><meta charset="utf-8">${googleFontsLink}<style>${localFonts.join('\n')}*{box-sizing:border-box}html,body{margin:0;width:${COVER_WIDTH}px;height:${COVER_HEIGHT}px;overflow:hidden}body{position:relative;background:${data.background}}</style></head><body>${artwork ? `<img alt="" src="${artwork}" style="position:absolute;width:100%;height:100%;object-fit:cover">` : ''}<div style="position:absolute;inset:0;background:rgba(0,0,0,${data.shade})"></div>${renderedLayers}</body></html>`;
+  const safeBg = data.background.replace(/[;"<>\\{}]/g, '');
+  return `<!doctype html><html><head><meta charset="utf-8">${googleFontsLink}<style>${localFonts.join('\n')}*{box-sizing:border-box}html,body{margin:0;width:${COVER_WIDTH}px;height:${COVER_HEIGHT}px;overflow:hidden}body{position:relative;background:${safeBg}}</style></head><body>${artwork ? `<img alt="" src="${escapeHtml(artwork)}" style="position:absolute;width:100%;height:100%;object-fit:cover">` : ''}<div style="position:absolute;inset:0;background:rgba(0,0,0,${data.shade})"></div>${renderedLayers}</body></html>`;
 }
 let rendering = 0;
 export const coverService = {
   async get(userId: string, bookId: string, version?: number) {
     const book = await getOwnedBook(userId, bookId);
-    const saved = await prisma.coverDesign.findFirst({ where: { bookId, ...(version ? { version } : {}) }, orderBy: { version: 'desc' } });
-    if (version && !saved) throw notFound('Cover version');
+    if (version === 0) {
+      const brief = await getBrief(bookId);
+      return { version: 0, data: defaultCover(book.title, book.subtitle, brief.authorName, book.language) };
+    }
+    const saved = await prisma.coverDesign.findFirst({ where: { bookId, ...(version !== undefined ? { version } : {}) }, orderBy: { version: 'desc' } });
+    if (version !== undefined && !saved) throw notFound('Cover version');
     if (saved) return { version: saved.version, data: coverDesignSchema.parse(saved.data) };
     const brief = await getBrief(bookId);
     return { version: 0, data: defaultCover(book.title, book.subtitle, brief.authorName, book.language) };
@@ -178,7 +187,7 @@ export const coverService = {
         const info = await sharp(buffer).metadata();
         if (info.width !== COVER_WIDTH || info.height !== COVER_HEIGHT) throw new Error('Invalid cover output dimensions');
         return buffer;
-      } finally { await page.close(); }
+      } finally { await page.close().catch(() => undefined); }
     } finally { rendering--; }
   },
   async versions(userId: string, bookId: string) {

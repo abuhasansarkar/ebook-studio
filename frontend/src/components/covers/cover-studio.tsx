@@ -553,7 +553,16 @@ function CoverWorkspace({
             })
           }
           onSetBackgroundArtwork={(url) => {
-            // direct URL or asset insertion
+            editor.addLayer({
+              type: 'image',
+              url,
+              name: 'Background Artwork',
+              x: 0,
+              y: 0,
+              width: 1,
+              height: 1,
+              fit: 'cover',
+            });
           }}
           onOpenAssetLibrary={() => {
             setAssetInsertTarget('layer');
@@ -932,6 +941,11 @@ function VersionHistoryModal({
       <div className="space-y-4">
         {versionsQuery.isLoading ? (
           <p className="py-6 text-center text-sm text-muted-foreground">Loading version history…</p>
+        ) : versionsQuery.error ? (
+          <div className="py-6 text-center space-y-2">
+            <p className="text-sm text-danger">{errorMessage(versionsQuery.error)}</p>
+            <Button size="sm" variant="secondary" onClick={() => void versionsQuery.refetch()}>Retry</Button>
+          </div>
         ) : versions.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">No previous cover versions found.</p>
         ) : (

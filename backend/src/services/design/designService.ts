@@ -14,7 +14,8 @@ function parse(row: { version: number; data: unknown; action: string; detail: st
 }
 async function defaults(bookId: string, language: string): Promise<SavedDesign> {
   const brief = await getBrief(bookId);
-  return { version: 0, data: defaultBookDesign(language, brief.authorName ?? ''), action: 'default', detail: '', createdAt: null };
+  const templateId = brief.bookType === 'lead_magnet' ? 'editorial' : 'standard';
+  return { version: 0, data: defaultBookDesign(language, brief.authorName ?? '', new Date().getUTCFullYear(), templateId), action: 'default', detail: '', createdAt: null };
 }
 /** Appends a version after verifying the caller edited the latest one. */
 async function append(userId: string, bookId: string, baseVersion: number, build: (tx: Tx, current: SavedDesign) => Promise<{ data: BookDesign; action: 'save' | 'template' | 'restore'; detail: string }>) {

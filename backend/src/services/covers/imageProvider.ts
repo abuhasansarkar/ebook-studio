@@ -50,7 +50,7 @@ export const imageProvider = {
       return Buffer.from(b64, 'base64');
     }
     if (item?.url) {
-      const res = await fetch(item.url);
+      const res = await fetch(item.url, { signal: AbortSignal.timeout(30_000) });
       if (!res.ok) throw new Error(`Failed to download image from provider URL (${res.status})`);
       return Buffer.from(await res.arrayBuffer());
     }

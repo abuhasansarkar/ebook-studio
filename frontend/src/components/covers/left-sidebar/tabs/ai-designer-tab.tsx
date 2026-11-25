@@ -395,6 +395,8 @@ export function AiDesignerTab({
 
             {history.isLoading ? (
               <p className="text-xs text-muted-foreground text-center py-4">Loading artwork history…</p>
+            ) : history.error ? (
+              <p className="text-xs text-danger text-center py-4">Could not load artwork history.</p>
             ) : !history.data?.jobs || history.data.jobs.length === 0 ? (
               <p className="text-xs text-muted-foreground text-center py-4">No generated artworks yet.</p>
             ) : (

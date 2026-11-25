@@ -5,6 +5,7 @@ import { badRequest, notFound } from "../../utils/errors.js";
 import { getOwnedBook } from "../books/bookService.js";
 import { storage } from "../storage/storage.js";
 import { renderPdf } from "../exports/pdfRenderer.js";
+import { escapeHtml } from "../exports/tiptapToHtml.js";
 import { requireEntitlement } from "../billing/entitlements.js";
 
 export interface KdpPreflightReport {
@@ -55,17 +56,17 @@ export const coloringExportService = {
     ].slice(0, 7);
 
     const amazonDescriptionHtml = `
-<h2>✨ ${book.title} ✨</h2>
-<p><strong>${book.subtitle || `${totalPages} Delightful Coloring Pages`}</strong></p>
-<p>Welcome to a creative world of relaxing line art! Specially designed for <strong>${plan.targetAudience}</strong> in beautiful <strong>${styleMeta.label}</strong> style.</p>
+<h2>✨ ${escapeHtml(book.title)} ✨</h2>
+<p><strong>${escapeHtml(book.subtitle || `${totalPages} Delightful Coloring Pages`)}</strong></p>
+<p>Welcome to a creative world of relaxing line art! Specially designed for <strong>${escapeHtml(plan.targetAudience)}</strong> in beautiful <strong>${escapeHtml(styleMeta.label)}</strong> style.</p>
 
 <h3>🎨 Why You'll Love This Coloring Book:</h3>
 <ul>
   <li><strong>${totalPages} Unique, Hand-Crafted Illustrations:</strong> Distinct scenes with no repeated designs.</li>
   <li><strong>Single-Sided Pages:</strong> Every illustration is printed on a single-sided page with a blank reverse to prevent marker and ink bleed-through.</li>
-  <li><strong>${plan.lineThickness.toUpperCase()} Outlines:</strong> Clean, crisp black outlines make coloring fun, relaxing, and stress-free.</li>
-  <li><strong>Large ${plan.trimSize} Format:</strong> Perfect spacious canvas for crayons, colored pencils, and markers.</li>
-  <li><strong>Great for All Skill Levels:</strong> Easy to follow for ${plan.targetAudience} and adults looking for peaceful relaxation.</li>
+  <li><strong>${escapeHtml(plan.lineThickness.toUpperCase())} Outlines:</strong> Clean, crisp black outlines make coloring fun, relaxing, and stress-free.</li>
+  <li><strong>Large ${escapeHtml(plan.trimSize)} Format:</strong> Perfect spacious canvas for crayons, colored pencils, and markers.</li>
+  <li><strong>Great for All Skill Levels:</strong> Easy to follow for ${escapeHtml(plan.targetAudience)} and adults looking for peaceful relaxation.</li>
 </ul>
 
 <p><em>Grab your favorite coloring pencils or markers and bring these pages to life today!</em></p>
@@ -238,8 +239,8 @@ export const coloringExportService = {
   <div class="page title-page">
     <div></div>
     <div>
-      <h1>${book.title}</h1>
-      ${book.subtitle ? `<h2>${book.subtitle}</h2>` : ""}
+      <h1>${escapeHtml(book.title)}</h1>
+      ${book.subtitle ? `<h2>${escapeHtml(book.subtitle)}</h2>` : ""}
     </div>
     <div class="copyright">
       <p>Published with eBookStudio</p>
@@ -256,8 +257,8 @@ export const coloringExportService = {
       (p) => `
     <div class="page illustration-page">
       <div class="art-container">
-        <img src="${p.dataUri}" alt="${p.title}" />
-        ${p.caption ? `<div class="caption">${p.caption}</div>` : ""}
+        <img src="${p.dataUri}" alt="${escapeHtml(p.title)}" />
+        ${p.caption ? `<div class="caption">${escapeHtml(p.caption)}</div>` : ""}
       </div>
     </div>
     ${plan.singleSided ? `<div class="page blank-page"></div>` : ""}

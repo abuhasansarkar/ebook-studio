@@ -1,7 +1,7 @@
 import { z } from 'zod';
 export const COVER_FONTS = ['notosans', 'notosansbengali', 'notosansarabic', 'notosansdevanagari'] as const;
 export const COVER_STYLES = [
-  'editorial', 'watercolor', 'photographic', 'minimal',
+  'creator_leadmagnet', 'editorial', 'watercolor', 'photographic', 'minimal',
   'minimalist', 'modern', 'business', 'corporate', 'educational', 'academic',
   'self_help', 'tech', 'finance', 'marketing', 'fiction', 'romance',
   'mystery', 'thriller', 'fantasy', 'scifi', 'children', 'storybook',
@@ -35,35 +35,35 @@ export const textRoleSchema = z.enum(['title', 'subtitle', 'author', 'custom']);
 export const textEffectSchema = z.enum(['none', 'shadow', 'lift', 'outline', 'pill']);
 
 export const textLayerSchema = z.object({
-  id: z.string(),
+  id: z.string().min(1).max(100),
   type: z.literal('text'),
-  name: z.string().default('Text'),
+  name: z.string().max(120).default('Text'),
   role: textRoleSchema.default('custom'),
-  x: z.number(), // relative coordinate 0..1
-  y: z.number(), // relative coordinate 0..1
-  width: z.number(),
-  height: z.number(),
-  rotation: z.number().default(0),
+  x: z.number().min(-1).max(2), // relative coordinate 0..1
+  y: z.number().min(-1).max(2), // relative coordinate 0..1
+  width: z.number().min(0.01).max(2),
+  height: z.number().min(0.01).max(2),
+  rotation: z.number().min(-360).max(360).default(0),
   opacity: z.number().min(0).max(1).default(1),
   locked: z.boolean().default(false),
   hidden: z.boolean().default(false),
-  zIndex: z.number().default(0),
+  zIndex: z.number().int().min(-1000).max(10000).default(0),
 
-  text: z.string(),
-  font: z.string().default('notosans'),
+  text: z.string().max(2000),
+  font: z.string().trim().min(1).max(80).default('notosans'),
   size: z.number().min(0.005).max(0.3), // relative to canvas width
-  color: z.string(),
-  weight: z.string().default('400'),
+  color: z.string().trim().min(1).max(40),
+  weight: z.string().max(20).default('400'),
   italic: z.boolean().default(false),
   underline: z.boolean().default(false),
   strike: z.boolean().default(false),
   uppercase: z.boolean().default(false),
   align: z.enum(['left', 'center', 'right', 'justify']).default('center'),
   direction: z.enum(['ltr', 'rtl']).default('ltr'),
-  letterSpacing: z.number().default(0),
-  lineHeight: z.number().default(1.25),
+  letterSpacing: z.number().min(-50).max(200).default(0),
+  lineHeight: z.number().min(0.5).max(5).default(1.25),
   effect: textEffectSchema.default('none'),
-  effectColor: z.string().optional(),
+  effectColor: z.string().max(40).optional(),
 });
 
 export const shapeLayerSchema = z.object({
@@ -120,8 +120,12 @@ export const imageLayerSchema = z.object({
   hidden: z.boolean().default(false),
   zIndex: z.number().default(0),
 
-  assetId: z.string().nullable().optional(),
-  url: z.string().optional(),
+  assetId: z.string().max(100).nullable().optional(),
+  url: z
+    .string()
+    .max(2000)
+    .refine((u) => /^(data:image\/|https?:\/\/|\/)/.test(u), "Invalid image URL")
+    .optional(),
   fit: z.enum(['cover', 'contain']).default('cover'),
   borderRadius: z.number().default(0),
   flipX: z.boolean().default(false),
@@ -312,6 +316,19 @@ export function defaultCover(title: string, subtitle = '', author = '', language
   const direction = ['ar', 'fa', 'ur'].includes(language) ? 'rtl' : 'ltr';
   const layer = { font, color: '#ffffff', x: .08, width: .84, size: .06, weight: '700', align: 'center', direction } as const;
   return coverDesignSchema.parse({ artworkId: null, background: '#172033', shade: .35, visual: {}, title: { ...layer, text: title, y: .08, height: .3 }, subtitle: { ...layer, text: subtitle, size: .03, weight: '400', y: .4, height: .2 }, author: { ...layer, text: author, size: .035, y: .85, height: .1 } });
+}
+export function creatorLeadMagnetCover(title: string, subtitle = '', author = '', language = 'en'): CoverDesign {
+  const font = language === 'bn' ? 'notosansbengali' : ['ar', 'fa', 'ur'].includes(language) ? 'notosansarabic' : language === 'hi' ? 'notosansdevanagari' : 'notosans';
+  const direction = ['ar', 'fa', 'ur'].includes(language) ? 'rtl' : 'ltr';
+  return coverDesignSchema.parse({
+    artworkId: null,
+    background: '#faf6f2',
+    shade: 0,
+    visual: { style: 'creator_leadmagnet', palette: '#ba6b4a, #faf6f2, #2b2523', characters: '', direction: 'creator editorial magazine style' },
+    title: { font, color: '#2b2523', x: 0.08, y: 0.35, width: 0.58, height: 0.22, size: 0.052, weight: '700', align: 'left', direction, text: title },
+    subtitle: { font, color: '#ba6b4a', x: 0.08, y: 0.58, width: 0.58, height: 0.08, size: 0.028, weight: '400', align: 'left', direction, text: subtitle },
+    author: { font, color: '#332a27', x: 0.08, y: 0.12, width: 0.58, height: 0.06, size: 0.032, weight: '400', align: 'left', direction, text: author },
+  });
 }
 export function coverTextStyle(t: CoverText) {
   return { position: 'absolute' as const, left: t.x * COVER_WIDTH, top: t.y * COVER_HEIGHT, width: t.width * COVER_WIDTH, height: t.height * COVER_HEIGHT, fontFamily: t.font, fontSize: t.size * COVER_WIDTH, fontWeight: t.weight, color: t.color, textAlign: t.align, direction: t.direction, lineHeight: 1.25, whiteSpace: 'pre-wrap' as const, overflowWrap: 'anywhere' as const, margin: 0, padding: 0, boxSizing: 'border-box' as const };

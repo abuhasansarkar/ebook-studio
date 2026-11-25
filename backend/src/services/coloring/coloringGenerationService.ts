@@ -87,7 +87,7 @@ async function requestOpenAiImage(prompt: string, aspect: "portrait" | "square" 
     return Buffer.from(b64, "base64");
   }
   if (item?.url) {
-    const res = await fetch(item.url);
+    const res = await fetch(item.url, { signal: AbortSignal.timeout(30_000) });
     if (!res.ok) throw new Error(`Failed to fetch image from provider (${res.status})`);
     return Buffer.from(await res.arrayBuffer());
   }
@@ -108,19 +108,22 @@ export const coloringGenerationService = {
     if (!page) throw notFound("Coloring page");
 
     const cost = COLORING_CREDIT_COSTS.perIllustration; // 8 credits
-    const reference = `coloring:${pageId}:${Date.now()}`;
+    const reference = `coloring:${pageId}:${randomUUID()}`;
 
-    // Step 1: Atomically reserve credits and mark page generating
+    // Step 1: Atomically lock page (prevent concurrent generation) and reserve credits
     await prisma.$transaction(async (tx) => {
-      await reserveInTransaction(tx, userId, cost, reference);
-      await tx.coloringPage.update({
-        where: { id: pageId },
+      const locked = await tx.coloringPage.updateMany({
+        where: { id: pageId, status: { not: "generating" } },
         data: {
           status: "generating",
           error: null,
           ...(promptOverride ? { prompt: promptOverride.trim() } : {}),
         },
       });
+      if (locked.count === 0) {
+        throw conflict("This coloring page is already generating.");
+      }
+      await reserveInTransaction(tx, userId, cost, reference);
     });
 
     try {

@@ -74,9 +74,15 @@ export class StripeProvider implements PaymentProvider {
     // onto the payment intent, and a session's own metadata cannot name the
     // session. So the checkout is opened with a placeholder and the session id
     // is written onto the intent once Stripe has issued it.
+    const metadata = {
+      planId: request.planId,
+      credits: String(request.credits),
+      customerReference: request.customerReference,
+    };
+    const isSubscription = Boolean(request.recurring);
     const session = await this.client.checkout.sessions.create(
       {
-        mode: "payment",
+        mode: isSubscription ? "subscription" : "payment",
         customer_email: undefined,
         client_reference_id: request.idempotencyKey,
         success_url: `${request.returnUrl}?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
@@ -87,6 +93,7 @@ export class StripeProvider implements PaymentProvider {
             price_data: {
               currency: request.currency.toLowerCase(),
               unit_amount: request.amountMinor,
+              ...(isSubscription ? { recurring: { interval: request.interval ?? "month" } } : {}),
               product_data: {
                 name: request.planName,
                 description: `${request.credits} credits`,
@@ -94,21 +101,8 @@ export class StripeProvider implements PaymentProvider {
             },
           },
         ],
-        // The plan and the credit count ride along on the session, so the
-        // settlement event can be matched to the plan it belongs to even if
-        // the local payment record is missing.
-        metadata: {
-          planId: request.planId,
-          credits: String(request.credits),
-          customerReference: request.customerReference,
-        },
-        payment_intent_data: {
-          metadata: {
-            planId: request.planId,
-            credits: String(request.credits),
-            customerReference: request.customerReference,
-          },
-        },
+        metadata,
+        ...(isSubscription ? { subscription_data: { metadata } } : { payment_intent_data: { metadata } }),
       },
       { idempotencyKey: request.idempotencyKey },
     );

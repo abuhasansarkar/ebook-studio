@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
   MARKETING_GRAPHIC_SIZES,
@@ -268,7 +269,7 @@ export async function createDraft(
   // One reference for the whole operation, so the reservation and the
   // settlement are the same ledger entry. A failed draft releases the
   // reservation and costs the author nothing.
-  const reference = `marketing:${userId}:${bookId}:${input.outputType}:${Date.now()}`;
+  const reference = `marketing:${userId}:${bookId}:${input.outputType}:${randomUUID()}`;
 
   await creditService.reserve(userId, cost, reference);
 

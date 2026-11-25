@@ -298,6 +298,14 @@ export const coloringPlanService = {
     const page = await prisma.coloringPage.findFirst({ where: { id: pageId, bookId } });
     if (!page) throw notFound("Coloring page");
 
+    if (updates.assetId) {
+      const asset = await prisma.asset.findFirst({
+        where: { id: updates.assetId, userId, status: "ready" },
+        select: { id: true },
+      });
+      if (!asset) throw notFound("Asset");
+    }
+
     return prisma.coloringPage.update({
       where: { id: pageId },
       data: {
@@ -318,7 +326,7 @@ export const coloringPlanService = {
       select: { id: true },
     });
 
-    if (currentPages.length !== pageIds.length) {
+    if (currentPages.length !== pageIds.length || new Set(pageIds).size !== pageIds.length) {
       throw badRequest("Reorder list length does not match total book pages");
     }
 

@@ -1,3 +1,4 @@
+import { pipeline } from "node:stream/promises";
 import { Router } from "express";
 import { marketingDraftSchema, marketingGraphicSchema, marketingSaveSchema, sampleChapterSchema } from "@ebook/shared";
 import { userId } from "../middleware/requireAuth.js";
@@ -123,7 +124,7 @@ marketingRouter.get("/marketing/graphics/:graphicId/download", async (req, res) 
   // The filename is still offered, so saving a copy keeps its name.
   res.setHeader("Content-Disposition", `inline; filename="${file.filename}"`);
   res.setHeader("Cache-Control", "private, max-age=0, must-revalidate");
-  file.stream.pipe(res);
+  await pipeline(file.stream, res);
 });
 
 /**
@@ -165,5 +166,5 @@ marketingRouter.get("/marketing/samples/:sampleId/download", async (req, res) =>
   // an attachment rather than shown in the page.
   res.setHeader("Content-Disposition", `attachment; filename="${file.filename}"`);
   res.setHeader("Cache-Control", "private, max-age=0, must-revalidate");
-  file.stream.pipe(res);
+  await pipeline(file.stream, res);
 });

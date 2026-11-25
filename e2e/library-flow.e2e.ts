@@ -13,10 +13,12 @@
  */
 import puppeteer, { type Page } from "puppeteer";
 import { mkdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3100";
 const MAILPIT = process.env.MAILPIT_URL ?? "http://localhost:8025";
-const SHOTS = process.env.SHOTS_DIR ?? "d:/web/ebooks-studio/e2e-shots/library";
+const SHOTS = process.env.SHOTS_DIR ?? path.join(tmpdir(), "ebook-e2e-shots", "library");
 const HEADLESS = process.env.HEADED ? false : true;
 mkdirSync(SHOTS, { recursive: true });
 

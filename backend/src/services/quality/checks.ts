@@ -278,12 +278,14 @@ function findContradictions(input: CheckInput) {
       if (block.type !== 'paragraph') continue;
       for (const sentence of block.text.matchAll(SENTENCE)) {
         const raw = sentence[0];
+        const sentenceOffset = sentence.index ?? 0;
         for (const m of raw.matchAll(MEASURE)) {
           const value = Number.parseFloat(m[1].replace(',', '.'));
           if (!Number.isFinite(value)) continue;
           const unit = m[2].toLowerCase().replace(/^(percent|per cent)$/, '%');
-          const start = m.index ?? raw.indexOf(m[0]);
-          claims.push({ subject: subjectOf(raw, start), value, unit, quote: m[0], chapterId: chapter.id, block, start });
+          const localStart = m.index ?? raw.indexOf(m[0]);
+          const start = sentenceOffset + localStart;
+          claims.push({ subject: subjectOf(raw, localStart), value, unit, quote: m[0], chapterId: chapter.id, block, start });
         }
       }
     }
@@ -334,7 +336,7 @@ function findDefinitionConflicts(input: CheckInput) {
           const agreed = new Set(def.definition.toLowerCase().match(/[\p{L}\p{M}]{4,}/gu) ?? []);
           const overlap = (stated.match(/[\p{L}\p{M}]{4,}/gu) ?? []).filter(w => agreed.has(w)).length;
           if (overlap >= 2) continue;
-          const start = raw.indexOf(definition[0]);
+          const start = (sentence.index ?? 0) + raw.indexOf(definition[0]);
           conflicts.push({
             chapterId: chapter.id,
             anchor: makeAnchor(chapter.id, chapter.version, block, start, start + definition[0].length),

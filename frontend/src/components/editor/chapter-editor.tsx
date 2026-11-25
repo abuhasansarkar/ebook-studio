@@ -122,8 +122,16 @@ export function ChapterEditor({ ownerId, chapter, bookId, language, findingId }:
               try {
                 const text = await file.text();
                 const data = JSON.parse(text) as { title?: string; contentJson?: Record<string, unknown> };
-                if (!data.contentJson && !data.title) throw new Error("Invalid backup format");
-                setRestoreConfirm(data);
+                const hasValidDoc =
+                  data.contentJson &&
+                  typeof data.contentJson === "object" &&
+                  data.contentJson.type === "doc" &&
+                  Array.isArray(data.contentJson.content);
+                if (!hasValidDoc && typeof data.title !== "string") throw new Error("Invalid backup format");
+                setRestoreConfirm({
+                  ...(typeof data.title === "string" ? { title: data.title } : {}),
+                  ...(hasValidDoc ? { contentJson: data.contentJson } : {}),
+                });
               } catch {
                 toast.error("Could not parse chapter backup file. Ensure it is a valid JSON backup.");
               } finally {
@@ -172,11 +180,15 @@ export function ChapterEditor({ ownerId, chapter, bookId, language, findingId }:
         onClose={() => setRestoreConfirm(null)}
         onConfirm={() => {
           if (!restoreConfirm || !editor) return;
+          const nextTitle = restoreConfirm.title ?? title;
           if (restoreConfirm.title) setTitle(restoreConfirm.title);
           if (restoreConfirm.contentJson) {
             editor.commands.setContent(restoreConfirm.contentJson, { emitUpdate: true });
-            save.schedule({ title: restoreConfirm.title ?? title, contentJson: restoreConfirm.contentJson });
           }
+          save.schedule({
+            title: nextTitle,
+            contentJson: restoreConfirm.contentJson ?? (editor.getJSON() as Record<string, unknown>),
+          });
           toast.success("Chapter restored from backup");
           setRestoreConfirm(null);
         }}

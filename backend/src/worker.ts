@@ -113,4 +113,11 @@ if (isStandaloneWorker) {
   }
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("SIGINT", () => void shutdown("SIGINT"));
+  process.on("unhandledRejection", (err) => {
+    logger.error({ err }, "Unhandled promise rejection in worker process");
+  });
+  process.on("uncaughtException", (err) => {
+    logger.fatal({ err }, "Uncaught exception in worker process");
+    process.exit(1);
+  });
 }

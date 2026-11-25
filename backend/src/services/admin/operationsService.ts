@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { prisma } from "../../database/prisma.js";
 import { logger } from "../../utils/logger.js";
 import { notFound, badRequest } from "../../utils/errors.js";
@@ -540,7 +541,7 @@ export async function adjustCredits(input: {
   const result = await creditService.adjust(
     input.userId,
     input.credits,
-    `admin:${input.actorId}:${input.userId}:${Date.now()}`,
+    `admin:${input.actorId}:${input.userId}:${randomUUID()}`,
     input.reason,
   );
 
@@ -578,23 +579,22 @@ export async function deleteUserAccount(options: {
   });
   if (!target) throw notFound("User");
 
-  // Safety guard: Cannot delete the last active administrator
   const isTargetAdmin = target.adminRoles.some((r) => r.role === "administrator");
-  if (isTargetAdmin) {
-    const adminCount = await prisma.adminRole.count({
-      where: { role: "administrator", revokedAt: null },
-    });
-    if (adminCount <= 1) {
-      throw badRequest(
-        "Cannot delete the only active administrator account. Transfer or grant the administrator role to another user first.",
-      );
-    }
-  }
-
   const normalizedEmail = target.email.trim().toLowerCase();
 
-  // Execute in interactive transaction
+  // Execute in interactive transaction (serializable/locked check for last-admin guard)
   await prisma.$transaction(async (tx) => {
+    if (isTargetAdmin) {
+      const adminCount = await tx.adminRole.count({
+        where: { role: "administrator", revokedAt: null },
+      });
+      if (adminCount <= 1) {
+        throw badRequest(
+          "Cannot delete the only active administrator account. Transfer or grant the administrator role to another user first.",
+        );
+      }
+    }
+
     // 1. Tombstone the email address so it cannot ever be used again
     await tx.tombstonedEmail.upsert({
       where: { email: normalizedEmail },

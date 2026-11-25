@@ -188,7 +188,7 @@ export const chapterService = {
     if (input.action === "custom" && !input.instruction?.trim()) throw badRequest("Please describe what you want the AI to do.");
 
     const key = `assist:${userId}:${idempotencyKey || randomUUID()}`;
-    await creditService.spend(userId, CREDIT_COSTS.assist, key, `AI assist: ${input.action}`);
+    await creditService.spend(userId, CREDIT_COSTS.assist, key, `AI assist: ${input.action}`, { rejectDuplicate: true });
     try {
       const { text, usage } = await aiService.assist(input.action, input.text, book.language, input.instruction);
       const doc = markdownToTiptap(text);

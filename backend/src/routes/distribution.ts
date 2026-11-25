@@ -1,3 +1,4 @@
+import { pipeline } from "node:stream/promises";
 import { Router } from "express";
 import { distributionPackageSchema, publishingStatusSchema } from "@ebook/shared";
 import { userId } from "../middleware/requireAuth.js";
@@ -60,7 +61,7 @@ distributionRouter.get("/distribution/packages/:packageId/download", async (req,
   res.setHeader("Content-Type", file.contentType);
   res.setHeader("Content-Disposition", `attachment; filename="${file.filename}"`);
   if (file.size !== undefined) res.setHeader("Content-Length", String(file.size));
-  file.stream.pipe(res);
+  await pipeline(file.stream, res);
 });
 
 /**

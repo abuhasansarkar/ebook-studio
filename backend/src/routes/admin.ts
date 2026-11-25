@@ -106,10 +106,7 @@ adminRouter.get("/admin/users", async (req, res) => {
 adminRouter.get("/admin/users/:userId", async (req, res) => {
   await withPermission(req, "ops.read");
   const detail = await userDetail(req.params.userId);
-  if (!detail) {
-    res.status(404).json({ error: { message: "User not found" } });
-    return;
-  }
+  if (!detail) throw notFound("User");
   res.json({ user: detail });
 });
 
@@ -222,7 +219,7 @@ adminRouter.post(
     }),
   ),
   async (req, res) => {
-    await withPermission(req, "ops.read");
+    await withPermission(req, "jobs.intervene");
     const destination = env.ALERT_DESTINATION;
     if (!destination) throw badRequest("No alert destination is configured.");
 
@@ -428,7 +425,7 @@ adminRouter.post("/admin/backups", validateBody(z.object({ name: z.string().rege
  */
 adminRouter.post(
   "/admin/backups/:name/restore",
-  validateBody(z.object({ keepDatabase: z.boolean().optional().default(false) }).partial()),
+  validateBody(z.object({ keepDatabase: z.boolean().optional().default(false), reason: z.string().trim().max(500).optional() }).partial()),
   async (req, res) => {
     const id = await withPermission(req, "backup.manage");
     const result = await rehearseRestore(String(req.params.name), {
@@ -447,19 +444,23 @@ adminRouter.post(
   },
 );
 
-adminRouter.delete("/admin/backups/:name", async (req, res) => {
-  const id = await withPermission(req, "backup.manage");
-  await deleteBackup(String(req.params.name));
-  await recordAudit({
-    actorId: id,
-    action: "backup.delete",
-    targetType: "backup",
-    targetId: String(req.params.name),
-    reason: req.body?.reason ?? "Removed a backup.",
-    requestId: String(req.id),
-  });
-  res.json({ ok: true });
-});
+adminRouter.delete(
+  "/admin/backups/:name",
+  validateBody(z.object({ reason: z.string().trim().max(500).optional() }).optional().default({})),
+  async (req, res) => {
+    const id = await withPermission(req, "backup.manage");
+    await deleteBackup(String(req.params.name));
+    await recordAudit({
+      actorId: id,
+      action: "backup.delete",
+      targetType: "backup",
+      targetId: String(req.params.name),
+      reason: req.body?.reason ?? "Removed a backup.",
+      requestId: String(req.id),
+    });
+    res.json({ ok: true });
+  },
+);
 
 // ---- Support ----
 

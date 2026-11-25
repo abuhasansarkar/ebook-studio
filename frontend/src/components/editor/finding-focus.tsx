@@ -39,6 +39,15 @@ export function FindingFocus({ editor, findingId, bookId, editable }: { editor: 
     await api.patch(`/quality/findings/${findingId}`, { status: 'resolved', note });
     void qc.invalidateQueries({ queryKey: ['quality-report', bookId] }); void qc.invalidateQueries({ queryKey: ['quality-finding', findingId] });
   }
+  async function resolveManually() {
+    setState({ busy: true, error: '', done: '' });
+    try {
+      await markResolved('Fixed in the manuscript.');
+      setState({ busy: false, error: '', done: 'Marked as resolved.' });
+    } catch (e) {
+      setState({ busy: false, error: errorMessage(e), done: '' });
+    }
+  }
   async function apply() {
     const replacement = finding.data?.suggestion?.replacement;
     if (!editor || !range || !replacement) return;
@@ -64,7 +73,7 @@ export function FindingFocus({ editor, findingId, bookId, editable }: { editor: 
     {state.done && <p className="mt-1">{state.done}</p>}
     <div className="mt-2 flex flex-wrap gap-2">
       {f.suggestion?.replacement && range && <Button size="sm" disabled={!editable || state.busy} onClick={() => void apply()}>Replace with “{f.suggestion.replacement}”</Button>}
-      {f.status === 'open' && !state.done && <Button size="sm" variant="secondary" disabled={state.busy} onClick={() => void markResolved('Fixed in the manuscript.').then(() => setState({ busy: false, error: '', done: 'Marked as resolved.' }), e => setState({ busy: false, error: errorMessage(e), done: '' }))}>Mark resolved</Button>}
+      {f.status === 'open' && !state.done && <Button size="sm" variant="secondary" disabled={state.busy} onClick={() => void resolveManually()}>Mark resolved</Button>}
       <Link className="self-center text-sm font-semibold underline" href={`/app/books/${bookId}/quality`}>Back to review</Link>
     </div>
   </Alert>;

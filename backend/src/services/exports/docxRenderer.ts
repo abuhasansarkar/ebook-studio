@@ -138,15 +138,15 @@ function renderBlocks(node: PMNode | null | undefined, ctx: DocxContext, design:
   const align = typeof node.attrs?.textAlign === 'string' ? node.attrs.textAlign : undefined;
   switch (node.type) {
     case 'doc': return children();
-    case 'paragraph': return `<w:p>${paragraphProperties(design, align)}<w:r>${inlineChildren(node, ctx)}</w:r></w:p>`;
+    case 'paragraph': return `<w:p>${paragraphProperties(design, align)}${inlineChildren(node, ctx)}</w:p>`;
     case 'heading': {
       const level = Math.min(4, Math.max(2, Number(node.attrs?.level) || 2));
-      return `<w:p>${paragraphProperties(design, align, `Heading${level}`)}<w:r>${inlineChildren(node, ctx)}</w:r></w:p>`;
+      return `<w:p>${paragraphProperties(design, align, `Heading${level}`)}${inlineChildren(node, ctx)}</w:p>`;
     }
     case 'bulletList': return renderList(node, ctx, design, 'ListBullet');
     case 'orderedList': return renderList(node, ctx, design, 'ListNumber');
     case 'listItem': return children();
-    case 'blockquote': return `<w:p>${paragraphProperties(design, align, 'Quote')}<w:r>${inlineChildren(node, ctx)}</w:r></w:p>`;
+    case 'blockquote': return `<w:p>${paragraphProperties(design, align, 'Quote')}${inlineChildren(node, ctx)}</w:p>`;
     case 'codeBlock': {
       const text = (node.content ?? []).map((child) => child.text ?? '').join('');
       return `<w:p>${paragraphProperties(design, undefined, 'CodeBlock')}<w:r>${wT(text)}</w:r></w:p>`;
@@ -166,7 +166,7 @@ function renderBlocks(node: PMNode | null | undefined, ctx: DocxContext, design:
 function inlineChildren(node: PMNode, ctx: DocxContext): string {
   return (node.content ?? []).map((child) => {
     if (child.type === 'text') return renderRuns(child, ctx);
-    if (child.type === 'hardBreak') return '<w:br/>';
+    if (child.type === 'hardBreak') return '<w:r><w:br/></w:r>';
     return '';
   }).join('');
 }
@@ -176,7 +176,7 @@ function renderList(node: PMNode, ctx: DocxContext, design: RenderInput['design'
   return items.map((item) => {
     // A list item holds paragraphs; each becomes one numbered paragraph.
     const paragraphs = (item.content ?? []).filter((c) => c.type === 'paragraph');
-    return paragraphs.map((p) => `<w:p>${paragraphProperties(design, undefined, style)}<w:r>${inlineChildren(p, ctx)}</w:r></w:p>`).join('');
+    return paragraphs.map((p) => `<w:p>${paragraphProperties(design, undefined, style)}${inlineChildren(p, ctx)}</w:p>`).join('');
   }).join('');
 }
 
@@ -190,7 +190,7 @@ function renderTable(node: PMNode, ctx: DocxContext, design: RenderInput['design
   const body = rows.map((row, rowIndex) => {
     const header = headed && rowIndex === 0;
     const cells = (row.content ?? []).map((cell) => {
-      const content = (cell.content ?? []).map((p) => `<w:p>${paragraphProperties(design, undefined, header ? 'TableHeader' : 'TableText')}<w:r>${inlineChildren(p, ctx)}</w:r></w:p>`).join('');
+      const content = (cell.content ?? []).map((p) => `<w:p>${paragraphProperties(design, undefined, header ? 'TableHeader' : 'TableText')}${inlineChildren(p, ctx)}</w:p>`).join('');
       const headerProperty = header ? '<w:tcPr><w:shd w:val="clear" w:fill="f6f1ec"/></w:tcPr>' : '';
       return `<w:tc>${headerProperty}${content || '<w:p/>'}</w:tc>`;
     }).join('');

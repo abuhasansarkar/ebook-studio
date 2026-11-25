@@ -113,7 +113,7 @@ function renderBlocks(node: PMNode | null | undefined, ctx: InlineContext): stri
         return `<p class="missing-image">${escapeHtml(String(node.attrs?.alt ?? '').normalize('NFC'))}</p>`;
       }
       ctx.used.add(assetId);
-      const alt = escapeHtml(String(node.attrs?.alt ?? '').normalize('NFC'));
+      const alt = String(node.attrs?.alt ?? '').normalize('NFC');
       const caption = node.attrs?.caption ? `<figcaption>${escapeHtml(String(node.attrs.caption).normalize('NFC'))}</figcaption>` : '';
       return `<figure><img src="${xmlAttr(file)}" alt="${xmlAttr(alt)}"/>${caption}</figure>`;
     }

@@ -109,7 +109,7 @@ export const updateChapterSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
   contentJson: z.record(z.string(), z.unknown()).optional(),
   version: z.number().int().min(0),
-});
+}).strict();
 
 /** A new chapter order: every chapter of the book, each exactly once. */
 export const chapterOrderSchema = z.object({
@@ -146,11 +146,11 @@ export const ASSIST_ACTION_LABELS: Record<AssistAction, string> = {
 };
 
 export const assistSchema = z.object({
-  bookId: z.string(),
+  bookId: z.string().trim().min(1).max(100),
   action: z.enum(ASSIST_ACTIONS),
   text: z.string().min(1).max(8000),
   instruction: z.string().max(1000).optional(),
-});
+}).strict();
 
 // ---------- Credits ----------
 /** Credit pricing rules (product-level, not model-level). */

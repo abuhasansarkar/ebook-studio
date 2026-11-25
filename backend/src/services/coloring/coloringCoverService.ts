@@ -126,7 +126,7 @@ async function requestOpenAiCoverImage(prompt: string): Promise<Buffer> {
     return Buffer.from(b64, "base64");
   }
   if (item?.url) {
-    const res = await fetch(item.url);
+    const res = await fetch(item.url, { signal: AbortSignal.timeout(30_000) });
     if (!res.ok) throw new Error(`Failed to fetch cover image from provider (${res.status})`);
     return Buffer.from(await res.arrayBuffer());
   }
@@ -184,7 +184,7 @@ export const coloringCoverService = {
     if (!plan) throw notFound("Coloring book plan");
 
     const cost = COLORING_CREDIT_COSTS.cover; // 10 credits
-    const reference = `coloring-cover:${bookId}:${Date.now()}`;
+    const reference = `coloring-cover:${bookId}:${randomUUID()}`;
 
     // Reserve 10 credits atomically
     await prisma.$transaction(async (tx) => {
@@ -227,6 +227,12 @@ export const coloringCoverService = {
           where: { assetId_bookId: { assetId: asset.id, bookId } },
           create: { assetId: asset.id, bookId },
           update: {},
+        });
+
+        // Acquire row lock on Book to serialize version numbering across concurrent cover generations
+        await tx.book.update({
+          where: { id: bookId },
+          data: { updatedAt: new Date() },
         });
 
         const latestCover = await tx.coverDesign.findFirst({

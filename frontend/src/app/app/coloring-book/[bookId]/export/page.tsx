@@ -61,20 +61,28 @@ export default function ColoringBookExportPage({ params }: { params: Promise<{ b
   const plan = detail.plan;
   const preflight = pkg?.preflight;
 
-  const handleCopyKeywords = () => {
+  const handleCopyKeywords = async () => {
     if (!pkg?.sevenKeywords) return;
-    navigator.clipboard.writeText(pkg.sevenKeywords.join(", "));
-    setCopiedKeywords(true);
-    toast.success("Keywords copied to clipboard!");
-    setTimeout(() => setCopiedKeywords(false), 2500);
+    try {
+      await navigator.clipboard.writeText(pkg.sevenKeywords.join(", "));
+      setCopiedKeywords(true);
+      toast.success("Keywords copied to clipboard!");
+      setTimeout(() => setCopiedKeywords(false), 2500);
+    } catch {
+      toast.error("Could not copy keywords to clipboard.");
+    }
   };
 
-  const handleCopyDescription = () => {
+  const handleCopyDescription = async () => {
     if (!pkg?.amazonDescriptionHtml) return;
-    navigator.clipboard.writeText(pkg.amazonDescriptionHtml);
-    setCopiedDescription(true);
-    toast.success("Amazon HTML description copied!");
-    setTimeout(() => setCopiedDescription(false), 2500);
+    try {
+      await navigator.clipboard.writeText(pkg.amazonDescriptionHtml);
+      setCopiedDescription(true);
+      toast.success("Amazon HTML description copied!");
+      setTimeout(() => setCopiedDescription(false), 2500);
+    } catch {
+      toast.error("Could not copy description to clipboard.");
+    }
   };
 
   const handleCompilePdf = async () => {
@@ -117,18 +125,31 @@ export default function ColoringBookExportPage({ params }: { params: Promise<{ b
           </div>
 
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-            <a href={`/api/v1/coloring/books/${bookId}/export/metadata`} download={`KDP_METADATA_${bookId}.md`} className="w-full sm:w-auto">
-              <Button variant="secondary" size="lg" className="w-full sm:w-auto gap-2 shadow-sm">
-                <FileText className="h-4 w-4" /> Download Metadata (.md)
-              </Button>
-            </a>
+            <Button
+              variant="secondary"
+              size="lg"
+              className="w-full sm:w-auto gap-2 shadow-sm"
+              onClick={() => {
+                void import("@/lib/download").then(({ downloadFile }) =>
+                  downloadFile(`/api/v1/coloring/books/${bookId}/export/metadata`, `KDP_METADATA_${bookId}.md`),
+                ).catch((err: unknown) => toast.error((err as Error)?.message || "Download failed"));
+              }}
+            >
+              <FileText className="h-4 w-4" /> Download Metadata (.md)
+            </Button>
 
             {downloadUrl ? (
-              <a href={downloadUrl} download className="w-full sm:w-auto">
-                <Button size="lg" className="w-full sm:w-auto gap-2 shadow-md bg-emerald-600 hover:bg-emerald-500">
-                  <Download className="h-4 w-4" /> Download KDP PDF
-                </Button>
-              </a>
+              <Button
+                size="lg"
+                className="w-full sm:w-auto gap-2 shadow-md bg-emerald-600 hover:bg-emerald-500"
+                onClick={() => {
+                  void import("@/lib/download").then(({ downloadFile }) =>
+                    downloadFile(downloadUrl, `${book.title || "coloring-book"}-kdp.pdf`),
+                  ).catch((err: unknown) => toast.error((err as Error)?.message || "Download failed"));
+                }}
+              >
+                <Download className="h-4 w-4" /> Download KDP PDF
+              </Button>
             ) : (
               <Button
                 size="lg"

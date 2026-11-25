@@ -61,29 +61,40 @@ export function useCoverEditor(initial: SavedCover, ownerId: string, bookId: str
 
   const isUndoRedoAction = useRef(false);
 
+  const historyRef = useRef(history);
+  const historyIndexRef = useRef(historyIndex);
+  const selectedLayerIdsRef = useRef(selectedLayerIds);
+  const designRef = useRef(design);
+
+  useEffect(() => {
+    historyRef.current = history;
+    historyIndexRef.current = historyIndex;
+    selectedLayerIdsRef.current = selectedLayerIds;
+    designRef.current = design;
+  }, [history, historyIndex, selectedLayerIds, design]);
+
   // Push new state to history
   const pushHistory = useCallback((newDesign: CoverDesign, newSelectedIds?: string[]) => {
     if (isUndoRedoAction.current) return;
-    setHistory((prev) => {
-      const trimmed = prev.slice(0, historyIndex + 1);
-      const snapshot: HistorySnapshot = {
-        design: newDesign,
-        selectedLayerIds: newSelectedIds !== undefined ? newSelectedIds : selectedLayerIds,
-      };
-      const nextHistory = [...trimmed, snapshot].slice(-50);
-      setHistoryIndex(nextHistory.length - 1);
-      return nextHistory;
-    });
-  }, [historyIndex, selectedLayerIds]);
+    const trimmed = historyRef.current.slice(0, historyIndexRef.current + 1);
+    const snapshot: HistorySnapshot = {
+      design: newDesign,
+      selectedLayerIds: newSelectedIds !== undefined ? newSelectedIds : selectedLayerIdsRef.current,
+    };
+    const nextHistory = [...trimmed, snapshot].slice(-50);
+    historyRef.current = nextHistory;
+    historyIndexRef.current = nextHistory.length - 1;
+    setHistory(nextHistory);
+    setHistoryIndex(nextHistory.length - 1);
+  }, []);
 
   const updateDesign = useCallback((updater: (prev: CoverDesign) => CoverDesign, recordHistory = true) => {
-    setDesign((prev) => {
-      const next = updater(prev);
-      if (recordHistory) {
-        pushHistory(next);
-      }
-      return next;
-    });
+    const next = updater(designRef.current);
+    designRef.current = next;
+    setDesign(next);
+    if (recordHistory) {
+      pushHistory(next);
+    }
   }, [pushHistory]);
 
   const undo = useCallback(() => {

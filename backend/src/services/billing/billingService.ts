@@ -11,7 +11,7 @@ import { prisma } from "../../database/prisma.js";
 import { env } from "../../config/env.js";
 import { badRequest, conflict, notFound } from "../../utils/errors.js";
 import { logger } from "../../utils/logger.js";
-import { creditService } from "../credits/creditService.js";
+import { creditService, grantInTransaction } from "../credits/creditService.js";
 import {
   customerReference,
   getProvider,
@@ -183,8 +183,14 @@ function toPlan(row: {
 
 /** The user a provider event refers to. */
 async function userForReference(reference: string) {
-  // The reference is derived from the user id, so the provider cannot name a
-  // customer this product does not have.
+  // Fast path: check existing payment records indexed by providerCustomerReference.
+  const known = await prisma.payment.findFirst({
+    where: { providerCustomerReference: reference },
+    select: { userId: true },
+  });
+  if (known) return { id: known.userId };
+
+  // Fallback for first-time customers whose checkout record wasn't created locally.
   const rows = await prisma.user.findMany({ select: { id: true } });
   for (const row of rows) {
     if (customerReference(row.id) === reference) return row;
@@ -277,6 +283,8 @@ export const billingService = {
       credits: plan.credits,
       returnUrl: `${env.APP_URL}/app/credits`,
       idempotencyKey,
+      recurring: plan.recurring,
+      interval: toPlan(plan).interval,
     });
 
     const existing = await prisma.payment.findUnique({ where: { providerPaymentId: checkout.providerPaymentId } });
@@ -640,16 +648,22 @@ export const billingService = {
     const plan = planRow ? toPlan(planRow) : null;
     const credits = payment.credits;
 
+    let settled = false;
     await prisma.$transaction(async (tx) => {
-      await tx.payment.update({
-        where: { id: payment.id },
+      const updated = await tx.payment.updateMany({
+        where: { id: payment.id, status: "pending" },
         data: { status: "succeeded", settledEventAt: event.occurredAt },
       });
+      if (updated.count === 0) return;
+      settled = true;
       // The idempotency key ties the credit to the payment, so the ledger
       // records exactly one grant for it.
-      await creditService.grant(userId, credits, `payment:${payment.id}`, `Payment for ${payment.description}`);
+      await grantInTransaction(tx, userId, credits, `payment:${payment.id}`, `Payment for ${payment.description}`);
       if (plan) await writeEntitlements(tx, userId, plan, `payment:${payment.id}`);
     });
+    if (!settled) {
+      return { status: "processed" as const };
+    }
 
     // A plan that recurs also starts a subscription.
     if (plan?.recurring) {
@@ -673,36 +687,47 @@ export const billingService = {
       return { status: "ignored" as const, reason: "An older refund arrived after the refund." };
     }
 
-    // The credits are only taken back as far as the balance allows: a customer
-    // who already spent them does not go into a negative balance, and the
-    // shortfall stays on the record for an operator.
-    const wallet = await creditService.getWallet(userId);
-    const refundable = Math.min(payment.credits, wallet.balance);
-    const shortfall = payment.credits - refundable;
+    // Read wallet and update payment/wallet atomically inside the transaction so
+    // concurrent spends cannot push wallet.balance negative.
+    const { shortfall, alreadyRefunded } = await prisma.$transaction(async (tx) => {
+      await tx.creditWallet.upsert({ where: { userId }, create: { userId }, update: {} });
+      const wallet = await tx.creditWallet.findUniqueOrThrow({ where: { userId } });
+      const refundable = Math.min(payment.credits, Math.max(0, wallet.balance));
+      const gap = payment.credits - refundable;
 
-    await prisma.$transaction(async (tx) => {
-      await tx.payment.update({
-        where: { id: payment.id },
+      const updated = await tx.payment.updateMany({
+        where: { id: payment.id, status: { not: "refunded" } },
         data: { status: "refunded", refundedEventAt: event.occurredAt, refundedCredits: refundable },
       });
+      if (updated.count === 0) {
+        return { shortfall: 0, alreadyRefunded: true };
+      }
+
       if (refundable > 0) {
+        const nextWallet = await tx.creditWallet.update({
+          where: { userId },
+          data: { balance: { decrement: refundable } },
+        });
         await tx.creditTransaction.create({
           data: {
             userId,
             type: "refund",
             amount: -refundable,
-            balanceAfter: wallet.balance - refundable,
+            balanceAfter: nextWallet.balance,
             reference: `payment:${payment.id}`,
             idempotencyKey: `refund:${payment.id}`,
             description: `Refund for ${payment.description}`,
           },
         });
-        await tx.creditWallet.update({ where: { userId }, data: { balance: { decrement: refundable } } });
       }
       // The entitlements the plan granted are withdrawn with the refund.
       await tx.entitlement.deleteMany({ where: { userId, source: "payment", sourceId: `payment:${payment.id}` } });
+      return { shortfall: gap, alreadyRefunded: false };
     });
 
+    if (alreadyRefunded) {
+      return { status: "processed" as const };
+    }
     if (shortfall > 0) {
       logger.warn({ userId, paymentId: payment.id, shortfall }, "A refund took back fewer credits than the payment granted");
     }
@@ -862,41 +887,41 @@ export const billingService = {
       plans,
       currentPlan: subscription
         ? {
-            id: subscription.planId,
-            name: subscription.plan.name,
-            description: subscription.plan.description,
-            priceMinor: subscription.plan.priceMinor,
-            currency: subscription.plan.currency as PaymentCurrency,
-            status: subscription.status as SubscriptionStatus,
-            recurring: true,
-            credits: wallet.balance,
-            interval: (subscription.planId.endsWith("-yearly") ? "year" : "month") as "year" | "month",
-            currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() ?? null,
-            canceledAt: subscription.canceledAt?.toISOString() ?? null,
-          }
+          id: subscription.planId,
+          name: subscription.plan.name,
+          description: subscription.plan.description,
+          priceMinor: subscription.plan.priceMinor,
+          currency: subscription.plan.currency as PaymentCurrency,
+          status: subscription.status as SubscriptionStatus,
+          recurring: true,
+          credits: wallet.balance,
+          interval: (subscription.planId.endsWith("-yearly") ? "year" : "month") as "year" | "month",
+          currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() ?? null,
+          canceledAt: subscription.canceledAt?.toISOString() ?? null,
+        }
         : {
-            id: "free",
-            name: "Free Plan",
-            description: "Standard author capabilities and welcome credits.",
-            priceMinor: 0,
-            currency: "USD" as PaymentCurrency,
-            status: "active" as SubscriptionStatus,
-            recurring: false,
-            credits: wallet.balance,
-            interval: "month" as const,
-            currentPeriodEnd: null,
-            canceledAt: null,
-          },
+          id: "free",
+          name: "Free Plan",
+          description: "Standard author capabilities and welcome credits.",
+          priceMinor: 0,
+          currency: "USD" as PaymentCurrency,
+          status: "active" as SubscriptionStatus,
+          recurring: false,
+          credits: wallet.balance,
+          interval: "month" as const,
+          currentPeriodEnd: null,
+          canceledAt: null,
+        },
       subscription: subscription
         ? {
-            id: subscription.id,
-            planId: subscription.planId,
-            planName: subscription.plan.name,
-            status: subscription.status as SubscriptionStatus,
-            currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() ?? null,
-            canceledAt: subscription.canceledAt?.toISOString() ?? null,
-            createdAt: subscription.createdAt.toISOString(),
-          }
+          id: subscription.id,
+          planId: subscription.planId,
+          planName: subscription.plan.name,
+          status: subscription.status as SubscriptionStatus,
+          currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() ?? null,
+          canceledAt: subscription.canceledAt?.toISOString() ?? null,
+          createdAt: subscription.createdAt.toISOString(),
+        }
         : null,
       subscriptions: allSubscriptions.map((s) => ({
         id: s.id,
@@ -931,14 +956,17 @@ export const billingService = {
    */
   async reconcile(userId: string) {
     const provider = getProvider();
-    const payments = await prisma.payment.findMany({ where: { userId, provider: provider.name } });
+    const [payments, subscriptions] = await Promise.all([
+      prisma.payment.findMany({ where: { userId, provider: provider.name } }),
+      prisma.subscription.findMany({ where: { userId, provider: provider.name } }),
+    ]);
     const differences: { paymentId: string; local: string; provider: string | null }[] = [];
 
-    for (const payment of payments) {
-      const remote = await provider.fetchSubscription(payment.providerPaymentId);
+    for (const sub of subscriptions) {
+      const remote = await provider.fetchSubscription(sub.providerSubscriptionId);
       if (!remote) continue;
-      if (remote.status !== payment.status) {
-        differences.push({ paymentId: payment.id, local: payment.status, provider: remote.status });
+      if (remote.status !== sub.status) {
+        differences.push({ paymentId: sub.id, local: sub.status, provider: remote.status });
       }
     }
 

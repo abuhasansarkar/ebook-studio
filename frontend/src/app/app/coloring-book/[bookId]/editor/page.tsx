@@ -86,8 +86,8 @@ export default function ColoringBookEditorPage({ params }: { params: Promise<{ b
         updates: {
           title: editTitle || activePage.title,
           prompt: editPrompt || activePage.prompt,
-          negativePrompt: editNegativePrompt !== "" ? editNegativePrompt : undefined,
-          caption: editCaption,
+          negativePrompt: editNegativePrompt !== "" ? editNegativePrompt : activePage.negativePrompt ?? undefined,
+          caption: editCaption !== "" ? editCaption : activePage.caption ?? undefined,
         },
       });
       toast.success("Page details saved");
@@ -297,6 +297,7 @@ export default function ColoringBookEditorPage({ params }: { params: Promise<{ b
               <Badge tone="primary">8 credits to regenerate</Badge>
             </div>
 
+            <div key={activePage?.id ?? "empty"} className="space-y-4">
             <div>
               <label className="text-xs font-semibold text-foreground">Scene Title</label>
               <input
@@ -341,6 +342,7 @@ export default function ColoringBookEditorPage({ params }: { params: Promise<{ b
                 placeholder="e.g. C is for Cow"
                 className="mt-1 w-full rounded-xl border border-border bg-surface px-3 py-2 text-xs"
               />
+            </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-2 pt-2">

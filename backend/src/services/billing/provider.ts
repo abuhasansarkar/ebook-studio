@@ -34,6 +34,10 @@ export interface CheckoutRequest {
   returnUrl: string;
   /** The idempotency key for this checkout. */
   idempotencyKey: string;
+  /** Whether this plan is a recurring subscription. */
+  recurring?: boolean;
+  /** Billing interval for recurring plans. */
+  interval?: "month" | "year";
 }
 
 /** What the provider gives back when a checkout is created. */

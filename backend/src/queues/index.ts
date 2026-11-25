@@ -93,10 +93,12 @@ export const enqueueChapters = (id: string) => enqueue("chapters", id);
 export const enqueueExport = (id: string) => enqueue("exports", id);
 
 export async function dispatchPending(id?: string) {
-  const rows = await prisma.queueDispatch.findMany({ where: {
-    ...(id ? { id } : {}), namespace: queueNamespace, fingerprint: runtimeFingerprint,
-    dispatchedAt: null, nextAttemptAt: { lte: new Date() },
-  }, orderBy: { createdAt: "asc" }, take: 50 });
+  const rows = await prisma.queueDispatch.findMany({
+    where: {
+      ...(id ? { id } : {}), namespace: queueNamespace, fingerprint: runtimeFingerprint,
+      dispatchedAt: null, nextAttemptAt: { lte: new Date() },
+    }, orderBy: { createdAt: "asc" }, take: 50
+  });
   for (const row of rows) {
     try {
       const queue = getQueues()[row.queue as keyof typeof QUEUE_NAMES];
@@ -113,9 +115,9 @@ export async function dispatchPending(id?: string) {
   }
 }
 
-/** Redis may lose accepted deliveries. Only matching v2 jobs are recoverable here. */
+/** Redis may lose accepted deliveries. Only matching v2 jobs and queued exports are recoverable here. */
 export async function reconcileGenerationDispatches() {
-  const rows = await prisma.$queryRaw<{ id: string; jobId: string; queue: string }[]>`
+  const genRows = await prisma.$queryRaw<{ id: string; jobId: string; queue: string }[]>`
     SELECT d.id, d."jobId", d.queue FROM queue_dispatches d
     JOIN generation_jobs j ON j.id = d."jobId"
     WHERE d.namespace = ${queueNamespace} AND d.fingerprint = ${runtimeFingerprint}
@@ -123,11 +125,19 @@ export async function reconcileGenerationDispatches() {
       AND j."inputSnapshot" IS NOT NULL
       AND (j.status = 'queued' OR (j.status = 'running' AND (j."leaseExpiresAt" IS NULL OR j."leaseExpiresAt" < NOW())))
     ORDER BY d."dispatchedAt" ASC LIMIT 10`;
-  for (const row of rows) {
+  const exportRows = await prisma.$queryRaw<{ id: string; jobId: string; queue: string }[]>`
+    SELECT d.id, d."jobId", d.queue FROM queue_dispatches d
+    JOIN exports e ON e.id = d."jobId"
+    WHERE d.namespace = ${queueNamespace} AND d.fingerprint = ${runtimeFingerprint}
+      AND d.queue = 'exports'
+      AND d."dispatchedAt" < NOW() - INTERVAL '30 seconds'
+      AND e.status = 'queued'
+    ORDER BY d."dispatchedAt" ASC LIMIT 10`;
+  for (const row of [...genRows, ...exportRows]) {
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([(async () => {
-        const queue = getQueues()[row.queue as 'outline' | 'chapters' | 'images' | 'quality'];
+        const queue = getQueues()[row.queue as keyof typeof QUEUE_NAMES];
         if (!queue) return;
         const delivery = await queue.getJob(row.jobId);
         if (delivery) {
@@ -137,7 +147,7 @@ export async function reconcileGenerationDispatches() {
         }
         await prisma.queueDispatch.updateMany({ where: { id: row.id, fingerprint: runtimeFingerprint }, data: { dispatchedAt: null, nextAttemptAt: new Date() } });
       })(), new Promise<never>((_, reject) => { timeout = setTimeout(() => reject(new Error('Reconciliation timed out')), 2000); timeout.unref(); })]);
-    } catch { logger.warn({ dispatchId: row.id }, 'Generation dispatch reconciliation deferred'); }
+    } catch { logger.warn({ dispatchId: row.id }, 'Dispatch reconciliation deferred'); }
     finally { if (timeout) clearTimeout(timeout); }
   }
 }

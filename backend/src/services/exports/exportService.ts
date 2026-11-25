@@ -13,7 +13,7 @@ import {
   type ExportSnapshot,
 } from '@ebook/shared';
 import { prisma } from '../../database/prisma.js';
-import { enqueueExport } from '../../queues/index.js';
+import { dispatchPending, persistDispatch } from '../../queues/index.js';
 import { AppError, conflict, notFound } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 import { requireEntitlement } from '../billing/entitlements.js';
@@ -218,16 +218,20 @@ export const exportService = {
       requestedAt: new Date().toISOString(),
     };
 
-    const exp = await prisma.export.create({
-      data: {
-        userId, bookId, format,
-        designVersion: design.version,
-        designSnapshot: design.data as object,
-        snapshot: snapshot as object,
-        contentType: EXPORT_CONTENT_TYPES[format],
-      },
+    const { exp, dispatchId } = await prisma.$transaction(async (tx) => {
+      const created = await tx.export.create({
+        data: {
+          userId, bookId, format,
+          designVersion: design.version,
+          designSnapshot: design.data as object,
+          snapshot: snapshot as object,
+          contentType: EXPORT_CONTENT_TYPES[format],
+        },
+      });
+      const dispatch = await persistDispatch(tx, 'exports', created.id);
+      return { exp: created, dispatchId: dispatch.id };
     });
-    await enqueueExport(exp.id);
+    await dispatchPending(dispatchId);
     return exp;
   },
 

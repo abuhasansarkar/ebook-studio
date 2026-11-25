@@ -216,7 +216,7 @@ export const listingCopySchema = z.object({
   /** The price the author intends to charge, in the smallest currency unit. */
   priceInMinorUnits: z.number().int().min(0).max(100_000_00),
   /** The listing fields. A value is the text the product drafted or the author wrote. */
-  fields: z.record(z.string(), z.string()),
+  fields: z.record(z.string().max(100), z.string().max(8000)),
 }).strict();
 export type ListingCopyInput = z.infer<typeof listingCopySchema>;
 

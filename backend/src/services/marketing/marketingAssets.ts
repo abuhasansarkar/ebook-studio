@@ -112,7 +112,7 @@ export async function renderGraphic(
     }
     return buffer;
   } finally {
-    await page.close();
+    await page.close().catch(() => undefined);
   }
 }
 
@@ -390,22 +390,28 @@ function toSample(
 /** The samples for a book. */
 export async function listSamples(userId: string, bookId: string): Promise<MarketingSample[]> {
   await getOwnedBook(userId, bookId);
-  const rows = await prisma.marketingSample.findMany({
-    where: { userId, bookId },
-    orderBy: { createdAt: "desc" },
-    take: 50,
-  });
-  return Promise.all(
-    rows.map(async (row) => {
-      const ids = Array.isArray(row.chapterIds) ? (row.chapterIds as string[]) : [];
-      const titles = await prisma.chapter.findMany({
-        where: { id: { in: ids } },
-        select: { title: true },
-        orderBy: { position: "asc" },
-      });
-      return toSample(row, titles.map((t) => t.title));
+  const [rows, chapters] = await Promise.all([
+    prisma.marketingSample.findMany({
+      where: { userId, bookId },
+      orderBy: { createdAt: "desc" },
+      take: 50,
     }),
-  );
+    prisma.chapter.findMany({
+      where: { bookId },
+      select: { id: true, title: true, position: true },
+      orderBy: { position: "asc" },
+    }),
+  ]);
+  const chapterById = new Map(chapters.map((c) => [c.id, c]));
+  return rows.map((row) => {
+    const ids = Array.isArray(row.chapterIds) ? (row.chapterIds as string[]) : [];
+    const titles = ids
+      .map((id) => chapterById.get(id))
+      .filter((c): c is NonNullable<typeof c> => Boolean(c))
+      .sort((a, b) => a.position - b.position)
+      .map((c) => c.title);
+    return toSample(row, titles);
+  });
 }
 
 /**

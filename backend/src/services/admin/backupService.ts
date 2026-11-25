@@ -240,7 +240,9 @@ async function dumpDatabase(target: string): Promise<void> {
   }
   // When the dump ran inside the container, the file has to come back to the
   // host before it can be checksummed or restored.
-  await copyOutOfContainer(target);
+  if (!(await commandExists("pg_dump"))) {
+    await copyOutOfContainer(target);
+  }
 }
 
 /**
@@ -421,6 +423,9 @@ export async function rehearseRestore(
   const adminUrl = new URL(url.toString());
   adminUrl.pathname = "/postgres";
   const targetDatabase = options.targetDatabase ?? `${url.pathname.replace(/^\//, "")}_restore_${Date.now().toString(36)}`;
+  if (!/^[A-Za-z0-9_]{1,63}$/.test(targetDatabase)) {
+    throw badRequest("Invalid target database identifier.");
+  }
 
   const password = decodeURIComponent(url.password);
   const psqlEnv = password ? { PGPASSWORD: password } : undefined;
@@ -466,6 +471,9 @@ export async function rehearseRestore(
       ],
       { env: psqlEnv },
     );
+    if (verify.code !== 0) {
+      throw new Error(`Could not verify restored table counts: ${verify.stderr.trim() || verify.stdout.trim()}`);
+    }
     const parts = verify.stdout.trim().split(",").map((n) => Number(n.trim()));
     const observed = { users: parts[0], books: parts[1], chapters: parts[2], jobs: parts[3] };
     const expected = manifest.counts as Record<string, number>;

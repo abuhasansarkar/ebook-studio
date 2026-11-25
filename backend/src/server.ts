@@ -50,9 +50,16 @@ async function shutdown(signal: string) {
   }
   stopDispatcher();
   stopEmailDispatcher();
-  server.close();
+  await new Promise<void>((resolve) => server.close(() => resolve()));
   await Promise.allSettled([closeQueues(), prisma.$disconnect()]);
   process.exit(0);
 }
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 process.on("SIGINT", () => void shutdown("SIGINT"));
+process.on("unhandledRejection", (err) => {
+  logger.error({ err }, "Unhandled promise rejection in API process");
+});
+process.on("uncaughtException", (err) => {
+  logger.fatal({ err }, "Uncaught exception in API process");
+  process.exit(1);
+});

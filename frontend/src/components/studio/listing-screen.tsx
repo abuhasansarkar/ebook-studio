@@ -239,8 +239,12 @@ function ListingEditor({ listing, onCopied }: { listing: ListingCopy; onCopied: 
       .filter((field) => value(field.key).trim())
       .map((field) => `## ${field.label}\n${value(field.key)}`)
       .join("\n\n");
-    await navigator.clipboard.writeText(text);
-    onCopied();
+    try {
+      await navigator.clipboard.writeText(text);
+      onCopied();
+    } catch {
+      // Clipboard access may be denied in non-secure or restricted contexts.
+    }
   };
 
   return (

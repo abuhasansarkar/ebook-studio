@@ -90,6 +90,22 @@ export async function settleInTransaction(tx: Tx, userId: string, reserved: numb
   await tx.creditTransaction.create({ data: { userId, type: released === reserved ? 'refund' : 'charge', amount: released, balanceAfter: wallet.balance, reference, idempotencyKey, description: `Used ${charged} credits, returned ${released}` } });
 }
 
+export async function grantInTransaction(
+  tx: Tx,
+  userId: string,
+  amount: number,
+  idempotencyKey: string,
+  description: string,
+) {
+  assertCredits(amount);
+  if (await alreadyApplied(tx, idempotencyKey)) return;
+  await ensureWallet(tx, userId);
+  const wallet = await tx.creditWallet.update({ where: { userId }, data: { balance: { increment: amount } } });
+  await tx.creditTransaction.create({
+    data: { userId, type: "grant", amount, balanceAfter: wallet.balance, idempotencyKey, description },
+  });
+}
+
 export const creditService = {
   async getWallet(userId: string) {
     return prisma.creditWallet.upsert({ where: { userId }, create: { userId }, update: {} });
@@ -113,14 +129,8 @@ export const creditService = {
   },
 
   async grant(userId: string, amount: number, idempotencyKey: string, description: string) {
-    await runIdempotent(async (tx) => {
-      if (await alreadyApplied(tx, idempotencyKey)) return;
-      await ensureWallet(tx, userId);
-      const wallet = await tx.creditWallet.update({ where: { userId }, data: { balance: { increment: amount } } });
-      await tx.creditTransaction.create({
-        data: { userId, type: "grant", amount, balanceAfter: wallet.balance, idempotencyKey, description },
-      });
-    });
+    assertCredits(amount);
+    await runIdempotent((tx) => grantInTransaction(tx, userId, amount, idempotencyKey, description));
   },
 
   grantSignupBonus(userId: string) {
@@ -181,9 +191,19 @@ export const creditService = {
   },
 
   /** Immediate, atomic spend for small synchronous operations. */
-  async spend(userId: string, amount: number, idempotencyKey: string, description: string) {
-    await runIdempotent(async (tx) => {
-      if (await alreadyApplied(tx, idempotencyKey)) return;
+  async spend(
+    userId: string,
+    amount: number,
+    idempotencyKey: string,
+    description: string,
+    options?: { rejectDuplicate?: boolean },
+  ) {
+    assertCredits(amount);
+    const fn = async (tx: Tx) => {
+      if (await alreadyApplied(tx, idempotencyKey)) {
+        if (options?.rejectDuplicate) throw conflict("This request key has already been used.");
+        return;
+      }
       await ensureWallet(tx, userId);
       const res = await tx.creditWallet.updateMany({
         where: { userId, balance: { gte: amount } },
@@ -194,6 +214,11 @@ export const creditService = {
       await tx.creditTransaction.create({
         data: { userId, type: "charge", amount: -amount, balanceAfter: wallet.balance, idempotencyKey, description },
       });
-    });
+    };
+    if (options?.rejectDuplicate) {
+      await runIdempotentWithResult(fn);
+    } else {
+      await runIdempotent(fn);
+    }
   },
 };

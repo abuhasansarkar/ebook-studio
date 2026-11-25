@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
   BookOpen,
   ChevronRight,
@@ -84,21 +84,21 @@ function NavLinks({
               isCollapsed
                 ? "justify-center p-2.5 text-muted-foreground hover:bg-muted hover:text-foreground"
                 : "gap-3 px-3 py-2.5 text-muted-foreground hover:bg-muted hover:text-foreground hover:translate-x-0.5",
-      active && "bg-primary-soft text-primary-hover font-semibold shadow-2xs hover:translate-x-0",
+              active && "bg-primary-soft text-primary-hover font-semibold shadow-2xs hover:translate-x-0",
             )}
           >
-      <Icon className="h-4.5 w-4.5 shrink-0" />
-      {!isCollapsed && <span className="truncate">{label}</span>}
+            <Icon className="h-4.5 w-4.5 shrink-0" />
+            {!isCollapsed && <span className="truncate">{label}</span>}
 
-      {/* Hover Tooltip when sidebar is collapsed */}
-      {isCollapsed && (
-        <span className="pointer-events-none absolute left-full ml-2.5 z-50 hidden rounded-md bg-neutral-900 dark:bg-neutral-800 px-2.5 py-1 text-xs font-medium text-white shadow-lg group-hover:block whitespace-nowrap animate-in fade-in zoom-in-95 duration-150">
-          {label}
-        </span>
-      )}
-    </Link>
-  );
-})}
+            {/* Hover Tooltip when sidebar is collapsed */}
+            {isCollapsed && (
+              <span className="pointer-events-none absolute left-full ml-2.5 z-50 hidden rounded-md bg-neutral-900 dark:bg-neutral-800 px-2.5 py-1 text-xs font-medium text-white shadow-lg group-hover:block whitespace-nowrap animate-in fade-in zoom-in-95 duration-150">
+                {label}
+              </span>
+            )}
+          </Link>
+        );
+      })}
     </nav >
   );
 }
@@ -240,28 +240,37 @@ function SidebarFooter({ isCollapsed = false }: { isCollapsed?: boolean }) {
   );
 }
 
+const SIDEBAR_EVENT = "ebookstudio:sidebar-collapsed";
+const subscribeSidebar = (cb: () => void) => {
+  window.addEventListener("storage", cb);
+  window.addEventListener(SIDEBAR_EVENT, cb);
+  return () => {
+    window.removeEventListener("storage", cb);
+    window.removeEventListener(SIDEBAR_EVENT, cb);
+  };
+};
+const getSidebarSnapshot = () => {
+  try {
+    return localStorage.getItem("ebookstudio_sidebar_collapsed") === "true";
+  } catch {
+    return false;
+  }
+};
+const getSidebarServerSnapshot = () => false;
+
 export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { data: session, isPending } = useSession();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(() => {
-    if (typeof window === "undefined") return false;
-    try {
-      return localStorage.getItem("ebookstudio_sidebar_collapsed") === "true";
-    } catch {
-      return false;
-    }
-  });
+  const isCollapsed = useSyncExternalStore(subscribeSidebar, getSidebarSnapshot, getSidebarServerSnapshot);
 
   const toggleCollapse = () => {
-    setIsCollapsed((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem("ebookstudio_sidebar_collapsed", String(next));
-      } catch { }
-      return next;
-    });
+    const next = !isCollapsed;
+    try {
+      localStorage.setItem("ebookstudio_sidebar_collapsed", String(next));
+      window.dispatchEvent(new Event(SIDEBAR_EVENT));
+    } catch { }
   };
 
   // Client-side guard (the proxy only checks cookie presence; the API enforces auth).
@@ -320,77 +329,77 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       {/* Mobile Bar */}
-        <div className="fixed inset-x-0 top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-surface/90 backdrop-blur-md px-4 lg:hidden" suppressHydrationWarning>
-          <Logo href="/app/dashboard" />
-            <button
-              type="button"
-              aria-label="Open menu"
-              className="cursor-pointer rounded-lg p-2 text-foreground hover:bg-muted active:scale-90 transition-transform"
-              onClick={() => setMobileOpen(true)}
-            >
-              <Menu className="h-5 w-5" />
-            </button>
+      <div className="fixed inset-x-0 top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-surface/90 backdrop-blur-md px-4 lg:hidden" suppressHydrationWarning>
+        <Logo href="/app/dashboard" />
+        <button
+          type="button"
+          aria-label="Open menu"
+          className="cursor-pointer rounded-lg p-2 text-foreground hover:bg-muted active:scale-90 transition-transform"
+          onClick={() => setMobileOpen(true)}
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+      </div>
+
+      {/* Mobile Drawer with smooth slide & backdrop transitions */}
+      <div
+        className={cn(
+          "fixed inset-0 z-40 lg:hidden transition-all duration-300",
+          mobileOpen ? "visible pointer-events-auto" : "invisible pointer-events-none delay-300",
+        )}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Menu"
+        suppressHydrationWarning
+      >
+        {/* Backdrop with fade */}
+        <div
+          className={cn(
+            "absolute inset-0 bg-black/40 backdrop-blur-xs transition-opacity duration-300 ease-in-out",
+            mobileOpen ? "opacity-100" : "opacity-0",
+          )}
+          onClick={() => setMobileOpen(false)}
+        />
+        {/* Sheet with slide-in-from-left */}
+        <div
+          className={cn(
+            "absolute inset-y-0 start-0 flex w-72 flex-col justify-between bg-surface p-4 shadow-2xl transition-transform duration-300 cubic-bezier(0.16, 1, 0.3, 1)",
+            mobileOpen ? "translate-x-0" : "-translate-x-full",
+          )}
+          suppressHydrationWarning
+        >
+          <div suppressHydrationWarning>
+            <div className="mb-8 flex items-center justify-between" suppressHydrationWarning>
+              <Logo href="/app/dashboard" />
+              <button
+                type="button"
+                aria-label="Close menu"
+                className="cursor-pointer rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground active:scale-90 transition-all"
+                onClick={() => setMobileOpen(false)}
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <NavLinks onNavigate={() => setMobileOpen(false)} />
+          </div>
+          <SidebarFooter />
         </div>
+      </div>
 
-                {/* Mobile Drawer with smooth slide & backdrop transitions */}
-                <div
-                  className={cn(
-                    "fixed inset-0 z-40 lg:hidden transition-all duration-300",
-                    mobileOpen ? "visible pointer-events-auto" : "invisible pointer-events-none delay-300",
-                  )}
-                  role="dialog"
-                  aria-modal="true"
-                  aria-label="Menu"
-                  suppressHydrationWarning
-                >
-                  {/* Backdrop with fade */}
-                  <div
-                    className={cn(
-                      "absolute inset-0 bg-black/40 backdrop-blur-xs transition-opacity duration-300 ease-in-out",
-                      mobileOpen ? "opacity-100" : "opacity-0",
-                    )}
-                    onClick={() => setMobileOpen(false)}
-                  />
-                  {/* Sheet with slide-in-from-left */}
-                  <div
-                    className={cn(
-                      "absolute inset-y-0 start-0 flex w-72 flex-col justify-between bg-surface p-4 shadow-2xl transition-transform duration-300 cubic-bezier(0.16, 1, 0.3, 1)",
-                      mobileOpen ? "translate-x-0" : "-translate-x-full",
-                    )}
-                    suppressHydrationWarning
-                  >
-                    <div suppressHydrationWarning>
-                      <div className="mb-8 flex items-center justify-between" suppressHydrationWarning>
-                        <Logo href="/app/dashboard" />
-                        <button
-                          type="button"
-                          aria-label="Close menu"
-                          className="cursor-pointer rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground active:scale-90 transition-all"
-                          onClick={() => setMobileOpen(false)}
-                        >
-                          <X className="h-5 w-5" />
-                        </button>
-                      </div>
-                      <NavLinks onNavigate={() => setMobileOpen(false)} />
-                    </div>
-                    <SidebarFooter />
-                  </div>
-                </div>
-
-                {/* Main Content Area with smooth page enter */}
-                <main key={pathname} className="min-w-0 flex-1 pt-14 lg:pt-0 animate-page-enter" suppressHydrationWarning>{children}</main>
-              </div>
-              );
+      {/* Main Content Area with smooth page enter */}
+      <main key={pathname} className="min-w-0 flex-1 pt-14 lg:pt-0 animate-page-enter" suppressHydrationWarning>{children}</main>
+    </div>
+  );
 }
 
-              export function PageHeader({title, description, actions}: {title: string; description?: string; actions?: ReactNode }) {
+export function PageHeader({ title, description, actions }: { title: string; description?: string; actions?: ReactNode }) {
   return (
-              <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between" suppressHydrationWarning>
-                <div suppressHydrationWarning>
-                  <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{title}</h1>
-                  {description && <p className="mt-1.5 text-muted-foreground">{description}</p>}
-                </div>
-                {actions && <div className="flex gap-2" suppressHydrationWarning>{actions}</div>}
-              </div>
-              );
+    <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between" suppressHydrationWarning>
+      <div suppressHydrationWarning>
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{title}</h1>
+        {description && <p className="mt-1.5 text-muted-foreground">{description}</p>}
+      </div>
+      {actions && <div className="flex gap-2" suppressHydrationWarning>{actions}</div>}
+    </div>
+  );
 }
