@@ -163,11 +163,11 @@ function CoverWorkspace({
   // Toggle Canvas Fullscreen Mode
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
-      workspaceRef.current?.requestFullscreen?.().catch(() => {});
+      workspaceRef.current?.requestFullscreen?.().catch(() => { });
       setIsFullscreen(true);
     } else {
       if (document.exitFullscreen) {
-        document.exitFullscreen().catch(() => {});
+        document.exitFullscreen().catch(() => { });
       }
       setIsFullscreen(false);
     }
@@ -189,7 +189,7 @@ function CoverWorkspace({
       } else if (e.key === 'Escape' && isFullscreen) {
         setIsFullscreen(false);
         if (document.fullscreenElement && document.exitFullscreen) {
-          document.exitFullscreen().catch(() => {});
+          document.exitFullscreen().catch(() => { });
         }
       }
     };
@@ -384,9 +384,8 @@ function CoverWorkspace({
   return (
     <div
       ref={workspaceRef}
-      className={`flex flex-col ${
-        isFullscreen ? 'fixed inset-0 z-50 h-screen w-screen bg-background' : 'h-[calc(100vh-64px)] w-full'
-      } overflow-hidden bg-background select-none`}
+      className={`flex flex-col ${isFullscreen ? 'fixed inset-0 z-50 h-screen w-screen bg-background' : 'h-[calc(100vh-64px)] w-full'
+        } overflow-hidden bg-background select-none`}
     >
       {/* Dynamic Font Styles */}
       <style>{COVER_FONTS.map(font => `@font-face{font-family:${font};src:url('/api/v1/cover-fonts/${font}') format('truetype');font-weight:100 900;font-display:block}`).join('\n')}</style>
@@ -762,7 +761,7 @@ function AiCoverDesignerModal({
   const [style, setStyle] = useState('modern');
   const [userPrompt, setUserPrompt] = useState('');
   const [busy, setBusy] = useState(false);
-  const [variations, setVariations] = useState<{ id: string; styleName: string; plan: { visualConcept?: string; [key: string]: unknown } }[] | null>(null);
+  const [variations, setVariations] = useState<{ id: string; styleName: string; plan: { visualConcept?: string;[key: string]: unknown } }[] | null>(null);
 
   const handleGenerate = async (selectedStyle = style) => {
     setBusy(true);
@@ -783,7 +782,7 @@ function AiCoverDesignerModal({
   const handleExploreVariations = async () => {
     setBusy(true);
     try {
-      const res = await api.post<{ variations: { id: string; styleName: string; plan: { visualConcept?: string; [key: string]: unknown } }[] }>(`/books/${bookId}/cover/ai-variations`, {
+      const res = await api.post<{ variations: { id: string; styleName: string; plan: { visualConcept?: string;[key: string]: unknown } }[] }>(`/books/${bookId}/cover/ai-variations`, {
         style,
         userPrompt: userPrompt.trim() || undefined,
       });
